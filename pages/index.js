@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Building2, Upload, Users, AlertCircle, FileText, X } from 'lucide-react';
 
 const NewAccountModal = ({ accountName, setAccountName, companyUrl, setCompanyUrl, onClose, onCreate }) => (
@@ -247,16 +247,22 @@ export default function Home() {
     localStorage.setItem(key, JSON.stringify(value));
   };
 
-  useState(() => {
+  useEffect(() => {
     const saved = loadFromStorage('accounts');
     if (saved) setAccounts(saved);
   }, []);
 
+  const generateId = () => {
+    return typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
   const createAccount = () => {
     if (!accountName.trim()) return;
-    
+
     const newAccount = {
-      id: Date.now(),
+      id: generateId(),
       name: accountName,
       url: companyUrl,
       transcripts: [],
@@ -429,7 +435,7 @@ export default function Home() {
           updatedAccounts[accountIndex].notes = [];
         }
         updatedAccounts[accountIndex].notes.push({
-          id: Date.now(),
+          id: generateId(),
           category: action.category,
           content: action.content,
           timestamp: new Date().toISOString()
@@ -463,36 +469,28 @@ export default function Home() {
     setIsProcessing(true);
     
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      // TODO: This API call should go through a backend proxy to avoid CORS issues
+      // and to keep the API key secure. Replace with your backend endpoint.
+      const response = await fetch('/api/analyze-transcript', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': 'YOUR_API_KEY_HERE',
-          'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4000,
-          messages: [{
-            role: 'user',
-            content: `Analyze this sales call transcript and extract:
-
-1. Current State (3-5 bullet points about their current situation/challenges)
-2. Pain Points (specific problems mentioned, with direct quotes)
-3. Requirements (what they need, categorized)
-4. Information Gaps (what we still need to learn)
-
-Transcript:
-${transcriptText}`
-          }]
+          transcript: transcriptText
         })
       });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `API error: ${response.status}`);
+      }
+
       const data = await response.json();
-      const analysis = data.content[0].text;
-      
+      const analysis = data.content?.[0]?.text || 'Analysis unavailable';
+
       const newTranscript = {
-        id: Date.now(),
+        id: generateId(),
         text: transcriptText,
         date: transcriptDate || new Date().toISOString().split('T')[0],
         analysis: analysis,
@@ -510,7 +508,7 @@ ${transcriptText}`
       setSelectedAccount(updatedAccounts.find(a => a.id === selectedAccount.id));
       closeTranscriptModal();
     } catch (error) {
-      alert('Error processing transcript. Please check your API key.');
+      alert(`Error processing transcript: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -520,7 +518,7 @@ ${transcriptText}`
     if (!stakeholderName.trim() || !selectedAccount) return;
     
     const newStakeholder = {
-      id: Date.now(),
+      id: generateId(),
       name: stakeholderName,
       title: stakeholderTitle,
       department: stakeholderDept,
@@ -684,7 +682,7 @@ ${transcriptText}`
     </div>
   );
 
-  const ContentTab = ({ account }) => (
+  const ContentTab = () => (
     <div className="space-y-4">
       <div className="bg-gray-50 p-4 rounded-lg">
         <h3 className="font-semibold mb-2">Business Case Generation</h3>
@@ -820,7 +818,7 @@ ${transcriptText}`
                   {activeTab === 'transcripts' && <TranscriptsTab account={selectedAccount} />}
                   {activeTab === 'stakeholders' && <StakeholdersTab account={selectedAccount} />}
                   {activeTab === 'gaps' && <InformationGapsTab account={selectedAccount} />}
-                  {activeTab === 'content' && <ContentTab account={selectedAccount} />}
+                  {activeTab === 'content' && <ContentTab />}
                 </div>
               </div>
             )}
