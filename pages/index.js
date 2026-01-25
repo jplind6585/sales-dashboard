@@ -1,724 +1,875 @@
-import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { Plus, Upload, Users, FileText, Lightbulb, AlertCircle, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Building2, Upload, Users, AlertCircle, FileText, X } from 'lucide-react';
 
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const NewAccountModal = ({ accountName, setAccountName, companyUrl, setCompanyUrl, onClose, onCreate }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">New Account</h2>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Account Name</label>
+          <input
+            type="text"
+            value={accountName}
+            onChange={(e) => setAccountName(e.target.value)}
+            className="w-full border rounded p-2"
+            placeholder="Acme Corp"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Company URL</label>
+          <input
+            type="text"
+            value={companyUrl}
+            onChange={(e) => setCompanyUrl(e.target.value)}
+            className="w-full border rounded p-2"
+            placeholder="https://acmecorp.com"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-6">
+        <button
+          onClick={onClose}
+          className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onCreate}
+          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Create
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
-export default function SalesDashboard() {
+const NewTranscriptModal = ({ transcriptText, setTranscriptText, transcriptDate, setTranscriptDate, onClose, onAdd, isProcessing }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">Add Transcript</h2>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Call Date</label>
+          <input
+            type="date"
+            value={transcriptDate}
+            onChange={(e) => setTranscriptDate(e.target.value)}
+            className="w-full border rounded p-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Transcript</label>
+          <textarea
+            value={transcriptText}
+            onChange={(e) => setTranscriptText(e.target.value)}
+            rows={10}
+            className="w-full border rounded p-2 font-mono text-sm"
+            placeholder="Paste call transcript here..."
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-6">
+        <button
+          onClick={onClose}
+          className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onAdd}
+          disabled={isProcessing}
+          className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+        >
+          {isProcessing ? 'Processing...' : 'Add & Process'}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+const NewStakeholderModal = ({ stakeholderName, setStakeholderName, stakeholderTitle, setStakeholderTitle, stakeholderDept, setStakeholderDept, stakeholderRole, setStakeholderRole, onClose, onAdd }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">Add Stakeholder</h2>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Name</label>
+          <input
+            type="text"
+            value={stakeholderName}
+            onChange={(e) => setStakeholderName(e.target.value)}
+            className="w-full border rounded p-2"
+            placeholder="John Smith"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Title</label>
+          <input
+            type="text"
+            value={stakeholderTitle}
+            onChange={(e) => setStakeholderTitle(e.target.value)}
+            className="w-full border rounded p-2"
+            placeholder="VP of Operations"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Department</label>
+          <input
+            type="text"
+            value={stakeholderDept}
+            onChange={(e) => setStakeholderDept(e.target.value)}
+            className="w-full border rounded p-2"
+            placeholder="Operations"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Role</label>
+          <select
+            value={stakeholderRole}
+            onChange={(e) => setStakeholderRole(e.target.value)}
+            className="w-full border rounded p-2"
+          >
+            <option value="Champion">Champion</option>
+            <option value="Executive Sponsor">Executive Sponsor</option>
+            <option value="Influencer">Influencer</option>
+            <option value="Neutral">Neutral</option>
+            <option value="Blocker">Blocker</option>
+          </select>
+        </div>
+      </div>
+      <div className="flex gap-2 mt-6">
+        <button
+          onClick={onClose}
+          className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onAdd}
+          className="flex-1 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+        >
+          Add Stakeholder
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+const ManualNoteModal = ({ manualNote, setManualNote, onClose, onAdd }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">Add Manual Note</h2>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Note</label>
+          <textarea
+            value={manualNote}
+            onChange={(e) => setManualNote(e.target.value)}
+            rows={4}
+            className="w-full border rounded p-2"
+            placeholder="e.g., John Smalley is the champion"
+          />
+        </div>
+        <p className="text-xs text-gray-500">
+          Examples: "Terri is the champion", "Budget is $500K", "They don't do CM fees"
+        </p>
+      </div>
+      <div className="flex gap-2 mt-6">
+        <button
+          onClick={onClose}
+          className="flex-1 px-4 py-2 border rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onAdd}
+          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Add Note
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+export default function Home() {
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [stakeholders, setStakeholders] = useState([]);
-  const [transcripts, setTranscripts] = useState([]);
-  const [businessCase, setBusinessCase] = useState(null);
-  const [infoGaps, setInfoGaps] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
-  const [loading, setLoading] = useState(false);
-
-  // Modals
-  const [showNewAccountModal, setShowNewAccountModal] = useState(false);
-  const [showNewStakeholderModal, setShowNewStakeholderModal] = useState(false);
-  const [showTranscriptModal, setShowTranscriptModal] = useState(false);
-
-  // Form states
-  const [newAccount, setNewAccount] = useState({
-    account_name: '',
-    industry: '',
-    company_size: '',
-    annual_revenue: ''
-  });
-
-  const [newStakeholder, setNewStakeholder] = useState({
-    name: '',
-    title: '',
-    role: '',
-    influence_level: 'Medium',
-    engagement_level: 'Medium'
-  });
-
+  const [showNewAccount, setShowNewAccount] = useState(false);
+  const [showNewTranscript, setShowNewTranscript] = useState(false);
+  const [showNewStakeholder, setShowNewStakeholder] = useState(false);
+  const [showManualNote, setShowManualNote] = useState(false);
+  const [manualNote, setManualNote] = useState('');
+  
+  const [accountName, setAccountName] = useState('');
+  const [companyUrl, setCompanyUrl] = useState('');
   const [transcriptText, setTranscriptText] = useState('');
+  const [transcriptDate, setTranscriptDate] = useState('');
+  const [stakeholderName, setStakeholderName] = useState('');
+  const [stakeholderTitle, setStakeholderTitle] = useState('');
+  const [stakeholderDept, setStakeholderDept] = useState('');
+  const [stakeholderRole, setStakeholderRole] = useState('Neutral');
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Load accounts on mount
-  useEffect(() => {
-    loadAccounts();
+  const loadFromStorage = (key) => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const saveToStorage = (key, value) => {
+    localStorage.setItem(key, JSON.stringify(value));
+  };
+
+  useState(() => {
+    const saved = loadFromStorage('accounts');
+    if (saved) setAccounts(saved);
   }, []);
 
-  // Load account data when selected
-  useEffect(() => {
-    if (selectedAccount) {
-      loadAccountData(selectedAccount.id);
-    }
-  }, [selectedAccount]);
-
-  const loadAccounts = async () => {
-    const { data, error } = await supabase
-      .from('accounts')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const createAccount = () => {
+    if (!accountName.trim()) return;
     
-    if (!error && data) {
-      setAccounts(data);
-    }
-  };
-
-  const loadAccountData = async (accountId) => {
-    setLoading(true);
+    const newAccount = {
+      id: Date.now(),
+      name: accountName,
+      url: companyUrl,
+      transcripts: [],
+      stakeholders: [],
+      informationGaps: [],
+      notes: [],
+      createdAt: new Date().toISOString()
+    };
     
-    // Load stakeholders
-    const { data: stakeholderData } = await supabase
-      .from('stakeholders')
-      .select('*')
-      .eq('account_id', accountId);
-    setStakeholders(stakeholderData || []);
-
-    // Load transcripts
-    const { data: transcriptData } = await supabase
-      .from('transcripts')
-      .select('*')
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: false });
-    setTranscripts(transcriptData || []);
-
-    // Load business case
-    const { data: bcData } = await supabase
-      .from('business_cases')
-      .select('*')
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: false })
-      .limit(1);
-    setBusinessCase(bcData?.[0] || null);
-
-    // Load info gaps
-    const { data: gapData } = await supabase
-      .from('info_gaps')
-      .select('*')
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: false });
-    setInfoGaps(gapData || []);
-
-    setLoading(false);
+    const updated = [...accounts, newAccount];
+    setAccounts(updated);
+    saveToStorage('accounts', updated);
+    setSelectedAccount(newAccount);
+    closeAccountModal();
   };
 
-  const createAccount = async () => {
-    if (!newAccount.account_name) return;
-
-    const { data, error } = await supabase
-      .from('accounts')
-      .insert([newAccount])
-      .select()
-      .single();
-
-    if (!error && data) {
-      setAccounts([data, ...accounts]);
-      setSelectedAccount(data);
-      setNewAccount({ account_name: '', industry: '', company_size: '', annual_revenue: '' });
-      setShowNewAccountModal(false);
-    }
+  const closeAccountModal = () => {
+    setShowNewAccount(false);
+    setAccountName('');
+    setCompanyUrl('');
   };
 
-  const createStakeholder = async () => {
-    if (!newStakeholder.name || !selectedAccount) return;
-
-    const { data, error } = await supabase
-      .from('stakeholders')
-      .insert([{ ...newStakeholder, account_id: selectedAccount.id }])
-      .select()
-      .single();
-
-    if (!error && data) {
-      setStakeholders([...stakeholders, data]);
-      setNewStakeholder({ name: '', title: '', role: '', influence_level: 'Medium', engagement_level: 'Medium' });
-      setShowNewStakeholderModal(false);
-    }
+  const closeTranscriptModal = () => {
+    setShowNewTranscript(false);
+    setTranscriptText('');
+    setTranscriptDate('');
   };
 
-  const parseAndSaveTranscript = async () => {
-    if (!transcriptText || !selectedAccount) return;
+  const closeStakeholderModal = () => {
+    setShowNewStakeholder(false);
+    setStakeholderName('');
+    setStakeholderTitle('');
+    setStakeholderDept('');
+    setStakeholderRole('Neutral');
+  };
 
-    setLoading(true);
+  const closeNoteModal = () => {
+    setShowManualNote(false);
+    setManualNote('');
+  };
 
-    // Basic parsing - extract stakeholder mentions and key points
-    const lines = transcriptText.split('\n');
-    const participants = [];
-    const keyInsights = [];
+  const parseCommand = (input) => {
+    const lowerInput = input.toLowerCase().trim();
+    const actions = [];
 
-    lines.forEach(line => {
-      // Simple parsing logic
-      if (line.includes(':')) {
-        const name = line.split(':')[0].trim();
-        if (name && !participants.includes(name)) {
-          participants.push(name);
-        }
+    // Stakeholder role updates - these should NOT create notes
+    if (lowerInput.includes('is the champion') || lowerInput.includes('is a champion') || lowerInput.includes('is champion')) {
+      const nameMatch = input.match(/^(.+?)\s+is\s+(?:the\s+|a\s+)?champion/i);
+      if (nameMatch) {
+        actions.push({
+          type: 'update_stakeholder_role',
+          name: nameMatch[1].trim(),
+          role: 'Champion',
+          message: `Updated ${nameMatch[1].trim()} to Champion`
+        });
+        return actions;
       }
-      if (line.toLowerCase().includes('important') || line.toLowerCase().includes('key')) {
-        keyInsights.push(line);
+    }
+
+    if (lowerInput.includes('is the executive sponsor') || lowerInput.includes('is an executive sponsor') || lowerInput.includes('is executive sponsor')) {
+      const nameMatch = input.match(/^(.+?)\s+is\s+(?:the\s+|an?\s+)?executive sponsor/i);
+      if (nameMatch) {
+        actions.push({
+          type: 'update_stakeholder_role',
+          name: nameMatch[1].trim(),
+          role: 'Executive Sponsor',
+          message: `Updated ${nameMatch[1].trim()} to Executive Sponsor`
+        });
+        return actions;
+      }
+    }
+
+    if (lowerInput.includes('is a blocker') || lowerInput.includes('is the blocker') || lowerInput.includes('is blocker')) {
+      const nameMatch = input.match(/^(.+?)\s+is\s+(?:the\s+|a\s+)?blocker/i);
+      if (nameMatch) {
+        actions.push({
+          type: 'update_stakeholder_role',
+          name: nameMatch[1].trim(),
+          role: 'Blocker',
+          message: `Updated ${nameMatch[1].trim()} to Blocker`
+        });
+        return actions;
+      }
+    }
+
+    if (lowerInput.includes('is an influencer') || lowerInput.includes('is the influencer') || lowerInput.includes('is influencer')) {
+      const nameMatch = input.match(/^(.+?)\s+is\s+(?:the\s+|an?\s+)?influencer/i);
+      if (nameMatch) {
+        actions.push({
+          type: 'update_stakeholder_role',
+          name: nameMatch[1].trim(),
+          role: 'Influencer',
+          message: `Updated ${nameMatch[1].trim()} to Influencer`
+        });
+        return actions;
+      }
+    }
+
+    // Budget mentions
+    if (lowerInput.includes('budget')) {
+      const budgetMatch = input.match(/budget\s+(?:is\s+)?(\$[\d,]+(?:\.\d{2})?|\d+k?)/i);
+      if (budgetMatch) {
+        actions.push({
+          type: 'note',
+          category: 'Budget',
+          content: input,
+          message: `Added budget note: ${budgetMatch[1]}`
+        });
+        return actions;
+      }
+    }
+
+    // CM fees or other fees
+    if (lowerInput.includes('cm fee') || lowerInput.includes('cm fees') || lowerInput.includes('construction management')) {
+      actions.push({
+        type: 'note',
+        category: 'Fees',
+        content: input,
+        message: 'Added note about fees'
+      });
+      return actions;
+    }
+
+    // Timeline mentions
+    if (lowerInput.includes('timeline') || lowerInput.includes('go live') || lowerInput.includes('launch date')) {
+      actions.push({
+        type: 'note',
+        category: 'Timeline',
+        content: input,
+        message: 'Added timeline note'
+      });
+      return actions;
+    }
+
+    // General note for everything else
+    actions.push({
+      type: 'note',
+      category: 'General',
+      content: input,
+      message: 'Added general note'
+    });
+
+    return actions;
+  };
+
+  const executeActions = (actions) => {
+    if (!selectedAccount) return;
+
+    const updatedAccounts = [...accounts];
+    const accountIndex = updatedAccounts.findIndex(a => a.id === selectedAccount.id);
+    
+    if (accountIndex === -1) return;
+
+    let updateMade = false;
+
+    actions.forEach(action => {
+      if (action.type === 'update_stakeholder_role') {
+        const stakeholder = updatedAccounts[accountIndex].stakeholders?.find(
+          s => s.name.toLowerCase().trim() === action.name.toLowerCase().trim()
+        );
+        if (stakeholder) {
+          stakeholder.role = action.role;
+          updateMade = true;
+          alert(`✓ Updated ${stakeholder.name} to ${action.role}`);
+        } else {
+          alert(`⚠ Stakeholder "${action.name}" not found. Please add them first or check the spelling.`);
+        }
+      } else if (action.type === 'note') {
+        if (!updatedAccounts[accountIndex].notes) {
+          updatedAccounts[accountIndex].notes = [];
+        }
+        updatedAccounts[accountIndex].notes.push({
+          id: Date.now(),
+          category: action.category,
+          content: action.content,
+          timestamp: new Date().toISOString()
+        });
+        updateMade = true;
       }
     });
 
-    const { data, error } = await supabase
-      .from('transcripts')
-      .insert([{
-        account_id: selectedAccount.id,
-        title: `Call Transcript - ${new Date().toLocaleDateString()}`,
-        content: transcriptText,
-        call_date: new Date().toISOString(),
-        participants,
-        key_insights: keyInsights.slice(0, 5)
-      }])
-      .select()
-      .single();
+    if (updateMade) {
+      setAccounts(updatedAccounts);
+      setSelectedAccount(updatedAccounts[accountIndex]);
+      saveToStorage('accounts', updatedAccounts);
+    }
+  };
 
-    if (!error && data) {
-      setTranscripts([data, ...transcripts]);
-      setTranscriptText('');
-      setShowTranscriptModal(false);
+  const handleManualNote = () => {
+    if (!manualNote.trim() || !selectedAccount) return;
+    
+    const actions = parseCommand(manualNote);
+    
+    if (actions.length > 0) {
+      executeActions(actions);
+    }
+
+    closeNoteModal();
+  };
+
+  const addTranscript = async () => {
+    if (!transcriptText.trim() || !selectedAccount) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'YOUR_API_KEY_HERE',
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{
+            role: 'user',
+            content: `Analyze this sales call transcript and extract:
+
+1. Current State (3-5 bullet points about their current situation/challenges)
+2. Pain Points (specific problems mentioned, with direct quotes)
+3. Requirements (what they need, categorized)
+4. Information Gaps (what we still need to learn)
+
+Transcript:
+${transcriptText}`
+          }]
+        })
+      });
+
+      const data = await response.json();
+      const analysis = data.content[0].text;
       
-      // Identify info gaps
-      await identifyInfoGaps();
-    }
-
-    setLoading(false);
-  };
-
-  const generateBusinessCase = async () => {
-    if (!selectedAccount) return;
-    setLoading(true);
-
-    const content = `# Business Case for ${selectedAccount.account_name}
-
-## Executive Summary
-Based on our engagement with ${selectedAccount.account_name}, we have identified significant opportunities to deliver value through our solution.
-
-## Current Situation
-- Industry: ${selectedAccount.industry || 'Not specified'}
-- Company Size: ${selectedAccount.company_size || 'Not specified'}
-- Annual Revenue: ${selectedAccount.annual_revenue || 'Not specified'}
-
-## Key Stakeholders
-${stakeholders.map(s => `- ${s.name} (${s.title}) - ${s.influence_level} influence`).join('\n')}
-
-## Value Proposition
-Our solution addresses the critical challenges identified through ${transcripts.length} discovery calls with key stakeholders.
-
-## Identified Pain Points
-${selectedAccount.pain_points?.join('\n- ') || 'To be determined through additional discovery'}
-
-## Next Steps
-1. Schedule executive presentation
-2. Develop detailed ROI analysis
-3. Prepare pilot program proposal
-4. Identify technical requirements
-
-## Expected Outcomes
-- Improved operational efficiency
-- Cost reduction opportunities
-- Enhanced decision-making capabilities`;
-
-    const { data, error } = await supabase
-      .from('business_cases')
-      .insert([{
-        account_id: selectedAccount.id,
-        content,
-        generated_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
-
-    if (!error && data) {
-      setBusinessCase(data);
-    }
-
-    setLoading(false);
-  };
-
-  const identifyInfoGaps = async () => {
-    if (!selectedAccount) return;
-
-    const gaps = [
-      { category: 'Technical', question: 'What is the current tech stack?', priority: 'High' },
-      { category: 'Business', question: 'What are the key KPIs for success?', priority: 'High' },
-      { category: 'Decision Process', question: 'What is the approval process?', priority: 'Medium' },
-      { category: 'Budget', question: 'What is the allocated budget?', priority: 'High' },
-      { category: 'Timeline', question: 'What is the desired implementation timeline?', priority: 'Medium' }
-    ];
-
-    const toInsert = gaps.map(gap => ({
-      account_id: selectedAccount.id,
-      ...gap,
-      status: 'open'
-    }));
-
-    const { data } = await supabase
-      .from('info_gaps')
-      .insert(toInsert)
-      .select();
-
-    if (data) {
-      setInfoGaps([...infoGaps, ...data]);
+      const newTranscript = {
+        id: Date.now(),
+        text: transcriptText,
+        date: transcriptDate || new Date().toISOString().split('T')[0],
+        analysis: analysis,
+        addedAt: new Date().toISOString()
+      };
+      
+      const updatedAccounts = accounts.map(acc => 
+        acc.id === selectedAccount.id 
+          ? { ...acc, transcripts: [...(acc.transcripts || []), newTranscript] }
+          : acc
+      );
+      
+      setAccounts(updatedAccounts);
+      saveToStorage('accounts', updatedAccounts);
+      setSelectedAccount(updatedAccounts.find(a => a.id === selectedAccount.id));
+      closeTranscriptModal();
+    } catch (error) {
+      alert('Error processing transcript. Please check your API key.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const deleteAccount = async (accountId) => {
-    if (!confirm('Are you sure you want to delete this account?')) return;
-
-    const { error } = await supabase
-      .from('accounts')
-      .delete()
-      .eq('id', accountId);
-
-    if (!error) {
-      setAccounts(accounts.filter(a => a.id !== accountId));
-      if (selectedAccount?.id === accountId) {
-        setSelectedAccount(null);
-      }
-    }
+  const addStakeholder = () => {
+    if (!stakeholderName.trim() || !selectedAccount) return;
+    
+    const newStakeholder = {
+      id: Date.now(),
+      name: stakeholderName,
+      title: stakeholderTitle,
+      department: stakeholderDept,
+      role: stakeholderRole,
+      addedAt: new Date().toISOString()
+    };
+    
+    const updatedAccounts = accounts.map(acc => 
+      acc.id === selectedAccount.id 
+        ? { ...acc, stakeholders: [...(acc.stakeholders || []), newStakeholder] }
+        : acc
+    );
+    
+    setAccounts(updatedAccounts);
+    saveToStorage('accounts', updatedAccounts);
+    setSelectedAccount(updatedAccounts.find(a => a.id === selectedAccount.id));
+    closeStakeholderModal();
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Sales Account Dashboard</h1>
-          <p className="text-sm text-gray-600">Powered by Supabase</p>
+  const OverviewTab = ({ account }) => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <div className="text-sm text-gray-600">Transcripts</div>
+          <div className="text-2xl font-bold">{account.transcripts?.length || 0}</div>
+        </div>
+        <div className="bg-purple-50 p-4 rounded-lg">
+          <div className="text-sm text-gray-600">Stakeholders</div>
+          <div className="text-2xl font-bold">{account.stakeholders?.length || 0}</div>
+        </div>
+        <div className="bg-amber-50 p-4 rounded-lg">
+          <div className="text-sm text-gray-600">Info Gaps</div>
+          <div className="text-2xl font-bold">{account.informationGaps?.length || 0}</div>
         </div>
       </div>
+      
+      {account.notes && account.notes.length > 0 && (
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h3 className="font-semibold mb-2">Recent Notes</h3>
+          <div className="space-y-2">
+            {account.notes.slice(-5).reverse().map(note => (
+              <div key={note.id} className="text-sm">
+                <span className="font-medium text-gray-600">{note.category}:</span> {note.content}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-12 gap-6">
-          {/* Sidebar - Account List */}
-          <div className="col-span-3 bg-white rounded-lg shadow p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="font-semibold">Accounts</h2>
-              <button
-                onClick={() => setShowNewAccountModal(true)}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+      <div className="flex justify-end pt-4">
+        <button
+          onClick={() => setShowManualNote(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+        >
+          <FileText className="w-4 h-4" />
+          Quick Note
+        </button>
+      </div>
+    </div>
+  );
+
+  const TranscriptsTab = ({ account }) => (
+    <div className="space-y-4">
+      {account.transcripts && account.transcripts.length > 0 ? (
+        <>
+          {account.transcripts.map(t => (
+            <div key={t.id} className="border rounded-lg p-4">
+              <div className="flex justify-between items-start mb-2">
+                <div className="font-medium">{t.date}</div>
+              </div>
+              <div className="text-sm text-gray-600 whitespace-pre-wrap">{t.analysis || t.text.substring(0, 200) + '...'}</div>
             </div>
-            <div className="space-y-2">
-              {accounts.map(account => (
-                <div
-                  key={account.id}
-                  onClick={() => setSelectedAccount(account)}
-                  className={`p-3 rounded cursor-pointer ${
-                    selectedAccount?.id === account.id
-                      ? 'bg-blue-50 border-blue-300 border'
-                      : 'hover:bg-gray-50 border border-transparent'
-                  }`}
-                >
-                  <div className="font-medium">{account.account_name}</div>
-                  <div className="text-xs text-gray-500">{account.industry}</div>
+          ))}
+          <div className="flex justify-end pt-4">
+            <button
+              onClick={() => setShowNewTranscript(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            >
+              <Upload className="w-4 h-4" />
+              Add Transcript
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="text-center py-8">
+          <div className="text-gray-500 mb-4">No transcripts yet.</div>
+          <button
+            onClick={() => setShowNewTranscript(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 mx-auto"
+          >
+            <Upload className="w-4 h-4" />
+            Add Transcript
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const StakeholdersTab = ({ account }) => (
+    <div className="space-y-4">
+      {account.stakeholders && account.stakeholders.length > 0 ? (
+        <>
+          {account.stakeholders.map(s => (
+            <div key={s.id} className="border rounded-lg p-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-medium">{s.name}</div>
+                  <div className="text-sm text-gray-600">{s.title}</div>
+                  <div className="text-sm text-gray-500">{s.department}</div>
                 </div>
-              ))}
+                <span className={`px-3 py-1 rounded text-sm ${
+                  s.role === 'Champion' ? 'bg-green-100 text-green-800' :
+                  s.role === 'Executive Sponsor' ? 'bg-blue-100 text-blue-800' :
+                  s.role === 'Blocker' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {s.role}
+                </span>
+              </div>
             </div>
+          ))}
+          <div className="flex justify-end pt-4">
+            <button
+              onClick={() => setShowNewStakeholder(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            >
+              <Users className="w-4 h-4" />
+              Add Stakeholder
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="text-center py-8">
+          <div className="text-gray-500 mb-4">No stakeholders yet.</div>
+          <button
+            onClick={() => setShowNewStakeholder(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 mx-auto"
+          >
+            <Users className="w-4 h-4" />
+            Add Stakeholder
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const InformationGapsTab = ({ account }) => (
+    <div className="space-y-4">
+      {account.informationGaps && account.informationGaps.length > 0 ? (
+        account.informationGaps.map(gap => (
+          <div key={gap.id} className="border-l-4 border-amber-500 bg-amber-50 p-4 rounded">
+            <div className="font-medium">{gap.category}</div>
+            <div className="text-sm text-gray-600">{gap.description}</div>
+          </div>
+        ))
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          No information gaps identified yet.
+        </div>
+      )}
+    </div>
+  );
+
+  const ContentTab = ({ account }) => (
+    <div className="space-y-4">
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h3 className="font-semibold mb-2">Business Case Generation</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Generate business case content based on all transcripts and stakeholder information.
+        </p>
+        <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+          Generate Business Case
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Sales Account Dashboard</h1>
+          <button
+            onClick={() => setShowNewAccount(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            <Building2 className="w-4 h-4" />
+            New Account
+          </button>
+        </div>
+
+        <div className="grid grid-cols-4 gap-6">
+          <div className="col-span-1 bg-white rounded-lg shadow p-4">
+            <h2 className="font-semibold mb-4">Accounts</h2>
+            {accounts.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-sm">
+                No accounts yet. Create your first account to get started.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {accounts.map(account => (
+                  <button
+                    key={account.id}
+                    onClick={() => setSelectedAccount(account)}
+                    className={`w-full text-left p-3 rounded transition-colors ${
+                      selectedAccount?.id === account.id
+                        ? 'bg-blue-50 border-2 border-blue-600'
+                        : 'hover:bg-gray-50 border-2 border-transparent'
+                    }`}
+                  >
+                    <div className="font-medium">{account.name}</div>
+                    <div className="text-xs text-gray-500">
+                      {account.transcripts?.length || 0} transcripts
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Main Content */}
-          <div className="col-span-9">
-            {selectedAccount ? (
-              <>
-                {/* Account Header */}
-                <div className="bg-white rounded-lg shadow p-6 mb-6">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h2 className="text-2xl font-bold">{selectedAccount.account_name}</h2>
-                      <div className="mt-2 space-y-1 text-sm text-gray-600">
-                        {selectedAccount.industry && <div>Industry: {selectedAccount.industry}</div>}
-                        {selectedAccount.company_size && <div>Size: {selectedAccount.company_size}</div>}
-                        {selectedAccount.annual_revenue && <div>Revenue: {selectedAccount.annual_revenue}</div>}
-                      </div>
-                    </div>
+          <div className="col-span-3 bg-white rounded-lg shadow">
+            {!selectedAccount ? (
+              <div className="flex items-center justify-center h-96 text-gray-500">
+                <div className="text-center">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p>Select an account to view details</p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="border-b p-6">
+                  <div className="mb-4">
+                    <h2 className="text-2xl font-bold">{selectedAccount.name}</h2>
+                    {selectedAccount.url && (
+                      <a href={selectedAccount.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
+                        {selectedAccount.url}
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="flex gap-4 border-b">
                     <button
-                      onClick={() => deleteAccount(selectedAccount.id)}
-                      className="text-red-600 hover:text-red-800"
+                      onClick={() => setActiveTab('overview')}
+                      className={`py-3 px-2 border-b-2 transition-colors ${
+                        activeTab === 'overview'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent hover:text-gray-700'
+                      }`}
                     >
-                      <Trash2 className="w-5 h-5" />
+                      Overview
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('transcripts')}
+                      className={`py-3 px-2 border-b-2 transition-colors ${
+                        activeTab === 'transcripts'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent hover:text-gray-700'
+                      }`}
+                    >
+                      Transcripts
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('stakeholders')}
+                      className={`py-3 px-2 border-b-2 transition-colors ${
+                        activeTab === 'stakeholders'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent hover:text-gray-700'
+                      }`}
+                    >
+                      Stakeholders
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('gaps')}
+                      className={`py-3 px-2 border-b-2 transition-colors ${
+                        activeTab === 'gaps'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent hover:text-gray-700'
+                      }`}
+                    >
+                      Information Gaps
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('content')}
+                      className={`py-3 px-2 border-b-2 transition-colors ${
+                        activeTab === 'content'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent hover:text-gray-700'
+                      }`}
+                    >
+                      Content
                     </button>
                   </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="bg-white rounded-lg shadow">
-                  <div className="border-b px-6">
-                    <div className="flex space-x-8">
-                      {['overview', 'stakeholders', 'transcripts', 'business-case', 'info-gaps'].map(tab => (
-                        <button
-                          key={tab}
-                          onClick={() => setActiveTab(tab)}
-                          className={`py-4 border-b-2 font-medium text-sm ${
-                            activeTab === tab
-                              ? 'border-blue-500 text-blue-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700'
-                          }`}
-                        >
-                          {tab.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="p-6">
-                    {/* Overview Tab */}
-                    {activeTab === 'overview' && (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-blue-50 p-4 rounded-lg">
-                            <Users className="w-8 h-8 text-blue-600 mb-2" />
-                            <div className="text-2xl font-bold">{stakeholders.length}</div>
-                            <div className="text-sm text-gray-600">Stakeholders</div>
-                          </div>
-                          <div className="bg-green-50 p-4 rounded-lg">
-                            <FileText className="w-8 h-8 text-green-600 mb-2" />
-                            <div className="text-2xl font-bold">{transcripts.length}</div>
-                            <div className="text-sm text-gray-600">Transcripts</div>
-                          </div>
-                          <div className="bg-orange-50 p-4 rounded-lg">
-                            <AlertCircle className="w-8 h-8 text-orange-600 mb-2" />
-                            <div className="text-2xl font-bold">{infoGaps.filter(g => g.status === 'open').length}</div>
-                            <div className="text-sm text-gray-600">Open Info Gaps</div>
-                          </div>
-                        </div>
-
-                        <div className="flex space-x-4">
-                          <button
-                            onClick={() => setShowTranscriptModal(true)}
-                            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                          >
-                            <Upload className="w-4 h-4 mr-2" />
-                            Upload Transcript
-                          </button>
-                          <button
-                            onClick={() => setShowNewStakeholderModal(true)}
-                            className="flex items-center px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-                          >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Add Stakeholder
-                          </button>
-                          <button
-                            onClick={generateBusinessCase}
-                            disabled={loading}
-                            className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
-                          >
-                            <Lightbulb className="w-4 h-4 mr-2" />
-                            Generate Business Case
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Stakeholders Tab */}
-                    {activeTab === 'stakeholders' && (
-                      <div>
-                        <div className="flex justify-between mb-4">
-                          <h3 className="text-lg font-semibold">Stakeholders</h3>
-                          <button
-                            onClick={() => setShowNewStakeholderModal(true)}
-                            className="flex items-center px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                          >
-                            <Plus className="w-4 h-4 mr-1" />
-                            Add
-                          </button>
-                        </div>
-                        <div className="space-y-3">
-                          {stakeholders.map(stakeholder => (
-                            <div key={stakeholder.id} className="border rounded-lg p-4">
-                              <div className="flex justify-between">
-                                <div>
-                                  <div className="font-semibold">{stakeholder.name}</div>
-                                  <div className="text-sm text-gray-600">{stakeholder.title}</div>
-                                  <div className="text-sm text-gray-500">{stakeholder.role}</div>
-                                </div>
-                                <div className="text-right text-sm">
-                                  <div className="text-gray-600">Influence: {stakeholder.influence_level}</div>
-                                  <div className="text-gray-600">Engagement: {stakeholder.engagement_level}</div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Transcripts Tab */}
-                    {activeTab === 'transcripts' && (
-                      <div>
-                        <div className="flex justify-between mb-4">
-                          <h3 className="text-lg font-semibold">Call Transcripts</h3>
-                          <button
-                            onClick={() => setShowTranscriptModal(true)}
-                            className="flex items-center px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                          >
-                            <Upload className="w-4 h-4 mr-1" />
-                            Upload
-                          </button>
-                        </div>
-                        <div className="space-y-3">
-                          {transcripts.map(transcript => (
-                            <div key={transcript.id} className="border rounded-lg p-4">
-                              <div className="font-semibold mb-2">{transcript.title}</div>
-                              <div className="text-sm text-gray-600 mb-2">
-                                {new Date(transcript.call_date).toLocaleDateString()}
-                              </div>
-                              <div className="text-sm bg-gray-50 p-3 rounded max-h-32 overflow-y-auto">
-                                {transcript.content.substring(0, 200)}...
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Business Case Tab */}
-                    {activeTab === 'business-case' && (
-                      <div>
-                        <div className="flex justify-between mb-4">
-                          <h3 className="text-lg font-semibold">Business Case</h3>
-                          <button
-                            onClick={generateBusinessCase}
-                            disabled={loading}
-                            className="flex items-center px-3 py-1 bg-green-600 text-white rounded text-sm disabled:bg-gray-400"
-                          >
-                            <Lightbulb className="w-4 h-4 mr-1" />
-                            {businessCase ? 'Regenerate' : 'Generate'}
-                          </button>
-                        </div>
-                        {businessCase ? (
-                          <div className="prose max-w-none">
-                            <pre className="whitespace-pre-wrap bg-gray-50 p-4 rounded text-sm">
-                              {businessCase.content}
-                            </pre>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-gray-500">
-                            No business case generated yet. Click "Generate" to create one.
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Info Gaps Tab */}
-                    {activeTab === 'info-gaps' && (
-                      <div>
-                        <div className="flex justify-between mb-4">
-                          <h3 className="text-lg font-semibold">Information Gaps</h3>
-                          <button
-                            onClick={identifyInfoGaps}
-                            disabled={loading}
-                            className="flex items-center px-3 py-1 bg-orange-600 text-white rounded text-sm"
-                          >
-                            <AlertCircle className="w-4 h-4 mr-1" />
-                            Identify Gaps
-                          </button>
-                        </div>
-                        <div className="space-y-3">
-                          {infoGaps.map(gap => (
-                            <div key={gap.id} className="border rounded-lg p-4 flex justify-between items-start">
-                              <div>
-                                <div className="text-sm text-gray-500">{gap.category}</div>
-                                <div className="font-medium">{gap.question}</div>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <span className={`text-xs px-2 py-1 rounded ${
-                                  gap.priority === 'High' ? 'bg-red-100 text-red-700' :
-                                  gap.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-green-100 text-green-700'
-                                }`}>
-                                  {gap.priority}
-                                </span>
-                                <span className={`text-xs px-2 py-1 rounded ${
-                                  gap.status === 'open' ? 'bg-orange-100 text-orange-700' :
-                                  'bg-green-100 text-green-700'
-                                }`}>
-                                  {gap.status}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                <div className="p-6">
+                  {activeTab === 'overview' && <OverviewTab account={selectedAccount} />}
+                  {activeTab === 'transcripts' && <TranscriptsTab account={selectedAccount} />}
+                  {activeTab === 'stakeholders' && <StakeholdersTab account={selectedAccount} />}
+                  {activeTab === 'gaps' && <InformationGapsTab account={selectedAccount} />}
+                  {activeTab === 'content' && <ContentTab account={selectedAccount} />}
                 </div>
-              </>
-            ) : (
-              <div className="bg-white rounded-lg shadow p-12 text-center">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Account Selected</h3>
-                <p className="text-gray-500">Select an account from the sidebar or create a new one</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* New Account Modal */}
-      {showNewAccountModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4">New Account</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Account Name *</label>
-                <input
-                  type="text"
-                  value={newAccount.account_name}
-                  onChange={(e) => setNewAccount({...newAccount, account_name: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Industry</label>
-                <input
-                  type="text"
-                  value={newAccount.industry}
-                  onChange={(e) => setNewAccount({...newAccount, industry: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Company Size</label>
-                <input
-                  type="text"
-                  value={newAccount.company_size}
-                  onChange={(e) => setNewAccount({...newAccount, company_size: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Annual Revenue</label>
-                <input
-                  type="text"
-                  value={newAccount.annual_revenue}
-                  onChange={(e) => setNewAccount({...newAccount, annual_revenue: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowNewAccountModal(false)}
-                className="px-4 py-2 border rounded hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createAccount}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
+      {showNewAccount && (
+        <NewAccountModal
+          accountName={accountName}
+          setAccountName={setAccountName}
+          companyUrl={companyUrl}
+          setCompanyUrl={setCompanyUrl}
+          onClose={closeAccountModal}
+          onCreate={createAccount}
+        />
       )}
-
-      {/* New Stakeholder Modal */}
-      {showNewStakeholderModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4">New Stakeholder</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Name *</label>
-                <input
-                  type="text"
-                  value={newStakeholder.name}
-                  onChange={(e) => setNewStakeholder({...newStakeholder, name: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Title</label>
-                <input
-                  type="text"
-                  value={newStakeholder.title}
-                  onChange={(e) => setNewStakeholder({...newStakeholder, title: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Role</label>
-                <input
-                  type="text"
-                  value={newStakeholder.role}
-                  onChange={(e) => setNewStakeholder({...newStakeholder, role: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Influence Level</label>
-                <select
-                  value={newStakeholder.influence_level}
-                  onChange={(e) => setNewStakeholder({...newStakeholder, influence_level: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                >
-                  <option>Low</option>
-                  <option>Medium</option>
-                  <option>High</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Engagement Level</label>
-                <select
-                  value={newStakeholder.engagement_level}
-                  onChange={(e) => setNewStakeholder({...newStakeholder, engagement_level: e.target.value})}
-                  className="w-full border rounded px-3 py-2"
-                >
-                  <option>Low</option>
-                  <option>Medium</option>
-                  <option>High</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowNewStakeholderModal(false)}
-                className="px-4 py-2 border rounded hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createStakeholder}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
+      {showNewTranscript && (
+        <NewTranscriptModal
+          transcriptText={transcriptText}
+          setTranscriptText={setTranscriptText}
+          transcriptDate={transcriptDate}
+          setTranscriptDate={setTranscriptDate}
+          onClose={closeTranscriptModal}
+          onAdd={addTranscript}
+          isProcessing={isProcessing}
+        />
       )}
-
-      {/* Transcript Upload Modal */}
-      {showTranscriptModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
-            <h3 className="text-lg font-semibold mb-4">Upload Call Transcript</h3>
-            <textarea
-              value={transcriptText}
-              onChange={(e) => setTranscriptText(e.target.value)}
-              placeholder="Paste your call transcript here..."
-              className="w-full border rounded px-3 py-2 h-64"
-            />
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowTranscriptModal(false)}
-                className="px-4 py-2 border rounded hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={parseAndSaveTranscript}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
-              >
-                {loading ? 'Processing...' : 'Upload & Parse'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {showNewStakeholder && (
+        <NewStakeholderModal
+          stakeholderName={stakeholderName}
+          setStakeholderName={setStakeholderName}
+          stakeholderTitle={stakeholderTitle}
+          setStakeholderTitle={setStakeholderTitle}
+          stakeholderDept={stakeholderDept}
+          setStakeholderDept={setStakeholderDept}
+          stakeholderRole={stakeholderRole}
+          setStakeholderRole={setStakeholderRole}
+          onClose={closeStakeholderModal}
+          onAdd={addStakeholder}
+        />
+      )}
+      {showManualNote && (
+        <ManualNoteModal
+          manualNote={manualNote}
+          setManualNote={setManualNote}
+          onClose={closeNoteModal}
+          onAdd={handleManualNote}
+        />
       )}
     </div>
   );
