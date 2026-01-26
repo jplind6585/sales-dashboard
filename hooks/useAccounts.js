@@ -223,6 +223,8 @@ export const useAccounts = () => {
         id: generateId(),
         text,
         date: analysis.callDate || new Date().toISOString().split('T')[0],
+        callType: analysis.callType || 'other',
+        attendees: analysis.attendees || [],
         summary: analysis.summary,
         rawAnalysis: analysis,
         addedAt: new Date().toISOString()

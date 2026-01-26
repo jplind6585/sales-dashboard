@@ -82,6 +82,8 @@ You must return ONLY valid JSON with no additional text. The JSON must follow th
 
 {
   "callDate": "YYYY-MM-DD or null if not found",
+  "callType": "intro|discovery|demo|pricing|negotiation|follow_up|other",
+  "attendees": ["Name 1", "Name 2"],
   "summary": "2-3 sentence summary of the call",
   "stakeholders": [
     {
