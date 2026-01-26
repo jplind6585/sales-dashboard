@@ -267,6 +267,96 @@ export const useAccounts = () => {
     }
   }, [accounts, selectedAccount, updateAccounts]);
 
+  // Import a transcript from Gong (pre-formatted)
+  const addGongTranscript = useCallback(async (gongCall) => {
+    if (!gongCall || !selectedAccount) return false;
+
+    setIsProcessing(true);
+
+    try {
+      // Pass existing context for cumulative analysis
+      const existingContext = {
+        transcripts: selectedAccount.transcripts || [],
+        businessAreas: selectedAccount.businessAreas || {},
+        stakeholders: selectedAccount.stakeholders || [],
+        metrics: selectedAccount.metrics || {}
+      };
+
+      const response = await fetch('/api/analyze-transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: gongCall.transcript,
+          existingContext
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success || !data.analysis) {
+        throw new Error('Failed to parse transcript analysis');
+      }
+
+      const analysis = data.analysis;
+
+      // Create transcript record with Gong metadata
+      const newTranscript = {
+        id: generateId(),
+        text: gongCall.transcript,
+        date: gongCall.date || analysis.callDate || new Date().toISOString().split('T')[0],
+        callType: gongCall.callType || analysis.callType || 'other',
+        attendees: gongCall.attendees || analysis.attendees || [],
+        summary: analysis.summary,
+        rawAnalysis: analysis,
+        // Gong-specific fields
+        gongCallId: gongCall.gongCallId,
+        gongUrl: gongCall.gongUrl,
+        source: 'gong',
+        addedAt: new Date().toISOString()
+      };
+
+      // Merge all extracted data into the account
+      const updatedAccount = {
+        ...selectedAccount,
+        transcripts: [...(selectedAccount.transcripts || []), newTranscript],
+        stakeholders: mergeStakeholders(
+          selectedAccount.stakeholders,
+          analysis.stakeholders || []
+        ),
+        businessAreas: mergeBusinessAreas(
+          selectedAccount.businessAreas || createEmptyBusinessAreaState(),
+          analysis.businessAreas || {}
+        ),
+        metrics: mergeMetrics(
+          selectedAccount.metrics || {},
+          analysis.metrics || {},
+          analysis.metricsContext || {}
+        ),
+        informationGaps: mergeGaps(
+          selectedAccount.informationGaps || [],
+          analysis.informationGaps || []
+        ),
+      };
+
+      const updatedAccounts = accounts.map(acc =>
+        acc.id === selectedAccount.id ? updatedAccount : acc
+      );
+
+      updateAccounts(updatedAccounts);
+      return true;
+    } catch (error) {
+      alert(`Error processing Gong transcript: ${error.message}`);
+      return false;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [accounts, selectedAccount, updateAccounts]);
+
   // Add a stakeholder manually
   const addStakeholder = useCallback((name, title, department, role) => {
     if (!name.trim() || !selectedAccount) return false;
@@ -429,6 +519,7 @@ export const useAccounts = () => {
     isProcessing,
     createAccount,
     addTranscript,
+    addGongTranscript,
     addStakeholder,
     updateStakeholderRole,
     resolveGap,

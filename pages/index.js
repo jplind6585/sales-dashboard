@@ -30,6 +30,7 @@ export default function Home() {
     isProcessing,
     createAccount,
     addTranscript,
+    addGongTranscript,
     addStakeholder,
     applyAssistantActions
   } = useAccounts();
@@ -219,6 +220,10 @@ export default function Home() {
           setTranscriptText={setTranscriptText}
           onClose={closeTranscriptModal}
           onAdd={handleAddTranscript}
+          onAddGongTranscript={async (gongCall) => {
+            const success = await addGongTranscript(gongCall);
+            if (success) closeTranscriptModal();
+          }}
           isProcessing={isProcessing}
         />
       )}
