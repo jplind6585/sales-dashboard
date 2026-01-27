@@ -78,10 +78,17 @@ const AISidebar = ({ isOpen, onToggle, account, activeTab, onApplyActions }) => 
         })
       });
 
-      const data = await response.json();
+      // Handle empty or invalid responses
+      const text = await response.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (parseError) {
+        throw new Error(`Invalid response from server: ${text.substring(0, 100)}`);
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to get response');
+        throw new Error(data.error || `API error: ${response.status}`);
       }
 
       setMessages(prev => [...prev, {
