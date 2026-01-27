@@ -143,17 +143,9 @@ const AISidebar = ({ isOpen, onToggle, account, activeTab, onApplyActions }) => 
 
   const suggestedPrompts = SUGGESTED_PROMPTS[activeTab] || SUGGESTED_PROMPTS.overview;
 
-  // Floating button when closed
+  // Don't render anything when closed - button is now in the header
   if (!isOpen) {
-    return (
-      <button
-        onClick={onToggle}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 flex items-center justify-center z-50 transition-transform hover:scale-105"
-        title="Open AI Assistant"
-      >
-        <MessageCircle className="w-6 h-6" />
-      </button>
-    );
+    return null;
   }
 
   return (

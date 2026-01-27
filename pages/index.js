@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, AlertCircle } from 'lucide-react';
+import { Building2, AlertCircle, Sparkles } from 'lucide-react';
 
 // Hooks
 import { useAccounts } from '../hooks/useAccounts';
@@ -169,13 +169,22 @@ export default function Home() {
               <div>
                 {/* Account header and tabs */}
                 <div className="border-b p-6">
-                  <div className="mb-4">
-                    <h2 className="text-2xl font-bold">{selectedAccount.name}</h2>
-                    {selectedAccount.url && (
-                      <a href={selectedAccount.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
-                        {selectedAccount.url}
-                      </a>
-                    )}
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h2 className="text-2xl font-bold">{selectedAccount.name}</h2>
+                      {selectedAccount.url && (
+                        <a href={selectedAccount.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
+                          {selectedAccount.url}
+                        </a>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setShowAISidebar(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-sm transition-all"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      AI Assistant
+                    </button>
                   </div>
 
                   {/* Tab navigation */}
