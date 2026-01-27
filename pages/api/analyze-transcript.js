@@ -182,6 +182,18 @@ Example sales gaps:
 Extract information explicitly stated or clearly implied in the transcript. Do not make assumptions. Leave arrays empty and metrics null if not mentioned. Focus on NEW information from this transcript while being aware of existing context.`;
 
   try {
+    const userPrompt = buildUserPrompt(transcript, previousTranscripts, existingBusinessAreas, existingStakeholders, existingMetrics);
+
+    // Check if transcript is too short (might be placeholder)
+    if (transcript.length < 50) {
+      console.log('Transcript too short:', transcript);
+      return res.status(400).json({
+        error: 'Transcript is too short to analyze. Please provide a complete transcript.'
+      });
+    }
+
+    console.log('Calling Anthropic API with transcript length:', transcript.length);
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -195,15 +207,23 @@ Extract information explicitly stated or clearly implied in the transcript. Do n
         system: systemPrompt,
         messages: [{
           role: 'user',
-          content: buildUserPrompt(transcript, previousTranscripts, existingBusinessAreas, existingStakeholders, existingMetrics)
+          content: userPrompt
         }]
       })
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { message: errorText };
+      }
+      console.error('Anthropic API error:', response.status, errorData);
       return res.status(response.status).json({
-        error: errorData.error?.message || `Anthropic API error: ${response.status}`
+        error: errorData.error?.message || errorData.message || `Anthropic API error: ${response.status}`,
+        details: errorData
       });
     }
 

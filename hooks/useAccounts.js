@@ -299,13 +299,14 @@ export const useAccounts = () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `API error: ${response.status}`);
+        const errorMsg = errorData.error || errorData.message || `API error: ${response.status}`;
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
 
       if (!data.success || !data.analysis) {
-        throw new Error('Failed to parse transcript analysis');
+        throw new Error(data.error || 'Failed to parse transcript analysis');
       }
 
       const analysis = data.analysis;
