@@ -1,5 +1,5 @@
 // Gong API - Import a specific call with transcript
-// Docs: https://help.gong.io/docs/what-the-gong-api-provides
+// Docs: https://gong.app.gong.io/settings/api/documentation
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -31,6 +31,7 @@ export default async function handler(req, res) {
 
   try {
     // 1. Get call details (extensive) for participant names
+    console.log(`Fetching call details for: ${callId}`);
     const detailsResponse = await fetch(
       `${GONG_API_BASE}/v2/calls/extensive`,
       {
@@ -48,21 +49,35 @@ export default async function handler(req, res) {
       }
     );
 
-    if (!detailsResponse.ok) {
-      const errorData = await detailsResponse.json().catch(() => ({}));
-      return res.status(detailsResponse.status).json({
-        error: errorData.message || 'Failed to fetch call details'
+    const detailsText = await detailsResponse.text();
+    let detailsData;
+
+    try {
+      detailsData = JSON.parse(detailsText);
+    } catch (parseErr) {
+      console.error('Failed to parse call details response:', detailsText);
+      return res.status(500).json({
+        error: 'Invalid response from Gong API (call details)',
+        details: detailsText.substring(0, 200)
       });
     }
 
-    const detailsData = await detailsResponse.json();
+    if (!detailsResponse.ok) {
+      console.error('Call details API error:', detailsData);
+      return res.status(detailsResponse.status).json({
+        error: detailsData.errors?.[0]?.message || detailsData.message || 'Failed to fetch call details',
+        gongError: detailsData
+      });
+    }
+
     const callDetails = detailsData.calls?.[0];
 
     if (!callDetails) {
-      return res.status(404).json({ error: 'Call not found' });
+      return res.status(404).json({ error: 'Call not found in Gong' });
     }
 
     // 2. Get transcript
+    console.log(`Fetching transcript for: ${callId}`);
     const transcriptResponse = await fetch(
       `${GONG_API_BASE}/v2/calls/transcript`,
       {
@@ -74,14 +89,26 @@ export default async function handler(req, res) {
       }
     );
 
-    if (!transcriptResponse.ok) {
-      const errorData = await transcriptResponse.json().catch(() => ({}));
-      return res.status(transcriptResponse.status).json({
-        error: errorData.message || 'Failed to fetch transcript'
+    const transcriptText = await transcriptResponse.text();
+    let transcriptData;
+
+    try {
+      transcriptData = JSON.parse(transcriptText);
+    } catch (parseErr) {
+      console.error('Failed to parse transcript response:', transcriptText);
+      return res.status(500).json({
+        error: 'Invalid response from Gong API (transcript)',
+        details: transcriptText.substring(0, 200)
       });
     }
 
-    const transcriptData = await transcriptResponse.json();
+    if (!transcriptResponse.ok) {
+      console.error('Transcript API error:', transcriptData);
+      // Continue without transcript - some calls may not have transcripts
+      console.log('Continuing without transcript...');
+      transcriptData = { callTranscripts: [] };
+    }
+
     const callTranscript = transcriptData.callTranscripts?.[0];
 
     // Build speaker map from parties
@@ -99,14 +126,30 @@ export default async function handler(req, res) {
     let formattedTranscript = '';
     const attendees = new Set();
 
-    if (callTranscript?.transcript) {
+    if (callTranscript?.transcript && Array.isArray(callTranscript.transcript)) {
       callTranscript.transcript.forEach(segment => {
         const speaker = speakerMap[segment.speakerId] || { name: `Speaker ${segment.speakerId}` };
         attendees.add(speaker.name);
 
-        segment.sentences?.forEach(sentence => {
-          formattedTranscript += `${speaker.name}: ${sentence.text}\n\n`;
-        });
+        if (segment.sentences && Array.isArray(segment.sentences)) {
+          segment.sentences.forEach(sentence => {
+            formattedTranscript += `${speaker.name}: ${sentence.text}\n\n`;
+          });
+        } else if (segment.text) {
+          // Alternative format where segment has text directly
+          formattedTranscript += `${speaker.name}: ${segment.text}\n\n`;
+        }
+      });
+    }
+
+    // If no transcript content, provide a placeholder
+    if (!formattedTranscript.trim()) {
+      formattedTranscript = '[No transcript available for this call]';
+      // Add parties to attendees anyway
+      (callDetails.parties || []).forEach(party => {
+        if (party.name || party.emailAddress) {
+          attendees.add(party.name || party.emailAddress);
+        }
       });
     }
 
@@ -147,6 +190,7 @@ export default async function handler(req, res) {
       })) || []
     };
 
+    console.log(`Successfully imported call: ${callDetails.title}`);
     return res.status(200).json({
       success: true,
       call: importedCall
@@ -154,7 +198,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error importing Gong call:', error);
     return res.status(500).json({
-      error: 'Failed to import call from Gong'
+      error: `Failed to import call: ${error.message}`,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }

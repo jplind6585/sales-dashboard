@@ -1,5 +1,5 @@
-// Gong API - List recent calls
-// Docs: https://help.gong.io/docs/what-the-gong-api-provides
+// Gong API - List recent calls with search
+// Docs: https://gong.app.gong.io/settings/api/documentation
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -18,56 +18,129 @@ export default async function handler(req, res) {
     });
   }
 
-  // Get calls from the last 30 days by default
-  const { days = 30 } = req.query;
+  // Get query params
+  const { days = 90, search = '' } = req.query;
   const fromDate = new Date();
   fromDate.setDate(fromDate.getDate() - parseInt(days));
   const toDate = new Date();
 
   try {
     const auth = Buffer.from(`${accessKey}:${secretKey}`).toString('base64');
+    const headers = {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json'
+    };
 
+    // Fetch calls list
     const response = await fetch(
       `${GONG_API_BASE}/v2/calls?fromDateTime=${fromDate.toISOString()}&toDateTime=${toDate.toISOString()}`,
       {
         method: 'GET',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       }
     );
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { message: errorText };
+      }
+      console.error('Gong list-calls error:', errorData);
       return res.status(response.status).json({
-        error: errorData.message || `Gong API error: ${response.status}`
+        error: errorData.errors?.[0]?.message || errorData.message || `Gong API error: ${response.status}`
       });
     }
 
     const data = await response.json();
 
     // Format calls for the frontend
-    const calls = (data.calls || []).map(call => ({
+    let calls = (data.calls || []).map(call => ({
       id: call.id,
-      title: call.title,
+      title: call.title || 'Untitled Call',
       date: call.started,
       duration: call.duration,
       url: call.url,
       parties: call.parties || [],
       direction: call.direction,
+      // Extract searchable fields
+      primaryUser: call.primaryUserId,
+      // Try to get account/company info from call context
+      accountName: call.context?.find(c => c.system === 'Salesforce')?.objects?.find(o => o.objectType === 'Account')?.objectId,
       isImported: false
     }));
+
+    // If we have calls, fetch user info to get names
+    if (calls.length > 0) {
+      try {
+        // Get unique user IDs from calls
+        const userIds = [...new Set(calls.map(c => c.primaryUser).filter(Boolean))];
+
+        if (userIds.length > 0) {
+          // Fetch users
+          const usersResponse = await fetch(
+            `${GONG_API_BASE}/v2/users`,
+            {
+              method: 'GET',
+              headers
+            }
+          );
+
+          if (usersResponse.ok) {
+            const usersData = await usersResponse.json();
+            const userMap = {};
+            (usersData.users || []).forEach(user => {
+              userMap[user.id] = {
+                name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                email: user.emailAddress
+              };
+            });
+
+            // Attach user info to calls
+            calls = calls.map(call => ({
+              ...call,
+              user: userMap[call.primaryUser] || null
+            }));
+          }
+        }
+      } catch (userError) {
+        console.error('Error fetching user info:', userError);
+        // Continue without user info
+      }
+    }
+
+    // Apply search filter (client-side for now)
+    const searchLower = search.toLowerCase().trim();
+    if (searchLower) {
+      calls = calls.filter(call => {
+        const titleMatch = (call.title || '').toLowerCase().includes(searchLower);
+        const userNameMatch = (call.user?.name || '').toLowerCase().includes(searchLower);
+        const userEmailMatch = (call.user?.email || '').toLowerCase().includes(searchLower);
+        // Check parties for external participants (potential accounts)
+        const partyMatch = (call.parties || []).some(party =>
+          (party.name || '').toLowerCase().includes(searchLower) ||
+          (party.emailAddress || '').toLowerCase().includes(searchLower) ||
+          (party.company || '').toLowerCase().includes(searchLower)
+        );
+        return titleMatch || userNameMatch || userEmailMatch || partyMatch;
+      });
+    }
+
+    // Sort by date descending (most recent first)
+    calls.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return res.status(200).json({
       success: true,
       calls,
-      totalCalls: data.totalRecords || calls.length
+      totalCalls: calls.length,
+      searchApplied: !!searchLower
     });
   } catch (error) {
     console.error('Error fetching Gong calls:', error);
     return res.status(500).json({
-      error: 'Failed to fetch calls from Gong'
+      error: `Failed to fetch calls: ${error.message}`
     });
   }
 }
