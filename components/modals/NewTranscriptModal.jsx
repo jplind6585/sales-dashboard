@@ -1,13 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Upload, Loader2, Check, ExternalLink, Search, User } from 'lucide-react';
+import { X, Upload, Loader2, Check, ExternalLink, Search, User, Calendar, Filter, ChevronDown } from 'lucide-react';
 
 const GongCallList = ({ onSelectCall, onImportComplete }) => {
   const [calls, setCalls] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [importing, setImporting] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Filter state
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   // Debounce search input
   useEffect(() => {
@@ -17,12 +24,15 @@ const GongCallList = ({ onSelectCall, onImportComplete }) => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetchCalls = useCallback(async (search = '') => {
+  const fetchCalls = useCallback(async (search = '', userId = '', from = '', to = '') => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ days: '90' });
       if (search) params.set('search', search);
+      if (userId) params.set('userId', userId);
+      if (from) params.set('fromDate', from);
+      if (to) params.set('toDate', to);
 
       const response = await fetch(`/api/gong/list-calls?${params}`);
       const data = await response.json();
@@ -32,6 +42,10 @@ const GongCallList = ({ onSelectCall, onImportComplete }) => {
       }
 
       setCalls(data.calls || []);
+      // Only update users list on initial load (not when filtering by user)
+      if (!userId && data.users?.length > 0) {
+        setUsers(data.users);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -40,8 +54,17 @@ const GongCallList = ({ onSelectCall, onImportComplete }) => {
   }, []);
 
   useEffect(() => {
-    fetchCalls(debouncedSearch);
-  }, [debouncedSearch, fetchCalls]);
+    fetchCalls(debouncedSearch, selectedUserId, fromDate, toDate);
+  }, [debouncedSearch, selectedUserId, fromDate, toDate, fetchCalls]);
+
+  const clearFilters = () => {
+    setSelectedUserId('');
+    setFromDate('');
+    setToDate('');
+    setSearchQuery('');
+  };
+
+  const hasActiveFilters = selectedUserId || fromDate || toDate;
 
   const handleImport = async (call) => {
     setImporting(call.id);
@@ -102,25 +125,104 @@ const GongCallList = ({ onSelectCall, onImportComplete }) => {
 
   return (
     <div className="space-y-3">
-      {/* Search Input */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by title, user, email, or participant..."
-          className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
+      {/* Search and Filter Row */}
+      <div className="flex gap-2">
+        {/* Search Input */}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by title, user, or participant..."
+            className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Filter Toggle Button */}
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={`px-3 py-2 border rounded-lg text-sm flex items-center gap-1 transition-colors ${
+            hasActiveFilters
+              ? 'bg-blue-50 border-blue-300 text-blue-700'
+              : 'hover:bg-gray-50'
+          }`}
+        >
+          <Filter className="w-4 h-4" />
+          Filters
+          {hasActiveFilters && (
+            <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              {(selectedUserId ? 1 : 0) + (fromDate || toDate ? 1 : 0)}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Filter Panel */}
+      {showFilters && (
+        <div className="p-3 bg-gray-50 rounded-lg border space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Filters</span>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="text-xs text-blue-600 hover:text-blue-700"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            {/* Rep Filter */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Banner Rep</label>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="w-full px-3 py-1.5 border rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All reps</option>
+                {users.map(user => (
+                  <option key={user.id} value={user.id}>
+                    {user.name || user.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* From Date */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">From Date</label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="w-full px-3 py-1.5 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* To Date */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">To Date</label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="w-full px-3 py-1.5 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Loading State */}
       {loading ? (
@@ -150,6 +252,7 @@ const GongCallList = ({ onSelectCall, onImportComplete }) => {
           <div className="text-xs text-gray-500 px-1">
             {calls.length} call{calls.length !== 1 ? 's' : ''} found
             {searchQuery && ` for "${searchQuery}"`}
+            {hasActiveFilters && !searchQuery && ' (filtered)'}
           </div>
 
           {/* Call List */}

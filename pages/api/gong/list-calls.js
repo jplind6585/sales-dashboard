@@ -1,4 +1,4 @@
-// Gong API - List recent calls with search
+// Gong API - List recent calls with search and filters
 // Docs: https://gong.app.gong.io/settings/api/documentation
 
 const GONG_API_BASE = 'https://api.gong.io';
@@ -19,10 +19,24 @@ export default async function handler(req, res) {
   }
 
   // Get query params
-  const { days = 90, search = '' } = req.query;
-  const fromDate = new Date();
-  fromDate.setDate(fromDate.getDate() - parseInt(days));
-  const toDate = new Date();
+  const { days = 90, search = '', userId = '', fromDate: fromDateParam = '', toDate: toDateParam = '' } = req.query;
+
+  // Calculate date range
+  let fromDate, toDate;
+  if (fromDateParam) {
+    fromDate = new Date(fromDateParam);
+    fromDate.setHours(0, 0, 0, 0);
+  } else {
+    fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - parseInt(days));
+  }
+
+  if (toDateParam) {
+    toDate = new Date(toDateParam);
+    toDate.setHours(23, 59, 59, 999);
+  } else {
+    toDate = new Date();
+  }
 
   try {
     const auth = Buffer.from(`${accessKey}:${secretKey}`).toString('base64');
@@ -111,6 +125,11 @@ export default async function handler(req, res) {
       }
     }
 
+    // Apply user filter
+    if (userId) {
+      calls = calls.filter(call => call.primaryUser === userId);
+    }
+
     // Apply search filter (client-side for now)
     const searchLower = search.toLowerCase().trim();
     if (searchLower) {
@@ -131,11 +150,32 @@ export default async function handler(req, res) {
     // Sort by date descending (most recent first)
     calls.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    // Build users list for filter dropdown
+    const usersForFilter = [];
+    const seenUserIds = new Set();
+    calls.forEach(call => {
+      if (call.primaryUser && call.user && !seenUserIds.has(call.primaryUser)) {
+        seenUserIds.add(call.primaryUser);
+        usersForFilter.push({
+          id: call.primaryUser,
+          name: call.user.name,
+          email: call.user.email
+        });
+      }
+    });
+    usersForFilter.sort((a, b) => a.name.localeCompare(b.name));
+
     return res.status(200).json({
       success: true,
       calls,
+      users: usersForFilter,
       totalCalls: calls.length,
-      searchApplied: !!searchLower
+      searchApplied: !!searchLower,
+      filters: {
+        userId: userId || null,
+        fromDate: fromDate.toISOString(),
+        toDate: toDate.toISOString()
+      }
     });
   } catch (error) {
     console.error('Error fetching Gong calls:', error);
