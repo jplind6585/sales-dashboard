@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Upload, Loader2, Check, ExternalLink, Search, User, Calendar, Filter, ChevronDown } from 'lucide-react';
 
-const GongCallList = ({ onSelectCall, onImportComplete }) => {
+const GongCallList = ({ onSelectCall, onImportComplete, isProcessing, processingCallId }) => {
   const [calls, setCalls] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -306,13 +306,18 @@ const GongCallList = ({ onSelectCall, onImportComplete }) => {
                   )}
                   <button
                     onClick={() => handleImport(call)}
-                    disabled={importing === call.id}
-                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+                    disabled={importing === call.id || (isProcessing && processingCallId === call.id)}
+                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 min-w-[110px] justify-center"
                   >
                     {importing === call.id ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Importing...
+                      </>
+                    ) : isProcessing && processingCallId === call.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Analyzing...
                       </>
                     ) : (
                       <>
@@ -340,8 +345,12 @@ const NewTranscriptModal = ({
   isProcessing
 }) => {
   const [activeTab, setActiveTab] = useState('paste');
+  const [processingCallId, setProcessingCallId] = useState(null);
 
   const handleGongImport = (gongCall) => {
+    // Track which call is being processed
+    setProcessingCallId(gongCall.gongCallId);
+
     // If parent provided a Gong-specific handler, use it
     if (onAddGongTranscript) {
       onAddGongTranscript(gongCall);
@@ -418,13 +427,18 @@ const NewTranscriptModal = ({
             </>
           ) : (
             <>
-              <GongCallList onImportComplete={handleGongImport} />
+              <GongCallList
+                onImportComplete={handleGongImport}
+                isProcessing={isProcessing}
+                processingCallId={processingCallId}
+              />
               <div className="flex justify-end mt-4 pt-4 border-t">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                  disabled={isProcessing}
+                  className="px-4 py-2 border rounded hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Close
+                  {isProcessing ? 'Processing...' : 'Close'}
                 </button>
               </div>
             </>

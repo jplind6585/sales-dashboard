@@ -45,30 +45,47 @@ export default async function handler(req, res) {
       'Content-Type': 'application/json'
     };
 
-    // Fetch calls list
-    const response = await fetch(
-      `${GONG_API_BASE}/v2/calls?fromDateTime=${fromDate.toISOString()}&toDateTime=${toDate.toISOString()}`,
-      {
+    // Fetch calls list with pagination support
+    let allCalls = [];
+    let cursor = null;
+    const maxPages = search ? 10 : 1; // Paginate more when searching to find results
+    let pageCount = 0;
+
+    do {
+      let url = `${GONG_API_BASE}/v2/calls?fromDateTime=${fromDate.toISOString()}&toDateTime=${toDate.toISOString()}`;
+      if (cursor) {
+        url += `&cursor=${encodeURIComponent(cursor)}`;
+      }
+
+      const response = await fetch(url, {
         method: 'GET',
         headers
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        errorData = { message: errorText };
-      }
-      console.error('Gong list-calls error:', errorData);
-      return res.status(response.status).json({
-        error: errorData.errors?.[0]?.message || errorData.message || `Gong API error: ${response.status}`
       });
-    }
 
-    const data = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText };
+        }
+        console.error('Gong list-calls error:', errorData);
+        return res.status(response.status).json({
+          error: errorData.errors?.[0]?.message || errorData.message || `Gong API error: ${response.status}`
+        });
+      }
+
+      const data = await response.json();
+      allCalls = allCalls.concat(data.calls || []);
+      cursor = data.records?.cursor || null;
+      pageCount++;
+
+      // Stop if we've found enough results or hit max pages
+      if (!cursor || pageCount >= maxPages) break;
+    } while (true);
+
+    const data = { calls: allCalls };
 
     // Format calls for the frontend
     let calls = (data.calls || []).map(call => ({
