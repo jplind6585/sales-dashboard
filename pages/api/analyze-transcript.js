@@ -1,3 +1,14 @@
+import {
+  apiError,
+  apiSuccess,
+  validateMethod,
+  validateAnthropicKey,
+  callAnthropic,
+  parseClaudeJson,
+  sanitizeString,
+  logRequest,
+} from '../../lib/apiUtils';
+
 /**
  * Build user prompt with existing context for incremental analysis
  */
@@ -50,23 +61,23 @@ function buildUserPrompt(newTranscript, previousTranscripts, existingBusinessAre
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  logRequest(req, 'analyze-transcript');
+
+  if (!validateMethod(req, res, 'POST')) return;
 
   const { transcript, existingContext } = req.body;
+  const cleanTranscript = sanitizeString(transcript, 100000);
 
-  if (!transcript || typeof transcript !== 'string') {
-    return res.status(400).json({ error: 'Transcript is required' });
+  if (!cleanTranscript) {
+    return apiError(res, 400, 'Transcript is required');
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    return res.status(500).json({
-      error: 'API key not configured. Please check your API key.'
-    });
+  if (cleanTranscript.length < 50) {
+    return apiError(res, 400, 'Transcript is too short to analyze. Please provide a complete transcript.');
   }
+
+  const apiKey = validateAnthropicKey(res);
+  if (!apiKey) return;
 
   // Build context from existing transcripts and account data
   const previousTranscripts = existingContext?.transcripts || [];
@@ -182,84 +193,31 @@ Example sales gaps:
 Extract information explicitly stated or clearly implied in the transcript. Do not make assumptions. Leave arrays empty and metrics null if not mentioned. Focus on NEW information from this transcript while being aware of existing context.`;
 
   try {
-    const userPrompt = buildUserPrompt(transcript, previousTranscripts, existingBusinessAreas, existingStakeholders, existingMetrics);
+    const userPrompt = buildUserPrompt(cleanTranscript, previousTranscripts, existingBusinessAreas, existingStakeholders, existingMetrics);
 
-    // Check if transcript is too short (might be placeholder)
-    if (transcript.length < 50) {
-      console.log('Transcript too short:', transcript);
-      return res.status(400).json({
-        error: 'Transcript is too short to analyze. Please provide a complete transcript.'
-      });
-    }
+    console.log('Calling Anthropic API with transcript length:', cleanTranscript.length);
 
-    console.log('Calling Anthropic API with transcript length:', transcript.length);
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8000,
-        system: systemPrompt,
-        messages: [{
-          role: 'user',
-          content: userPrompt
-        }]
-      })
+    const rawText = await callAnthropic(apiKey, {
+      maxTokens: 8000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        errorData = { message: errorText };
-      }
-      console.error('Anthropic API error:', response.status, errorData);
-      return res.status(response.status).json({
-        error: errorData.error?.message || errorData.message || `Anthropic API error: ${response.status}`,
-        details: errorData
-      });
-    }
+    const analysis = parseClaudeJson(rawText, null);
 
-    const data = await response.json();
-    const rawText = data.content?.[0]?.text || '';
-
-    // Try to parse the JSON response
-    let analysis;
-    try {
-      // Handle case where response might have markdown code blocks
-      let jsonText = rawText;
-      if (rawText.includes('```json')) {
-        jsonText = rawText.split('```json')[1].split('```')[0].trim();
-      } else if (rawText.includes('```')) {
-        jsonText = rawText.split('```')[1].split('```')[0].trim();
-      }
-      analysis = JSON.parse(jsonText);
-    } catch (parseError) {
-      // If JSON parsing fails, return the raw text as a fallback
-      console.error('Failed to parse JSON response:', parseError);
-      return res.status(200).json({
+    if (!analysis || analysis.parseError) {
+      console.error('Failed to parse JSON response');
+      return apiSuccess(res, {
         success: false,
         parseError: true,
         rawAnalysis: rawText,
-        analysis: null
+        analysis: null,
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      analysis
-    });
+    return apiSuccess(res, { analysis });
   } catch (error) {
-    console.error('Error calling Anthropic API:', error);
-    return res.status(500).json({
-      error: 'Failed to process transcript'
-    });
+    console.error('Error in analyze-transcript:', error);
+    return apiError(res, 500, error.message || 'Failed to process transcript');
   }
 }

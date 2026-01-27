@@ -2,34 +2,31 @@
 // Docs: https://gong.app.gong.io/settings/api/documentation
 
 import { topicMatches } from '../../../lib/mergeUtils';
+import {
+  apiError,
+  apiSuccess,
+  validateMethod,
+  validateRequired,
+  validateGongCredentials,
+  createGongHeaders,
+  logRequest,
+} from '../../../lib/apiUtils';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  logRequest(req, 'gong/import-call');
+
+  if (!validateMethod(req, res, 'POST')) return;
+  if (!validateRequired(req, res, ['callId'])) return;
 
   const { callId } = req.body;
 
-  if (!callId) {
-    return res.status(400).json({ error: 'Call ID is required' });
-  }
+  const credentials = validateGongCredentials(res);
+  if (!credentials) return;
 
-  const accessKey = process.env.GONG_ACCESS_KEY;
-  const secretKey = process.env.GONG_SECRET_KEY;
-
-  if (!accessKey || !secretKey) {
-    return res.status(500).json({
-      error: 'Gong API credentials not configured'
-    });
-  }
-
-  const auth = Buffer.from(`${accessKey}:${secretKey}`).toString('base64');
-  const headers = {
-    'Authorization': `Basic ${auth}`,
-    'Content-Type': 'application/json'
-  };
+  const { accessKey, secretKey } = credentials;
+  const headers = createGongHeaders(accessKey, secretKey);
 
   try {
     // 1. Get call details (extensive) for participant names
@@ -58,24 +55,19 @@ export default async function handler(req, res) {
       detailsData = JSON.parse(detailsText);
     } catch (parseErr) {
       console.error('Failed to parse call details response:', detailsText);
-      return res.status(500).json({
-        error: 'Invalid response from Gong API (call details)',
-        details: detailsText.substring(0, 200)
-      });
+      return apiError(res, 500, 'Invalid response from Gong API (call details)', detailsText.substring(0, 200));
     }
 
     if (!detailsResponse.ok) {
       console.error('Call details API error:', detailsData);
-      return res.status(detailsResponse.status).json({
-        error: detailsData.errors?.[0]?.message || detailsData.message || 'Failed to fetch call details',
-        gongError: detailsData
-      });
+      const errorMsg = detailsData.errors?.[0]?.message || detailsData.message || 'Failed to fetch call details';
+      return apiError(res, detailsResponse.status, errorMsg, detailsData);
     }
 
     const callDetails = detailsData.calls?.[0];
 
     if (!callDetails) {
-      return res.status(404).json({ error: 'Call not found in Gong' });
+      return apiError(res, 404, 'Call not found in Gong');
     }
 
     // 2. Get transcript
@@ -98,10 +90,7 @@ export default async function handler(req, res) {
       transcriptData = JSON.parse(transcriptText);
     } catch (parseErr) {
       console.error('Failed to parse transcript response:', transcriptText);
-      return res.status(500).json({
-        error: 'Invalid response from Gong API (transcript)',
-        details: transcriptText.substring(0, 200)
-      });
+      return apiError(res, 500, 'Invalid response from Gong API (transcript)', transcriptText.substring(0, 200));
     }
 
     if (!transcriptResponse.ok) {
@@ -193,15 +182,9 @@ export default async function handler(req, res) {
     };
 
     console.log(`Successfully imported call: ${callDetails.title}`);
-    return res.status(200).json({
-      success: true,
-      call: importedCall
-    });
+    return apiSuccess(res, { call: importedCall });
   } catch (error) {
     console.error('Error importing Gong call:', error);
-    return res.status(500).json({
-      error: `Failed to import call: ${error.message}`,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    return apiError(res, 500, `Failed to import call: ${error.message}`);
   }
 }

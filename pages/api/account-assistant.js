@@ -1,21 +1,25 @@
 import { VERTICALS, OWNERSHIP_TYPES, STAGES, MEDDICC, BUSINESS_AREAS } from '../../lib/constants';
+import {
+  apiError,
+  apiSuccess,
+  validateMethod,
+  validateRequired,
+  validateAnthropicKey,
+  callAnthropic,
+  parseClaudeJson,
+  logRequest,
+} from '../../lib/apiUtils';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  logRequest(req, 'account-assistant');
+
+  if (!validateMethod(req, res, 'POST')) return;
+  if (!validateRequired(req, res, ['message', 'account'])) return;
 
   const { message, account, context } = req.body;
 
-  if (!message || !account) {
-    return res.status(400).json({ error: 'Message and account data are required' });
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    return res.status(500).json({ error: 'API key not configured' });
-  }
+  const apiKey = validateAnthropicKey(res);
+  if (!apiKey) return;
 
   // Build context from account data
   const transcriptSummaries = (account.transcripts || [])
@@ -151,61 +155,22 @@ If answering a question with no changes needed, return:
 }`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{
-          role: 'user',
-          content: message
-        }]
-      })
+    const rawText = await callAnthropic(apiKey, {
+      maxTokens: 2000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: message }],
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return res.status(response.status).json({
-        error: errorData.error?.message || `API error: ${response.status}`
-      });
-    }
-
-    const data = await response.json();
-    const rawText = data.content?.[0]?.text || '';
-
-    // Try to parse the JSON response
-    let result;
-    try {
-      let jsonText = rawText;
-      if (rawText.includes('```json')) {
-        jsonText = rawText.split('```json')[1].split('```')[0].trim();
-      } else if (rawText.includes('```')) {
-        jsonText = rawText.split('```')[1].split('```')[0].trim();
-      }
-      result = JSON.parse(jsonText);
-    } catch (parseError) {
-      // If JSON parsing fails, return as plain response
-      result = {
-        response: rawText,
-        actions: [],
-        needsConfirmation: false
-      };
-    }
-
-    return res.status(200).json({
-      success: true,
-      ...result
+    // Try to parse the JSON response, fallback to plain text
+    const result = parseClaudeJson(rawText, {
+      response: rawText,
+      actions: [],
+      needsConfirmation: false,
     });
+
+    return apiSuccess(res, result);
   } catch (error) {
-    console.error('Error calling assistant API:', error);
-    return res.status(500).json({
-      error: 'Failed to process request'
-    });
+    console.error('Error in account-assistant:', error);
+    return apiError(res, 500, error.message || 'Failed to process request');
   }
 }

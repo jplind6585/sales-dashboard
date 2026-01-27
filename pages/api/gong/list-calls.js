@@ -1,22 +1,26 @@
 // Gong API - List recent calls with search and filters
 // Docs: https://gong.app.gong.io/settings/api/documentation
 
+import {
+  apiError,
+  apiSuccess,
+  validateMethod,
+  validateGongCredentials,
+  createGongHeaders,
+  logRequest,
+} from '../../../lib/apiUtils';
+
 const GONG_API_BASE = 'https://api.gong.io';
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  logRequest(req, 'gong/list-calls');
 
-  const accessKey = process.env.GONG_ACCESS_KEY;
-  const secretKey = process.env.GONG_SECRET_KEY;
+  if (!validateMethod(req, res, 'GET')) return;
 
-  if (!accessKey || !secretKey) {
-    return res.status(500).json({
-      error: 'Gong API credentials not configured',
-      setup: 'Add GONG_ACCESS_KEY and GONG_SECRET_KEY to environment variables'
-    });
-  }
+  const credentials = validateGongCredentials(res);
+  if (!credentials) return;
+
+  const { accessKey, secretKey } = credentials;
 
   // Get query params
   const { days = 90, search = '', userId = '', fromDate: fromDateParam = '', toDate: toDateParam = '' } = req.query;
@@ -39,11 +43,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const auth = Buffer.from(`${accessKey}:${secretKey}`).toString('base64');
-    const headers = {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/json'
-    };
+    const headers = createGongHeaders(accessKey, secretKey);
 
     // Fetch calls list with pagination support
     let allCalls = [];
@@ -71,9 +71,8 @@ export default async function handler(req, res) {
           errorData = { message: errorText };
         }
         console.error('Gong list-calls error:', errorData);
-        return res.status(response.status).json({
-          error: errorData.errors?.[0]?.message || errorData.message || `Gong API error: ${response.status}`
-        });
+        const errorMsg = errorData.errors?.[0]?.message || errorData.message || `Gong API error: ${response.status}`;
+        return apiError(res, response.status, errorMsg, errorData);
       }
 
       const data = await response.json();
@@ -182,8 +181,7 @@ export default async function handler(req, res) {
     });
     usersForFilter.sort((a, b) => a.name.localeCompare(b.name));
 
-    return res.status(200).json({
-      success: true,
+    return apiSuccess(res, {
       calls,
       users: usersForFilter,
       totalCalls: calls.length,
@@ -191,13 +189,11 @@ export default async function handler(req, res) {
       filters: {
         userId: userId || null,
         fromDate: fromDate.toISOString(),
-        toDate: toDate.toISOString()
-      }
+        toDate: toDate.toISOString(),
+      },
     });
   } catch (error) {
     console.error('Error fetching Gong calls:', error);
-    return res.status(500).json({
-      error: `Failed to fetch calls: ${error.message}`
-    });
+    return apiError(res, 500, `Failed to fetch calls: ${error.message}`);
   }
 }
