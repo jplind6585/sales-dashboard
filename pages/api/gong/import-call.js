@@ -1,6 +1,8 @@
 // Gong API - Import a specific call with transcript
 // Docs: https://gong.app.gong.io/settings/api/documentation
 
+import { topicMatches } from '../../../lib/mergeUtils';
+
 const GONG_API_BASE = 'https://api.gong.io';
 
 export default async function handler(req, res) {
@@ -158,15 +160,9 @@ export default async function handler(req, res) {
     const title = String(callDetails.title || '').toLowerCase();
     const topics = callDetails.content?.topics || [];
 
-    // Helper to safely check if a topic matches
-    const topicMatches = (keyword) => topics.some(t => {
-      const topicStr = typeof t === 'string' ? t : (t?.name || t?.label || '');
-      return String(topicStr).toLowerCase().includes(keyword);
-    });
-
     if (title.includes('intro') || title.includes('introduction')) {
       callType = 'intro';
-    } else if (title.includes('discovery') || topicMatches('discovery')) {
+    } else if (title.includes('discovery') || topicMatches(topics, 'discovery')) {
       callType = 'discovery';
     } else if (title.includes('demo') || title.includes('demonstration')) {
       callType = 'demo';

@@ -2,139 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { loadFromStorage, saveToStorage, generateId, STORAGE_KEYS } from '../lib/storage';
 import { parseCommand, executeActions } from '../lib/commandParser';
 import { createEmptyBusinessAreaState, createEmptyMeddiccState } from '../lib/constants';
+import {
+  mergeBusinessAreas,
+  mergeStakeholders as mergeStakeholdersUtil,
+  mergeMetrics,
+  mergeGaps as mergeGapsUtil,
+  safeToLowerCase
+} from '../lib/mergeUtils';
 
-/**
- * Merge new insights into existing business areas (cumulative, not overwrite)
- */
-const mergeBusinessAreas = (existing, newData) => {
-  const merged = { ...existing };
+// Wrapper to pass generateId to merge functions
+const mergeStakeholders = (existing, newStakeholders) =>
+  mergeStakeholdersUtil(existing, newStakeholders, generateId);
 
-  Object.keys(newData).forEach(areaId => {
-    const newArea = newData[areaId];
-    const existingArea = merged[areaId] || { currentState: [], opportunities: [], quotes: [] };
-
-    // Merge arrays, avoiding duplicates (simple string comparison)
-    const mergeArrays = (arr1 = [], arr2 = []) => {
-      const combined = [...arr1];
-      arr2.forEach(item => {
-        // Ensure we're comparing strings safely
-        const itemStr = String(item || '').toLowerCase();
-        if (itemStr && !combined.some(existing => String(existing || '').toLowerCase() === itemStr)) {
-          combined.push(item);
-        }
-      });
-      return combined;
-    };
-
-    merged[areaId] = {
-      currentState: mergeArrays(existingArea.currentState, newArea.currentState),
-      opportunities: mergeArrays(existingArea.opportunities, newArea.opportunities),
-      quotes: mergeArrays(existingArea.quotes, newArea.quotes),
-      confidence: calculateConfidence(existingArea, newArea),
-      lastUpdated: new Date().toISOString(),
-    };
-  });
-
-  return merged;
-};
-
-/**
- * Calculate confidence level based on amount of data
- */
-const calculateConfidence = (existing, newArea) => {
-  const totalItems =
-    (existing.currentState?.length || 0) + (newArea.currentState?.length || 0) +
-    (existing.opportunities?.length || 0) + (newArea.opportunities?.length || 0);
-
-  if (totalItems === 0) return 'none';
-  if (totalItems <= 2) return 'low';
-  if (totalItems <= 5) return 'medium';
-  return 'high';
-};
-
-/**
- * Merge stakeholders, updating existing or adding new
- */
-const mergeStakeholders = (existing = [], newStakeholders = []) => {
-  const merged = [...existing];
-
-  newStakeholders.forEach(newPerson => {
-    if (!newPerson?.name) return; // Skip if no name
-    const existingIndex = merged.findIndex(
-      p => p?.name && String(p.name).toLowerCase() === String(newPerson.name).toLowerCase()
-    );
-
-    if (existingIndex >= 0) {
-      // Update existing stakeholder with new info (prefer non-null values)
-      merged[existingIndex] = {
-        ...merged[existingIndex],
-        title: newPerson.title || merged[existingIndex].title,
-        department: newPerson.department || merged[existingIndex].department,
-        role: newPerson.role !== 'Unknown' ? newPerson.role : merged[existingIndex].role,
-        notes: newPerson.notes
-          ? `${merged[existingIndex].notes || ''} ${newPerson.notes}`.trim()
-          : merged[existingIndex].notes,
-        lastUpdated: new Date().toISOString(),
-      };
-    } else {
-      // Add new stakeholder
-      merged.push({
-        id: generateId(),
-        ...newPerson,
-        addedAt: new Date().toISOString(),
-      });
-    }
-  });
-
-  return merged;
-};
-
-/**
- * Merge metrics, preferring new non-null values
- */
-const mergeMetrics = (existing = {}, newMetrics = {}, newContext = {}) => {
-  const merged = { ...existing };
-
-  Object.keys(newMetrics).forEach(key => {
-    if (newMetrics[key] !== null && newMetrics[key] !== undefined) {
-      merged[key] = {
-        value: newMetrics[key],
-        context: newContext[key] || null,
-        lastUpdated: new Date().toISOString(),
-      };
-    }
-  });
-
-  return merged;
-};
-
-/**
- * Merge information gaps
- */
-const mergeGaps = (existing = [], newGaps = []) => {
-  const merged = [...existing];
-
-  newGaps.forEach(gap => {
-    // Handle both string format (old) and object format (new)
-    const question = typeof gap === 'string' ? gap : gap?.question;
-    const category = typeof gap === 'string' ? 'business' : (gap?.category || 'business');
-
-    if (!question) return; // Skip if no question
-
-    const questionLower = String(question).toLowerCase();
-    if (!merged.some(g => g.question && String(g.question).toLowerCase() === questionLower)) {
-      merged.push({
-        id: generateId(),
-        question,
-        category,
-        status: 'open',
-        addedAt: new Date().toISOString(),
-      });
-    }
-  });
-
-  return merged;
-};
+const mergeGaps = (existing, newGaps) =>
+  mergeGapsUtil(existing, newGaps, generateId);
 
 /**
  * Custom hook for account management with localStorage persistence
@@ -465,7 +346,7 @@ export const useAccounts = () => {
       switch (action.type) {
         case 'update_stakeholder_role':
           updatedAccount.stakeholders = (updatedAccount.stakeholders || []).map(s =>
-            s?.name && action?.name && String(s.name).toLowerCase() === String(action.name).toLowerCase()
+            s?.name && action?.name && safeToLowerCase(s.name) === safeToLowerCase(action.name)
               ? { ...s, role: action.newRole, lastUpdated: new Date().toISOString() }
               : s
           );
