@@ -39,7 +39,7 @@ export default async function handler(req, res) {
   const verticalOptions = VERTICALS.map(v => v.id).join(', ');
   const ownershipOptions = OWNERSHIP_TYPES.map(o => o.id).join(', ');
   const stageOptions = STAGES.map(s => s.id).join(', ');
-  const meddiccCategories = MEDDICC.map(m => m.id).join(', ');
+  const meddiccCategories = Object.values(MEDDICC).map(m => m.id).join(', ');
 
   const systemPrompt = `You are an AI assistant helping manage a sales account for Banner, a CapEx management software company. You help the user update account information, answer questions about the account, and track sales progress.
 
