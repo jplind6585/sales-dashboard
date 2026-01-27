@@ -17,7 +17,9 @@ const mergeBusinessAreas = (existing, newData) => {
     const mergeArrays = (arr1 = [], arr2 = []) => {
       const combined = [...arr1];
       arr2.forEach(item => {
-        if (!combined.some(existing => existing.toLowerCase() === item.toLowerCase())) {
+        // Ensure we're comparing strings safely
+        const itemStr = String(item || '').toLowerCase();
+        if (itemStr && !combined.some(existing => String(existing || '').toLowerCase() === itemStr)) {
           combined.push(item);
         }
       });
@@ -57,8 +59,9 @@ const mergeStakeholders = (existing = [], newStakeholders = []) => {
   const merged = [...existing];
 
   newStakeholders.forEach(newPerson => {
+    if (!newPerson?.name) return; // Skip if no name
     const existingIndex = merged.findIndex(
-      p => p.name.toLowerCase() === newPerson.name.toLowerCase()
+      p => p?.name && String(p.name).toLowerCase() === String(newPerson.name).toLowerCase()
     );
 
     if (existingIndex >= 0) {
@@ -113,10 +116,13 @@ const mergeGaps = (existing = [], newGaps = []) => {
 
   newGaps.forEach(gap => {
     // Handle both string format (old) and object format (new)
-    const question = typeof gap === 'string' ? gap : gap.question;
-    const category = typeof gap === 'string' ? 'business' : (gap.category || 'business');
+    const question = typeof gap === 'string' ? gap : gap?.question;
+    const category = typeof gap === 'string' ? 'business' : (gap?.category || 'business');
 
-    if (!merged.some(g => g.question?.toLowerCase() === question.toLowerCase())) {
+    if (!question) return; // Skip if no question
+
+    const questionLower = String(question).toLowerCase();
+    if (!merged.some(g => g.question && String(g.question).toLowerCase() === questionLower)) {
       merged.push({
         id: generateId(),
         question,
@@ -458,7 +464,7 @@ export const useAccounts = () => {
       switch (action.type) {
         case 'update_stakeholder_role':
           updatedAccount.stakeholders = (updatedAccount.stakeholders || []).map(s =>
-            s.name.toLowerCase() === action.name.toLowerCase()
+            s?.name && action?.name && String(s.name).toLowerCase() === String(action.name).toLowerCase()
               ? { ...s, role: action.newRole, lastUpdated: new Date().toISOString() }
               : s
           );

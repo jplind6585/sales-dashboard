@@ -155,12 +155,18 @@ export default async function handler(req, res) {
 
     // Determine call type based on topics or title
     let callType = 'other';
-    const title = (callDetails.title || '').toLowerCase();
+    const title = String(callDetails.title || '').toLowerCase();
     const topics = callDetails.content?.topics || [];
+
+    // Helper to safely check if a topic matches
+    const topicMatches = (keyword) => topics.some(t => {
+      const topicStr = typeof t === 'string' ? t : (t?.name || t?.label || '');
+      return String(topicStr).toLowerCase().includes(keyword);
+    });
 
     if (title.includes('intro') || title.includes('introduction')) {
       callType = 'intro';
-    } else if (title.includes('discovery') || topics.some(t => t.toLowerCase().includes('discovery'))) {
+    } else if (title.includes('discovery') || topicMatches('discovery')) {
       callType = 'discovery';
     } else if (title.includes('demo') || title.includes('demonstration')) {
       callType = 'demo';
