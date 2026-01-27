@@ -7,11 +7,13 @@ import { useAccounts } from '../hooks/useAccounts';
 // Constants
 import { TABS } from '../lib/constants';
 
+// Layout components
+import AISidebar from '../components/layout/AISidebar';
+
 // Modal components
 import NewAccountModal from '../components/modals/NewAccountModal';
 import NewTranscriptModal from '../components/modals/NewTranscriptModal';
 import NewStakeholderModal from '../components/modals/NewStakeholderModal';
-import AssistantModal from '../components/modals/AssistantModal';
 
 // Tab components
 import OverviewTab from '../components/tabs/OverviewTab';
@@ -32,7 +34,8 @@ export default function Home() {
     addTranscript,
     addGongTranscript,
     addStakeholder,
-    applyAssistantActions
+    applyAssistantActions,
+    updateAccountField
   } = useAccounts();
 
   // UI state
@@ -40,7 +43,7 @@ export default function Home() {
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [showNewTranscript, setShowNewTranscript] = useState(false);
   const [showNewStakeholder, setShowNewStakeholder] = useState(false);
-  const [showAssistant, setShowAssistant] = useState(false);
+  const [showAISidebar, setShowAISidebar] = useState(false);
 
   // Form state
   const [accountName, setAccountName] = useState('');
@@ -91,7 +94,7 @@ export default function Home() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
-        return <OverviewTab account={selectedAccount} onOpenAssistant={() => setShowAssistant(true)} />;
+        return <OverviewTab account={selectedAccount} onUpdateAccount={updateAccountField} />;
       case 'transcripts':
         return <TranscriptsTab account={selectedAccount} onOpenTranscriptModal={() => setShowNewTranscript(true)} />;
       case 'current_state':
@@ -241,13 +244,15 @@ export default function Home() {
           onAdd={handleAddStakeholder}
         />
       )}
-      {showAssistant && (
-        <AssistantModal
-          account={selectedAccount}
-          onClose={() => setShowAssistant(false)}
-          onApplyActions={applyAssistantActions}
-        />
-      )}
+
+      {/* AI Sidebar - persistent assistant */}
+      <AISidebar
+        isOpen={showAISidebar}
+        onToggle={() => setShowAISidebar(!showAISidebar)}
+        account={selectedAccount}
+        activeTab={activeTab}
+        onApplyActions={applyAssistantActions}
+      />
     </div>
   );
 }

@@ -1,9 +1,11 @@
+import { VERTICALS, OWNERSHIP_TYPES, STAGES, MEDDICC, BUSINESS_AREAS } from '../../lib/constants';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { message, account } = req.body;
+  const { message, account, context } = req.body;
 
   if (!message || !account) {
     return res.status(400).json({ error: 'Message and account data are required' });
@@ -29,9 +31,22 @@ export default async function handler(req, res) {
     .map(([key, data]) => `- ${key.replace(/_/g, ' ')}: ${data.value}${data.context ? ` (${data.context})` : ''}`)
     .join('\n');
 
+  const gapsList = (account.informationGaps || [])
+    .filter(g => g.status !== 'resolved')
+    .map(g => `- [${g.id}] ${g.question} (${g.category})`)
+    .join('\n');
+
+  const verticalOptions = VERTICALS.map(v => v.id).join(', ');
+  const ownershipOptions = OWNERSHIP_TYPES.map(o => o.id).join(', ');
+  const stageOptions = STAGES.map(s => s.id).join(', ');
+  const meddiccCategories = MEDDICC.map(m => m.id).join(', ');
+
   const systemPrompt = `You are an AI assistant helping manage a sales account for Banner, a CapEx management software company. You help the user update account information, answer questions about the account, and track sales progress.
 
 CURRENT ACCOUNT: ${account.name}
+Stage: ${account.stage || 'Not set'}
+Vertical: ${account.vertical || 'Not set'}
+Ownership Type: ${account.ownershipType || 'Not set'}
 
 TRANSCRIPTS:
 ${transcriptSummaries || 'No transcripts yet'}
@@ -41,6 +56,11 @@ ${stakeholdersList || 'No stakeholders identified yet'}
 
 METRICS:
 ${metricsList || 'No metrics captured yet'}
+
+OPEN INFORMATION GAPS:
+${gapsList || 'No gaps tracked'}
+
+CURRENT TAB: ${context?.activeTab || 'overview'}
 
 Your job is to:
 1. ANSWER QUESTIONS about the account based on the data above
@@ -53,6 +73,14 @@ IMPORTANT RULES:
 - For metric updates, extract the specific value
 - If the user's intent is unclear, ask a clarifying question
 - Always confirm destructive or significant changes before executing
+
+VALID OPTIONS:
+- Stages: ${stageOptions}
+- Verticals: ${verticalOptions}
+- Ownership Types: ${ownershipOptions}
+- MEDDICC Categories: ${meddiccCategories}
+- Business Areas (for priority/irrelevant): ${BUSINESS_AREAS.map(a => a.id).join(', ')}
+- Priority Levels: high, medium, low, none
 
 Respond in JSON format:
 {
@@ -78,6 +106,37 @@ Respond in JSON format:
       "type": "mark_area_irrelevant",
       "areaId": "cm_fees",
       "reason": "They don't do CM fees"
+    },
+    {
+      "type": "set_area_priority",
+      "areaId": "construction_management",
+      "priority": "high"
+    },
+    {
+      "type": "unmark_area_irrelevant",
+      "areaId": "cm_fees"
+    },
+    {
+      "type": "update_stage",
+      "stage": "solution_validation"
+    },
+    {
+      "type": "update_vertical",
+      "vertical": "multifamily"
+    },
+    {
+      "type": "update_ownership",
+      "ownership": "own_and_manage"
+    },
+    {
+      "type": "resolve_gap",
+      "gapId": "gap_id_here",
+      "resolution": "Answered in call"
+    },
+    {
+      "type": "add_gap",
+      "question": "What is their approval workflow?",
+      "category": "decision_process"
     }
   ],
   "needsConfirmation": true,

@@ -499,10 +499,84 @@ export const useAccounts = () => {
           };
           break;
 
+        case 'set_area_priority':
+          updatedAccount.businessAreas = {
+            ...updatedAccount.businessAreas,
+            [action.areaId]: {
+              ...(updatedAccount.businessAreas?.[action.areaId] || {}),
+              priority: action.priority,
+              lastUpdated: new Date().toISOString()
+            }
+          };
+          break;
+
+        case 'unmark_area_irrelevant':
+          updatedAccount.businessAreas = {
+            ...updatedAccount.businessAreas,
+            [action.areaId]: {
+              ...(updatedAccount.businessAreas?.[action.areaId] || {}),
+              irrelevant: false,
+              irrelevantReason: null,
+              lastUpdated: new Date().toISOString()
+            }
+          };
+          break;
+
+        case 'update_stage':
+          updatedAccount.stage = action.stage;
+          break;
+
+        case 'update_vertical':
+          updatedAccount.vertical = action.vertical;
+          break;
+
+        case 'update_ownership':
+          updatedAccount.ownershipType = action.ownership;
+          break;
+
+        case 'resolve_gap':
+          updatedAccount.informationGaps = (updatedAccount.informationGaps || []).map(g =>
+            g.id === action.gapId
+              ? { ...g, status: 'resolved', resolution: action.resolution, resolvedAt: new Date().toISOString() }
+              : g
+          );
+          break;
+
+        case 'add_gap':
+          updatedAccount.informationGaps = [
+            ...(updatedAccount.informationGaps || []),
+            {
+              id: generateId(),
+              question: action.question,
+              category: action.category || 'business',
+              status: 'open',
+              addedAt: new Date().toISOString()
+            }
+          ];
+          break;
+
         default:
           console.warn('Unknown action type:', action.type);
       }
     });
+
+    const updatedAccounts = accounts.map(acc =>
+      acc.id === selectedAccount.id ? updatedAccount : acc
+    );
+
+    updateAccounts(updatedAccounts);
+    return true;
+  }, [accounts, selectedAccount, updateAccounts]);
+
+  // Update specific account fields (for dropdowns, etc.)
+  const updateAccountField = useCallback((updates) => {
+    if (!selectedAccount) return false;
+
+    const updatedAccount = {
+      ...selectedAccount,
+      ...updates,
+      lastUpdated: new Date().toISOString()
+    };
 
     const updatedAccounts = accounts.map(acc =>
       acc.id === selectedAccount.id ? updatedAccount : acc
@@ -524,6 +598,7 @@ export const useAccounts = () => {
     updateStakeholderRole,
     resolveGap,
     handleManualNote,
-    applyAssistantActions
+    applyAssistantActions,
+    updateAccountField
   };
 };
