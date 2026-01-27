@@ -9,6 +9,7 @@ import { TABS } from '../lib/constants';
 
 // Layout components
 import AISidebar from '../components/layout/AISidebar';
+import ErrorBoundary, { SectionErrorBoundary } from '../components/common/ErrorBoundary';
 
 // Modal components
 import NewAccountModal from '../components/modals/NewAccountModal';
@@ -207,7 +208,9 @@ export default function Home() {
 
                 {/* Tab content */}
                 <div className="p-6">
-                  {renderTabContent()}
+                  <SectionErrorBoundary name={TABS.find(t => t.id === activeTab)?.label || 'Tab'}>
+                    {renderTabContent()}
+                  </SectionErrorBoundary>
                 </div>
               </div>
             )}
@@ -255,13 +258,18 @@ export default function Home() {
       )}
 
       {/* AI Sidebar - persistent assistant */}
-      <AISidebar
-        isOpen={showAISidebar}
-        onToggle={() => setShowAISidebar(!showAISidebar)}
-        account={selectedAccount}
-        activeTab={activeTab}
-        onApplyActions={applyAssistantActions}
-      />
+      <ErrorBoundary
+        title="AI Assistant Error"
+        message="The AI assistant encountered an error. Try closing and reopening it."
+      >
+        <AISidebar
+          isOpen={showAISidebar}
+          onToggle={() => setShowAISidebar(!showAISidebar)}
+          account={selectedAccount}
+          activeTab={activeTab}
+          onApplyActions={applyAssistantActions}
+        />
+      </ErrorBoundary>
     </div>
   );
 }
