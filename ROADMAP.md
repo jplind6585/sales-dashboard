@@ -27,6 +27,25 @@
     - ✅ Style guide created: `BANNER_EMAIL_STYLE_GUIDE.md`
 
 ### Recently Completed
+- **Production Deployment to Vercel** (2026-02-16)
+  - ✅ Deployed to Vercel: `sales-dashboard-bz9nb2gv2-james-projects-87ec0089.vercel.app`
+  - ✅ Supabase database configured with migrations
+  - ✅ Google OAuth configured (Internal - @withbanner.com only)
+  - ✅ Environment variables configured
+  - ✅ Content module with status badges (Live, In Progress, Coming Soon)
+  - ✅ Google Drive API integration working
+  - ⚠️ **Temporary workaround**: Authentication disabled (`NEXT_PUBLIC_USE_SUPABASE=false`) to bypass OAuth redirect issue
+
+  **Known Issue - OAuth Redirect to Localhost**:
+  - After Google OAuth login, users are redirected to localhost instead of production URL
+  - Root cause: Unknown - NEXTAUTH_URL is correctly set in Vercel, Google Cloud Console redirects updated
+  - Workaround: Disabled auth for initial rollout, app works with localStorage
+  - **TODO**: Debug and fix OAuth redirect issue to enable Supabase authentication
+    - Investigate NextAuth configuration
+    - Check for hardcoded redirects in codebase
+    - Test with different OAuth flows
+    - Consider alternative: NextAuth.js configuration update needed
+
 - **Outbound Engine - Phase 1** (2026-02-15)
   - ✅ Dense spreadsheet-style table view (14 columns)
   - ✅ Company list with filters (vertical, status, search)
@@ -117,6 +136,44 @@
 ## 📋 Planned Improvements
 
 ### High Priority
+
+#### Fix OAuth Redirect to Localhost Issue
+**Status**: Blocked - needs investigation
+**Added**: 2026-02-16
+**Priority**: High (blocking full authentication)
+**Context**: After Google OAuth login in production, users are redirected to localhost:3000 instead of the Vercel production URL.
+
+**Current Workaround**:
+- Authentication disabled with `NEXT_PUBLIC_USE_SUPABASE=false`
+- App works with localStorage mode
+- Team can use all features without login
+
+**Symptoms**:
+- `NEXTAUTH_URL` correctly set to Vercel URL in environment variables
+- Google Cloud Console has correct redirect URIs (no localhost)
+- Issue persists even after redeployment and clearing cache
+- Happens in both regular and incognito browsers
+
+**Investigation Needed**:
+1. Check NextAuth.js configuration in `pages/api/auth/[...nextauth].js`
+2. Look for hardcoded localhost references in modules routing
+3. Verify NextAuth callbacks configuration
+4. Check if there's a session-based redirect stored somewhere
+5. Consider if Google OAuth settings need more propagation time (up to 24 hours)
+
+**Files to investigate**:
+- `pages/api/auth/[...nextauth].js` - NextAuth configuration
+- `pages/modules.js` - Module routing
+- `pages/modules/account-pipeline.js` - Account Management routing
+- `lib/auth.js` - Authentication utilities
+
+**Once Fixed**:
+1. Change `NEXT_PUBLIC_USE_SUPABASE` back to `true`
+2. Redeploy
+3. Test OAuth flow end-to-end
+4. Enable Supabase for team (with user accounts and data persistence)
+
+---
 
 #### Perfect Analysis Determinism (Option 2)
 **Status**: Planned
