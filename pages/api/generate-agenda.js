@@ -91,6 +91,7 @@ Create a meeting agenda that advances this deal while addressing the gaps above.
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
+        temperature: 0, // Deterministic output for consistency
         system: systemPrompt,
         messages: [{
           role: 'user',

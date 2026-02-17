@@ -7,6 +7,7 @@ const SUGGESTED_PROMPTS = {
     "What's the current deal status?",
     "Update the stage to Solution Validation",
     "Set the vertical to Multifamily",
+    "Rename this account to...",
     "What should I focus on next?",
   ],
   transcripts: [
@@ -240,6 +241,12 @@ const AISidebar = ({ isOpen, onToggle, account, activeTab, onApplyActions }) => 
                         )}
                         {action.type === 'resolve_gap' && (
                           <span>Resolve gap: {action.gapId}</span>
+                        )}
+                        {action.type === 'delete_account' && (
+                          <span className="text-red-600 font-medium">Delete this account</span>
+                        )}
+                        {action.type === 'rename_account' && (
+                          <span>Rename account to "{action.newName}"</span>
                         )}
                       </li>
                     ))}

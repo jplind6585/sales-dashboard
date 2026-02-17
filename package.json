@@ -10,11 +10,15 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.39.0",
+    "google-auth-library": "^10.5.0",
+    "googleapis": "^171.4.0",
     "lucide-react": "^0.263.1",
     "next": "^14.0.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

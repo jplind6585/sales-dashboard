@@ -77,6 +77,8 @@ IMPORTANT RULES:
 - For metric updates, extract the specific value
 - If the user's intent is unclear, ask a clarifying question
 - Always confirm destructive or significant changes before executing
+- DELETE ACCOUNT: Only suggest when user explicitly asks to delete/remove the account
+- RENAME ACCOUNT: Suggest when user wants to change the account name or correct a misspelling
 
 VALID OPTIONS:
 - Stages: ${stageOptions}
@@ -141,6 +143,14 @@ Respond in JSON format:
       "type": "add_gap",
       "question": "What is their approval workflow?",
       "category": "decision_process"
+    },
+    {
+      "type": "delete_account",
+      "reason": "Duplicate or no longer needed"
+    },
+    {
+      "type": "rename_account",
+      "newName": "New Account Name"
     }
   ],
   "needsConfirmation": true,

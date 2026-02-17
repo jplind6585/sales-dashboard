@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Upload, Calendar, Users, ArrowRight, ExternalLink, Mail, FileText, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, Calendar, Users, ArrowRight, ExternalLink, Mail, FileText, Loader2, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 
 const CALL_TYPES = [
   { id: 'intro', label: 'Intro Call', color: 'bg-blue-100 text-blue-700' },
@@ -14,7 +14,9 @@ const CALL_TYPES = [
 const TranscriptCard = ({ transcript, account, onUpdate }) => {
   const [expanded, setExpanded] = useState(false);
   const [generating, setGenerating] = useState(null);
-  const [generatedContent, setGeneratedContent] = useState({ email: null, agenda: null });
+  const [generatedContent, setGeneratedContent] = useState({ email: null, agenda: null, feedback: null });
+  const [originalContent, setOriginalContent] = useState({ email: null }); // Track original for learning
+  const [editedEmail, setEditedEmail] = useState(''); // Track edited version
 
   const callType = CALL_TYPES.find(t => t.id === transcript.callType) || CALL_TYPES[CALL_TYPES.length - 1];
   const attendees = transcript.attendees || [];
@@ -31,11 +33,139 @@ const TranscriptCard = ({ transcript, account, onUpdate }) => {
       const data = await response.json();
       if (data.content) {
         setGeneratedContent(prev => ({ ...prev, email: data.content }));
+        setOriginalContent(prev => ({ ...prev, email: data.content })); // Save original for learning
+        setEditedEmail(data.content); // Initialize edited version
       }
     } catch (err) {
       console.error('Error generating email:', err);
     } finally {
       setGenerating(null);
+    }
+  };
+
+  const generateEmailFromName = (name, accountUrl, accountName) => {
+    // Generate email from name and account domain
+    // "Sarah Chen" + "prometheus.com" → "sarah.chen@prometheus.com"
+
+    // Extract domain from account URL
+    let domain = '';
+    if (accountUrl) {
+      try {
+        const url = new URL(accountUrl.startsWith('http') ? accountUrl : `https://${accountUrl}`);
+        domain = url.hostname.replace('www.', '');
+      } catch (e) {
+        // If URL parsing fails, use account name
+        domain = accountName?.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
+      }
+    } else {
+      domain = accountName?.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
+    }
+
+    // Convert name to email format: "Sarah Chen" → "sarah.chen"
+    const emailPrefix = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z\s]/g, '') // Remove non-letters except spaces
+      .split(/\s+/)
+      .join('.');
+
+    return `${emailPrefix}@${domain}`;
+  };
+
+  const extractEmailAddresses = (attendees, stakeholders, accountUrl, accountName) => {
+    // Extract email addresses from attendee strings
+    // Format can be "Name (email)" or just "Name" or "Name <email>"
+    const emails = [];
+
+    // Try to get from attendees first
+    attendees.forEach(attendee => {
+      const emailMatch = attendee.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
+      if (emailMatch) {
+        emails.push(emailMatch[1]);
+      } else {
+        // Extract name from attendee string (e.g., "Sarah Chen (Prometheus)" → "Sarah Chen")
+        const attendeeName = attendee.split('(')[0].trim();
+
+        // Skip Banner employees
+        if (attendee.toLowerCase().includes('banner') || attendee.toLowerCase().includes('james')) {
+          return;
+        }
+
+        // Try to match with stakeholder by name
+        const stakeholder = stakeholders?.find(s => {
+          const sName = s.name?.toLowerCase() || '';
+          const aName = attendeeName.toLowerCase();
+          return sName === aName || sName.includes(aName) || aName.includes(sName);
+        });
+
+        // Generate email from name and account domain
+        const email = generateEmailFromName(stakeholder?.name || attendeeName, accountUrl, accountName);
+        emails.push(email);
+      }
+    });
+
+    // Remove duplicates
+    return [...new Set(emails)];
+  };
+
+  const handleSendToGmail = async () => {
+    // Extract subject line from email content
+    const subjectMatch = editedEmail.match(/Subject:\s*(.+?)(\n|$)/);
+    const subject = subjectMatch ? subjectMatch[1].trim() : 'Banner Follow Up';
+
+    // Remove subject line from body
+    let bodyWithoutSubject = editedEmail.replace(/Subject:.*?\n\n?/, '').trim();
+
+    // Add note about attachments at the top of body if there's an "Attaching:" section
+    if (bodyWithoutSubject.includes('Attaching:') || bodyWithoutSubject.includes('Sending you:')) {
+      bodyWithoutSubject = '📎 Note: Please attach the items listed below before sending.\n\n' + bodyWithoutSubject;
+    }
+
+    // Get recipient emails
+    const recipientEmails = extractEmailAddresses(transcript.attendees || [], account.stakeholders || [], account.url, account.name);
+
+    // If no emails found, add note to body
+    if (recipientEmails.length === 0) {
+      bodyWithoutSubject = '⚠️ No email addresses found - please add recipients manually.\n\n' + bodyWithoutSubject;
+    }
+
+    // Construct Gmail URL
+    const gmailUrl = new URL('https://mail.google.com/mail/');
+    gmailUrl.searchParams.set('view', 'cm');
+    gmailUrl.searchParams.set('fs', '1');
+    if (recipientEmails.length > 0) {
+      gmailUrl.searchParams.set('to', recipientEmails.join(','));
+    }
+    gmailUrl.searchParams.set('su', subject);
+    gmailUrl.searchParams.set('body', bodyWithoutSubject);
+
+    // Save the edit for learning before opening Gmail
+    if (originalContent.email !== editedEmail) {
+      await saveEmailEdit(originalContent.email, editedEmail, transcript, account);
+    }
+
+    // Open Gmail in new window
+    window.open(gmailUrl.toString(), '_blank');
+  };
+
+  const saveEmailEdit = async (original, edited, transcript, account) => {
+    try {
+      await fetch('/api/save-email-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          original,
+          edited,
+          transcriptId: transcript.id,
+          accountId: account.id,
+          accountName: account.name,
+          callType: transcript.callType,
+          timestamp: new Date().toISOString()
+        })
+      });
+    } catch (err) {
+      console.error('Error saving email edit:', err);
+      // Don't block the Gmail send on error
     }
   };
 
@@ -53,6 +183,25 @@ const TranscriptCard = ({ transcript, account, onUpdate }) => {
       }
     } catch (err) {
       console.error('Error generating agenda:', err);
+    } finally {
+      setGenerating(null);
+    }
+  };
+
+  const handleGenerateFeedback = async () => {
+    setGenerating('feedback');
+    try {
+      const response = await fetch('/api/generate-coaching-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript, account })
+      });
+      const data = await response.json();
+      if (data.content) {
+        setGeneratedContent(prev => ({ ...prev, feedback: data.content }));
+      }
+    } catch (err) {
+      console.error('Error generating feedback:', err);
     } finally {
       setGenerating(null);
     }
@@ -147,25 +296,55 @@ const TranscriptCard = ({ transcript, account, onUpdate }) => {
           )}
           Next Meeting Agenda
         </button>
+        <button
+          onClick={handleGenerateFeedback}
+          disabled={generating === 'feedback'}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+        >
+          {generating === 'feedback' ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <MessageSquare className="w-4 h-4" />
+          )}
+          Sales Coaching
+        </button>
       </div>
 
       {/* Generated Content */}
-      {(generatedContent.email || generatedContent.agenda) && (
+      {(generatedContent.email || generatedContent.agenda || generatedContent.feedback) && (
         <div className="p-4 border-t bg-blue-50 space-y-4">
           {generatedContent.email && (
             <div>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium">Follow-up Email</span>
-                <button
-                  onClick={() => navigator.clipboard.writeText(generatedContent.email)}
-                  className="text-xs text-blue-600 hover:text-blue-700"
-                >
-                  Copy
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => navigator.clipboard.writeText(editedEmail)}
+                    className="text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    Copy
+                  </button>
+                  <button
+                    onClick={handleSendToGmail}
+                    className="flex items-center gap-1 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    <Mail className="w-3 h-3" />
+                    Send to Gmail
+                  </button>
+                </div>
               </div>
-              <pre className="text-sm whitespace-pre-wrap bg-white p-3 rounded border">
-                {generatedContent.email}
-              </pre>
+              <textarea
+                value={editedEmail}
+                onChange={(e) => setEditedEmail(e.target.value)}
+                className="w-full text-sm font-mono bg-white p-3 rounded border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={15}
+                style={{ resize: 'vertical' }}
+              />
+              {originalContent.email !== editedEmail && (
+                <div className="text-xs text-gray-500 mt-1">
+                  ✏️ Edited - Changes will be learned for future emails
+                </div>
+              )}
             </div>
           )}
           {generatedContent.agenda && (
@@ -182,6 +361,22 @@ const TranscriptCard = ({ transcript, account, onUpdate }) => {
               <pre className="text-sm whitespace-pre-wrap bg-white p-3 rounded border">
                 {generatedContent.agenda}
               </pre>
+            </div>
+          )}
+          {generatedContent.feedback && (
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium">Sales Coaching Feedback</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(generatedContent.feedback)}
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                >
+                  Copy
+                </button>
+              </div>
+              <div className="text-sm whitespace-pre-wrap bg-white p-3 rounded border">
+                {generatedContent.feedback}
+              </div>
             </div>
           )}
         </div>

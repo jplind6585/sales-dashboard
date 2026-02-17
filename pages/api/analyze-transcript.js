@@ -8,6 +8,7 @@ import {
   sanitizeString,
   logRequest,
 } from '../../lib/apiUtils';
+import { labelBannerTeamInAnalysis } from '../../lib/bannerTeam';
 
 /**
  * Build user prompt with existing context for incremental analysis
@@ -203,7 +204,7 @@ Extract information explicitly stated or clearly implied in the transcript. Do n
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const analysis = parseClaudeJson(rawText, null);
+    let analysis = parseClaudeJson(rawText, null);
 
     if (!analysis || analysis.parseError) {
       console.error('Failed to parse JSON response');
@@ -214,6 +215,9 @@ Extract information explicitly stated or clearly implied in the transcript. Do n
         analysis: null,
       });
     }
+
+    // Label Banner team members in stakeholders
+    analysis = labelBannerTeamInAnalysis(analysis);
 
     return apiSuccess(res, { analysis });
   } catch (error) {
