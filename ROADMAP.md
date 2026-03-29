@@ -202,6 +202,40 @@
 
 ### Medium Priority
 
+#### Email Learning System Audit Dashboard
+**Status**: Planned
+**Added**: 2026-02-17
+**Priority**: Medium (nice-to-have, not blocking)
+**Context**: The email learning system tracks edits and learns style preferences, but there's no UI to see what's being learned.
+
+**Proposed Features**:
+1. **View Active Patterns**: Display detected patterns (subject style, greeting, sign-off, length preference)
+2. **See Examples**: Show the edits that led to each pattern with before/after comparisons
+3. **Pattern Strength**: Confidence scores based on frequency (e.g., "8 out of 20 edits")
+4. **Override Controls**: Disable specific patterns if they're learning the wrong thing
+5. **Reset Learning**: Clear all patterns and start fresh
+6. **Stats Dashboard**: Total edits, most common changes, learning trend over time
+
+**Benefits**:
+- Full transparency into what AI is learning
+- Catch and correct bad patterns early
+- Confidence that the system isn't over-indexing on outliers
+- Data-driven insights into your email style evolution
+
+**Implementation**:
+- Add "Learning Insights" section to Settings page (`/modules/settings`)
+- Use existing `/api/get-email-patterns` endpoint (already returns all data)
+- Add pattern override/reset endpoints
+- Simple table/card layout showing patterns with controls
+
+**Files to create/modify**:
+- `pages/modules/settings.js` - Add Learning Insights section
+- `pages/api/override-pattern.js` - New endpoint for disabling patterns
+- `pages/api/reset-learning.js` - New endpoint for clearing all patterns
+- `components/settings/LearningInsights.jsx` - New component for audit UI
+
+---
+
 #### Content Generation System
 **Status**: In Progress (2026-02-15)
 **Context**: Comprehensive content management system with Google Drive integration for generating client-ready materials.

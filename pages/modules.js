@@ -53,6 +53,16 @@ const MODULES = [
     status: 'in-progress'
   },
   {
+    id: 'rfp',
+    name: 'RFP',
+    description: 'RFP response management, answer library, and AI-powered proposal generation',
+    icon: FileText,
+    href: '#',
+    color: 'from-teal-500 to-teal-600',
+    available: false,
+    status: 'coming-soon'
+  },
+  {
     id: 'sales-reports',
     name: 'Sales Reports',
     description: 'Performance metrics, forecasting, and pipeline health dashboards',
@@ -95,12 +105,12 @@ const MODULES = [
   {
     id: 'settings',
     name: 'Settings',
-    description: 'Team configuration, integrations, user permissions, and preferences',
+    description: 'Email signature, preferences, and team configuration',
     icon: Settings,
-    href: '#',
+    href: '/modules/settings',
     color: 'from-gray-500 to-gray-600',
-    available: false,
-    status: 'coming-soon'
+    available: true,
+    status: 'live'
   },
 ];
 

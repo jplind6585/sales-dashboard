@@ -10,6 +10,9 @@ const GongCallList = ({ onSelectCall, onImportComplete, isProcessing, processing
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedCalls, setSelectedCalls] = useState(new Set());
+  const [importingMultiple, setImportingMultiple] = useState(false);
+  const [multiImportProgress, setMultiImportProgress] = useState({ current: 0, total: 0 });
 
   // Filter state
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -87,6 +90,63 @@ const GongCallList = ({ onSelectCall, onImportComplete, isProcessing, processing
     } finally {
       setImporting(null);
     }
+  };
+
+  const handleImportMultiple = async () => {
+    const callsToImport = calls.filter(call => selectedCalls.has(call.id));
+    setImportingMultiple(true);
+    setMultiImportProgress({ current: 0, total: callsToImport.length });
+
+    for (let i = 0; i < callsToImport.length; i++) {
+      const call = callsToImport[i];
+      setMultiImportProgress({ current: i + 1, total: callsToImport.length });
+
+      try {
+        const response = await fetch('/api/gong/import-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId: call.id })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to import call');
+        }
+
+        await onImportComplete(data.call);
+
+        // Small delay between imports to avoid overwhelming the system
+        if (i < callsToImport.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (err) {
+        alert(`Import failed for "${call.title}": ${err.message}`);
+        break;
+      }
+    }
+
+    setImportingMultiple(false);
+    setSelectedCalls(new Set());
+    setMultiImportProgress({ current: 0, total: 0 });
+  };
+
+  const toggleCallSelection = (callId) => {
+    const newSelection = new Set(selectedCalls);
+    if (newSelection.has(callId)) {
+      newSelection.delete(callId);
+    } else {
+      newSelection.add(callId);
+    }
+    setSelectedCalls(newSelection);
+  };
+
+  const selectAllCalls = () => {
+    setSelectedCalls(new Set(calls.map(c => c.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedCalls(new Set());
   };
 
   const formatDuration = (seconds) => {
@@ -248,11 +308,54 @@ const GongCallList = ({ onSelectCall, onImportComplete, isProcessing, processing
         </div>
       ) : (
         <>
-          {/* Results count */}
-          <div className="text-xs text-gray-500 px-1">
-            {calls.length} call{calls.length !== 1 ? 's' : ''} found
-            {searchQuery && ` for "${searchQuery}"`}
-            {hasActiveFilters && !searchQuery && ' (filtered)'}
+          {/* Multi-select controls */}
+          <div className="flex items-center justify-between px-1">
+            <div className="text-xs text-gray-500">
+              {calls.length} call{calls.length !== 1 ? 's' : ''} found
+              {searchQuery && ` for "${searchQuery}"`}
+              {hasActiveFilters && !searchQuery && ' (filtered)'}
+              {selectedCalls.size > 0 && (
+                <span className="ml-2 text-blue-600 font-medium">
+                  {selectedCalls.size} selected
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedCalls.size > 0 ? (
+                <>
+                  <button
+                    onClick={clearSelection}
+                    className="text-xs text-gray-600 hover:text-gray-800"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    onClick={handleImportMultiple}
+                    disabled={importingMultiple}
+                    className="flex items-center gap-1 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {importingMultiple ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Importing {multiImportProgress.current}/{multiImportProgress.total}
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3 h-3" />
+                        Import {selectedCalls.size} call{selectedCalls.size !== 1 ? 's' : ''}
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={selectAllCalls}
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                >
+                  Select all
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Call List */}
@@ -260,37 +363,50 @@ const GongCallList = ({ onSelectCall, onImportComplete, isProcessing, processing
             {calls.map(call => (
               <div
                 key={call.id}
-                className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                className={`flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 ${
+                  selectedCalls.has(call.id) ? 'bg-blue-50 border-blue-300' : ''
+                }`}
               >
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{call.title || 'Untitled Call'}</div>
-                  <div className="text-sm text-gray-500 flex items-center gap-3 flex-wrap">
-                    <span>{formatDate(call.date)}</span>
-                    <span>{formatDuration(call.duration)}</span>
-                    {call.user?.name && (
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {call.user.name}
-                      </span>
-                    )}
-                    {call.parties?.length > 0 && (
-                      <span className="text-gray-400">
-                        {call.parties.length} participant{call.parties.length !== 1 ? 's' : ''}
-                      </span>
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {/* Checkbox */}
+                  <input
+                    type="checkbox"
+                    checked={selectedCalls.has(call.id)}
+                    onChange={() => toggleCallSelection(call.id)}
+                    disabled={importingMultiple}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  />
+
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{call.title || 'Untitled Call'}</div>
+                    <div className="text-sm text-gray-500 flex items-center gap-3 flex-wrap">
+                      <span>{formatDate(call.date)}</span>
+                      <span>{formatDuration(call.duration)}</span>
+                      {call.user?.name && (
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          {call.user.name}
+                        </span>
+                      )}
+                      {call.parties?.length > 0 && (
+                        <span className="text-gray-400">
+                          {call.parties.length} participant{call.parties.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {/* Show external participants */}
+                    {call.parties?.filter(p => p.affiliation === 'external').length > 0 && (
+                      <div className="text-xs text-gray-400 mt-1 truncate">
+                        External: {call.parties
+                          .filter(p => p.affiliation === 'external')
+                          .map(p => p.name || p.emailAddress)
+                          .filter(Boolean)
+                          .slice(0, 3)
+                          .join(', ')}
+                        {call.parties.filter(p => p.affiliation === 'external').length > 3 && '...'}
+                      </div>
                     )}
                   </div>
-                  {/* Show external participants */}
-                  {call.parties?.filter(p => p.affiliation === 'external').length > 0 && (
-                    <div className="text-xs text-gray-400 mt-1 truncate">
-                      External: {call.parties
-                        .filter(p => p.affiliation === 'external')
-                        .map(p => p.name || p.emailAddress)
-                        .filter(Boolean)
-                        .slice(0, 3)
-                        .join(', ')}
-                      {call.parties.filter(p => p.affiliation === 'external').length > 3 && '...'}
-                    </div>
-                  )}
                 </div>
                 <div className="flex items-center gap-2 ml-4">
                   {call.url && (
@@ -306,7 +422,7 @@ const GongCallList = ({ onSelectCall, onImportComplete, isProcessing, processing
                   )}
                   <button
                     onClick={() => handleImport(call)}
-                    disabled={importing === call.id || (isProcessing && processingCallId === call.id)}
+                    disabled={importing === call.id || (isProcessing && processingCallId === call.id) || importingMultiple}
                     className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 min-w-[110px] justify-center"
                   >
                     {importing === call.id ? (

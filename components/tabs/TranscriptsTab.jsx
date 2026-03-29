@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Upload, Calendar, Users, ArrowRight, ExternalLink, Mail, FileText, Loader2, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import { Upload, Calendar, Users, ArrowRight, ExternalLink, Mail, FileText, Loader2, ChevronDown, ChevronUp, MessageSquare, Tag } from 'lucide-react';
+import { getUserSettings } from '../../lib/userSettings';
 
 const CALL_TYPES = [
   { id: 'intro', label: 'Intro Call', color: 'bg-blue-100 text-blue-700' },
@@ -17,24 +18,69 @@ const TranscriptCard = ({ transcript, account, onUpdate }) => {
   const [generatedContent, setGeneratedContent] = useState({ email: null, agenda: null, feedback: null });
   const [originalContent, setOriginalContent] = useState({ email: null }); // Track original for learning
   const [editedEmail, setEditedEmail] = useState(''); // Track edited version
+  const [detectedStage, setDetectedStage] = useState(null); // Track detected sales stage
 
   const callType = CALL_TYPES.find(t => t.id === transcript.callType) || CALL_TYPES[CALL_TYPES.length - 1];
   const attendees = transcript.attendees || [];
   const nextSteps = transcript.rawAnalysis?.nextSteps || [];
 
+  // Stage display configuration
+  const STAGE_CONFIG = {
+    intro: { label: 'Introduction', color: 'bg-blue-100 text-blue-700' },
+    demo: { label: 'Demo', color: 'bg-green-100 text-green-700' },
+    technical: { label: 'Technical', color: 'bg-purple-100 text-purple-700' },
+    evaluation: { label: 'Evaluation', color: 'bg-amber-100 text-amber-700' },
+    proposal: { label: 'Proposal', color: 'bg-orange-100 text-orange-700' }
+  };
+
   const handleGenerateEmail = async () => {
     setGenerating('email');
     try {
+      // Get user settings (including email signature)
+      const settings = getUserSettings();
+      const emailSignature = settings.emailSignature || '';
+
       const response = await fetch('/api/generate-follow-up', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript, account })
+        body: JSON.stringify({ transcript, account, emailSignature })
       });
       const data = await response.json();
       if (data.content) {
         setGeneratedContent(prev => ({ ...prev, email: data.content }));
         setOriginalContent(prev => ({ ...prev, email: data.content })); // Save original for learning
         setEditedEmail(data.content); // Initialize edited version
+
+        // Store detected stage if available
+        if (data.detectedStage) {
+          setDetectedStage(data.detectedStage);
+        }
+
+        // Auto-download PDFs if available
+        if (data.generatedContent && data.generatedContent.length > 0) {
+          data.generatedContent.forEach(doc => {
+            if (doc.pdfData && doc.pdfFilename) {
+              // Convert base64 to blob and trigger download
+              const byteCharacters = atob(doc.pdfData);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+              // Create download link and trigger
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = doc.pdfFilename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              window.URL.revokeObjectURL(url);
+            }
+          });
+        }
       }
     } catch (err) {
       console.error('Error generating email:', err);
@@ -316,7 +362,15 @@ const TranscriptCard = ({ transcript, account, onUpdate }) => {
           {generatedContent.email && (
             <div>
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium">Follow-up Email</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Follow-up Email</span>
+                  {detectedStage && STAGE_CONFIG[detectedStage] && (
+                    <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${STAGE_CONFIG[detectedStage].color}`}>
+                      <Tag className="w-3 h-3" />
+                      {STAGE_CONFIG[detectedStage].label}
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => navigator.clipboard.writeText(editedEmail)}

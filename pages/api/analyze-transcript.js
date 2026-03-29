@@ -86,11 +86,44 @@ export default async function handler(req, res) {
   const existingStakeholders = existingContext?.stakeholders || [];
   const existingMetrics = existingContext?.metrics || {};
 
-  const systemPrompt = `You are an expert sales analyst for Banner, a CapEx management software company serving multifamily real estate. Your job is to analyze sales call transcripts and extract structured information.
+  const systemPrompt = `You are an expert sales analyst for Banner, a CapEx management software company serving multifamily real estate. Your job is to analyze sales call transcripts and extract structured information in the EXACT format specified for Sunrise Senior Living's current state analysis.
 
-IMPORTANT: You are building INCREMENTALLY on existing knowledge. Do not contradict or remove existing information unless the new transcript explicitly corrects it. ADD new insights, REFINE existing ones, and EXPAND our understanding.
+CRITICAL FORMATTING RULES:
+1. Bullets must be DETAILED and specific with full context - aim for 1-2 complete sentences per bullet
+2. Do NOT guess - only extract what is explicitly discussed
+3. When a process is not discussed, leave arrays empty
+4. Current State = what they do today (tools, workflows, systems) AND the pain/problem it causes
+5. Opportunities = improvement suggestions, ways to solve the problems (separate from pain points)
+6. Each bullet should stand alone as a complete thought with clear cause and effect
+7. Derive PRIORITY from how much the process was discussed and pain level expressed
 
-You must return ONLY valid JSON with no additional text. The JSON must follow this exact structure:
+CURRENT STATE STRUCTURE:
+Format each current state bullet to show BOTH the current process AND its impact:
+- "They [current process/tool/workflow] which causes/results in [specific pain point or problem]"
+- Include direct quotes when they illustrate the pain point well
+- Example: "Budgets are created manually in Excel with formulas for each of 200+ properties, which requires extensive man-hours and makes it impossible to see real-time budget status"
+- Example: "They download raw data from PeopleSoft monthly and manually filter by project codes, but have no visibility into what's still open to spend"
+
+OPPORTUNITIES STRUCTURE:
+Format opportunities as improvement suggestions, NOT pain points:
+- Focus on what could be better or what they wish they had
+- Example: "Need a real-time dashboard that automatically syncs with accounting software"
+- Example: "Want ability to track budget reallocations without manual spreadsheet updates"
+
+INTELLIGENT PROCESS MAPPING:
+Recognize different terms for the same process:
+- "RFA Process" = "adding unbudgeted projects", "request for authorization", "project approval", "scope additions", "mid-year project requests"
+- "Cost Tracking" = "budget tracking", "financial tracking", "spend monitoring"
+- "Invoicing" = "invoice processing", "payment processing", "AP process"
+Map these to the correct standard process category.
+
+PRIORITY DETERMINATION (derive from transcript):
+- High Priority: Extensively discussed (5+ minutes), significant pain expressed, multiple examples given, strong emotion
+- Medium Priority: Discussed briefly (2-5 minutes), some pain mentioned, acknowledged as issue
+- Low Priority: Mentioned in passing (<2 minutes), minor pain or no pain
+- null: Not discussed at all
+
+You must return ONLY valid JSON with no additional text. The JSON must follow this EXACT structure:
 
 {
   "callDate": "YYYY-MM-DD or null if not found",
@@ -108,25 +141,36 @@ You must return ONLY valid JSON with no additional text. The JSON must follow th
   ],
   "businessAreas": {
     "budgeting": {
-      "currentState": ["observation 1", "observation 2"],
-      "opportunities": ["pain point or opportunity 1"],
-      "quotes": ["relevant direct quote if any"]
+      "currentState": [
+        "Budgets are created manually in Excel with complex formulas for each property, which requires extensive man-hours and makes it impossible to see real-time budget status as work progresses",
+        "Site walks are conducted over 2-3 months to build the annual budget, but by the time they're complete, some of the initial data is already outdated"
+      ],
+      "opportunities": [
+        "Need a real-time dashboard that automatically syncs with accounting software to show current budget vs actual",
+        "Want to streamline the budget creation process to reduce the 2-3 month timeline"
+      ],
+      "quotes": ["We're exhausting man hours on manual tracking"],
+      "priority": "high|medium|low|null",
+      "notDiscussed": false
     },
-    "project_tracking": { "currentState": [], "opportunities": [], "quotes": [] },
-    "project_design": { "currentState": [], "opportunities": [], "quotes": [] },
-    "bidding": { "currentState": [], "opportunities": [], "quotes": [] },
-    "rfa_process": { "currentState": [], "opportunities": [], "quotes": [] },
-    "contracting": { "currentState": [], "opportunities": [], "quotes": [] },
-    "project_management": { "currentState": [], "opportunities": [], "quotes": [] },
-    "invoicing": { "currentState": [], "opportunities": [], "quotes": [] },
-    "cm_fees": { "currentState": [], "opportunities": [], "quotes": [] },
-    "change_orders": { "currentState": [], "opportunities": [], "quotes": [] },
-    "project_closeout": { "currentState": [], "opportunities": [], "quotes": [] },
-    "reporting": { "currentState": [], "opportunities": [], "quotes": [] },
-    "unit_renos": { "currentState": [], "opportunities": [], "quotes": [] },
-    "data_loading": { "currentState": [], "opportunities": [], "quotes": [] },
-    "due_diligence": { "currentState": [], "opportunities": [], "quotes": [] },
-    "asset_tracking": { "currentState": [], "opportunities": [], "quotes": [] }
+    "cost_tracking": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": true },
+    "project_tracking": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "project_design": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "bidding": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "rfa_process": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "contracting": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "project_management": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "invoicing": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "cost_control": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "cm_fees": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "change_orders": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "project_closeout": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "reporting": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "unit_renos": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "warranties": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "data_loading": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "due_diligence": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false },
+    "asset_tracking": { "currentState": [], "opportunities": [], "quotes": [], "priority": null, "notDiscussed": false }
   },
   "metrics": {
     "projects_per_year": null,
@@ -153,23 +197,26 @@ You must return ONLY valid JSON with no additional text. The JSON must follow th
   "nextSteps": ["Action item or follow-up mentioned"]
 }
 
-Business Area Definitions:
-- budgeting: Site walks, budget creation, capital planning, how they build budgets
-- project_tracking: Source of truth for projects, trackers, project status management
-- project_design: Scope documents, bid templates, specifications
-- bidding: RFP process, bid leveling, vendor selection, getting bids
-- rfa_process: Request for approval creation and approval workflows
-- contracting: Contract creation, signatures, DocuSign, contract tracking
-- project_management: Scheduling, tasks, project updates, meeting minutes
-- invoicing: Invoice submission, review, approval, payment tracking
-- cm_fees: Construction management fee tracking, projection, billing
-- change_orders: Change order submission, approval, tracking
-- project_closeout: Close out process, documentation, handoff
-- reporting: Reports, analytics, dashboards, owner reporting
-- unit_renos: Unit renovation tracking, turn process, make-ready
-- data_loading: Data entry into systems, imports, manual data work
-- due_diligence: Acquisition due diligence process and budgeting
-- asset_tracking: Asset inventory, warranties, equipment tracking
+Business Area Definitions (recognize variations of these terms):
+- budgeting: Annual budget creation, site walks, capital planning, how they build yearly budgets
+- cost_tracking: Budget vs. actual tracking, financial reporting, forecasting, "open to spend" visibility
+- project_tracking: Source of truth for projects, project status management, tracking systems
+- project_design: Scope documents, bid templates, specifications, RFP creation
+- bidding: RFP/bid process, bid leveling, vendor selection, getting competitive bids
+- rfa_process: Adding unbudgeted projects, request for approval/authorization, scope change approvals (RECOGNIZE ALIASES)
+- contracting: Contract creation, signatures, DocuSign, contract management
+- project_management: Scheduling, Gantt charts, tasks, project updates, meeting minutes, status tracking
+- invoicing: Invoice submission, review, approval, payment processing, AP workflow
+- cost_control: Budget management, variance tracking, spend optimization, cost containment
+- cm_fees: Construction management fee tracking (ONLY for third-party managers)
+- change_orders: Change order submission, approval, tracking, anticipated changes
+- project_closeout: Closeout process, punch lists, documentation, warranty handoff
+- reporting: Owner reports, executive dashboards, analytics, financial reporting
+- unit_renos: Unit turn process, renovation tracking, make-ready workflows
+- warranties: Warranty tracking, expiration dates, claims management
+- data_loading: Manual data entry, system imports, data migration
+- due_diligence: Acquisition DD, site assessments, pre-acquisition budgeting
+- asset_tracking: Equipment inventory, asset registers, condition tracking
 
 Information Gap Categories:
 - "business": Questions about their CapEx processes (how they budget, track projects, handle invoices, etc.) - things we need to understand to build a better evaluation

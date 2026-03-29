@@ -12,12 +12,56 @@ const fetchLearnedPatterns = async () => {
   return '';
 };
 
+// Auto-generate relevant content based on call context
+const autoGenerateContent = async (account, transcript, callStage) => {
+  const generatedDocs = [];
+
+  try {
+    // Determine which content to generate based on vertical and stage
+    const vertical = account?.vertical;
+
+    // For now, only generate 1-pager for intro/demo calls with multifamily accounts
+    // This keeps it simple for initial testing
+    if ((callStage === 'intro' || callStage === 'demo') && vertical === 'multifamily') {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/generate-content`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            templateId: 'multifamily',
+            account
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.document) {
+            generatedDocs.push({
+              name: data.document.name,
+              url: data.document.url,
+              pdfData: data.document.pdfData,
+              pdfFilename: data.document.pdfFilename
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error generating 1-pager:', err);
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in autoGenerateContent:', error);
+  }
+
+  return generatedDocs;
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { transcript, account } = req.body;
+  const { transcript, account, emailSignature } = req.body;
 
   if (!transcript) {
     return res.status(400).json({ error: 'Transcript is required' });
@@ -38,6 +82,46 @@ export default async function handler(req, res) {
   const summary = transcript.summary || '';
   const callType = transcript.callType || 'sales';
   const callDate = transcript.date || 'recent';
+
+  // Detect call stage from transcript content
+  const detectCallStage = (summary, nextSteps, account) => {
+    const lowerSummary = (summary || '').toLowerCase();
+    const lowerSteps = (nextSteps || []).join(' ').toLowerCase();
+    const combinedText = lowerSummary + ' ' + lowerSteps;
+
+    // Check for proposal/contract stage
+    if (combinedText.includes('proposal') || combinedText.includes('pricing') ||
+        combinedText.includes('contract') || combinedText.includes('legal') ||
+        combinedText.includes('msa') || combinedText.includes('terms')) {
+      return 'proposal';
+    }
+
+    // Check for evaluation stage
+    if (combinedText.includes('evaluation') || combinedText.includes('trial') ||
+        combinedText.includes('security review') || combinedText.includes('decision criteria') ||
+        combinedText.includes('business case') || combinedText.includes('champion')) {
+      return 'evaluation';
+    }
+
+    // Check for technical/integration discussion
+    if (combinedText.includes('integration') || combinedText.includes('api') ||
+        combinedText.includes('technical') || combinedText.includes('implementation') ||
+        combinedText.includes('data migration') || combinedText.includes('systems')) {
+      return 'technical';
+    }
+
+    // Check for demo
+    if (combinedText.includes('demo') || combinedText.includes('walkthrough') ||
+        combinedText.includes('showed') || combinedText.includes('demonstrated') ||
+        combinedText.includes('screen share')) {
+      return 'demo';
+    }
+
+    // Default to intro for first calls
+    return 'intro';
+  };
+
+  const callStage = detectCallStage(summary, nextSteps, account);
 
   // Get account context for richer emails
   const accountName = account?.name || 'the prospect';
@@ -64,6 +148,40 @@ export default async function handler(req, res) {
   const decisionCriteria = meddicc.decisionCriteria || '';
   const economicBuyer = meddicc.economicBuyer || '';
 
+  // Stage-specific guidance
+  const stageGuidance = {
+    intro: `This is an introductory/discovery call. Focus on:
+- Building rapport and understanding their business
+- Uncovering pain points and current processes
+- Qualifying fit and identifying key stakeholders
+- Setting up next conversation (usually a demo)
+Keep tone exploratory and consultative.`,
+    demo: `This is a product demo call. Focus on:
+- Highlighting features that address their specific pain points
+- Showing how Banner solves their problems
+- Getting feedback on what resonated
+- Moving toward evaluation or technical discussion
+Keep tone educational but solution-focused.`,
+    technical: `This is a technical/integration discussion. Focus on:
+- Integration details (APIs, data flows, systems)
+- Implementation timeline and requirements
+- Technical questions and concerns
+- Security, compliance, data migration
+Keep tone detail-oriented and implementation-focused.`,
+    evaluation: `This is an evaluation/decision stage call. Focus on:
+- Business case and ROI justification
+- Decision criteria and evaluation process
+- Champion enablement and internal stakeholder alignment
+- Timeline to decision
+Keep tone strategic and decision-focused.`,
+    proposal: `This is a proposal/commercial discussion. Focus on:
+- Pricing, contract terms, and commercial details
+- Legal/procurement process
+- Timeline to close
+- Final objections or concerns
+Keep tone business-focused and closing-oriented.`
+  };
+
   const systemPrompt = `You are a senior sales professional at Banner, a CapEx management software company for commercial real estate. You write extremely concise, action-oriented follow-up emails.
 
 Banner's sales process stages:
@@ -73,12 +191,16 @@ Banner's sales process stages:
 4. Proposal
 5. Legal/Contract
 
+CURRENT CALL STAGE: ${callStage.toUpperCase()}
+${stageGuidance[callStage]}
+
 YOUR STYLE:
 - Ultra-concise - no fluff, no filler, get to the point
 - Every sentence must add value or be deleted
 - 2-3 short paragraphs maximum
 - Crystal clear on next steps and what you need from them
 - Professional but direct
+- Adapt your tone and content to the current sales stage
 
 FORMAT REQUIREMENTS:
 - Subject line: "Banner Follow Up - [Date]" (use MM/DD format, start with "Subject: ")
@@ -210,11 +332,61 @@ Write the follow-up email now.`;
     }
 
     const data = await response.json();
-    const content = data.content?.[0]?.text || '';
+    let content = data.content?.[0]?.text || '';
+
+    // Auto-generate relevant content and prepare downloads
+    const generatedContent = await autoGenerateContent(account, transcript, callStage);
+
+    if (generatedContent.length > 0) {
+      // Find "Attaching:" section and replace with file names (PDFs will auto-download)
+      const attachingSectionMatch = content.match(/(Attaching:|Sending you:)\s*\n([\s\S]*?)(?=\n\n|Next steps|$)/);
+
+      if (attachingSectionMatch) {
+        // Build new attachment section with just file names
+        let newAttachmentSection = `${attachingSectionMatch[1]}\n`;
+        generatedContent.forEach(doc => {
+          // Only include PDFs (not Gong links)
+          if (doc.pdfFilename) {
+            newAttachmentSection += `• ${doc.pdfFilename}\n`;
+          }
+        });
+
+        // Replace the old attachment section
+        content = content.replace(attachingSectionMatch[0], newAttachmentSection);
+      } else {
+        // No attachment section found, add one before signature/next steps
+        const insertPoint = content.lastIndexOf('\n\nNext steps') !== -1
+          ? content.lastIndexOf('\n\nNext steps')
+          : content.lastIndexOf('\n\nJames');
+
+        if (insertPoint !== -1) {
+          let attachmentSection = '\n\nAttaching:\n';
+          generatedContent.forEach(doc => {
+            if (doc.pdfFilename) {
+              attachmentSection += `• ${doc.pdfFilename}\n`;
+            }
+          });
+          content = content.slice(0, insertPoint) + attachmentSection + content.slice(insertPoint);
+        }
+      }
+    }
+
+    // Append email signature if provided
+    if (emailSignature && emailSignature.trim()) {
+      // Add double line break before signature
+      content = content.trim() + '\n\n' + emailSignature.trim();
+    }
 
     return res.status(200).json({
       success: true,
-      content
+      content,
+      detectedStage: callStage,
+      generatedContent: generatedContent.map(doc => ({
+        name: doc.name,
+        url: doc.url,
+        pdfData: doc.pdfData,
+        pdfFilename: doc.pdfFilename
+      }))
     });
   } catch (error) {
     console.error('Error generating follow-up email:', error);

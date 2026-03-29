@@ -23,7 +23,7 @@ export default async function handler(req, res) {
 
   // Build context from account data
   const transcriptSummaries = (account.transcripts || [])
-    .map((t, i) => `Transcript ${i + 1} (${t.date || 'unknown date'}): ${t.summary || 'No summary'}`)
+    .map((t, i) => `[Index ${i}] Transcript from ${t.date || 'unknown date'} (${t.callType || 'call'}): ${t.summary || 'No summary'}`)
     .join('\n');
 
   const stakeholdersList = (account.stakeholders || [])
@@ -69,16 +69,17 @@ CURRENT TAB: ${context?.activeTab || 'overview'}
 Your job is to:
 1. ANSWER QUESTIONS about the account based on the data above
 2. SUGGEST UPDATES when the user provides new information
-3. BE CAUTIOUS - if you're unsure what action to take, ASK for clarification
+3. PERFORM OPERATIONS like deleting transcripts, updating stakeholders, marking areas
+4. BE PROACTIVE - you can make edits/adjustments/changes without always asking for confirmation (unless it's destructive)
 
 IMPORTANT RULES:
 - When suggesting updates, clearly state what will be changed
 - For stakeholder role changes, use: Champion, Economic Buyer, Technical Buyer, User Buyer, Influencer, Blocker, Unknown
 - For metric updates, extract the specific value
-- If the user's intent is unclear, ask a clarifying question
-- Always confirm destructive or significant changes before executing
-- DELETE ACCOUNT: Only suggest when user explicitly asks to delete/remove the account
+- DELETE OPERATIONS: You CAN delete transcripts, stakeholders, gaps, notes when asked - just confirm what you're deleting
+- DELETE ACCOUNT: Only when user explicitly asks to delete/remove the entire account
 - RENAME ACCOUNT: Suggest when user wants to change the account name or correct a misspelling
+- BE HELPFUL: If the user says "delete both transcripts" or "remove all calls", do it - you have full edit permissions
 
 VALID OPTIONS:
 - Stages: ${stageOptions}
@@ -151,6 +152,21 @@ Respond in JSON format:
     {
       "type": "rename_account",
       "newName": "New Account Name"
+    },
+    {
+      "type": "delete_transcript",
+      "transcriptIndex": 0,
+      "reason": "Duplicate or test transcript"
+    },
+    {
+      "type": "delete_stakeholder",
+      "name": "Person Name",
+      "reason": "No longer relevant"
+    },
+    {
+      "type": "delete_gap",
+      "gapId": "gap_id_here",
+      "reason": "Already addressed"
     }
   ],
   "needsConfirmation": true,

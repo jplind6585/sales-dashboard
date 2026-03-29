@@ -140,12 +140,14 @@ function useAccountsSupabase() {
         source: 'manual'
       };
 
-      await store.addTranscript(selectedAccount.id, transcriptData);
+      // Save transcript first to get its ID
+      const { transcript: savedTranscript } = await store.addTranscript(selectedAccount.id, transcriptData);
 
-      // Merge analysis data into the account
+      // Merge analysis data into the account with transcript ID for source tracking
       const mergedBusinessAreas = mergeBusinessAreas(
         selectedAccount.businessAreas || createEmptyBusinessAreaState(),
-        analysis.businessAreas || {}
+        analysis.businessAreas || {},
+        savedTranscript?.id || null
       );
       const mergedMetrics = mergeMetrics(
         selectedAccount.metrics || {},
@@ -245,12 +247,14 @@ function useAccountsSupabase() {
         source: 'gong'
       };
 
-      await store.addTranscript(selectedAccount.id, transcriptData);
+      // Save transcript first to get its ID
+      const { transcript: savedTranscript } = await store.addTranscript(selectedAccount.id, transcriptData);
 
-      // Merge analysis data
+      // Merge analysis data with transcript ID for source tracking
       const mergedBusinessAreas = mergeBusinessAreas(
         selectedAccount.businessAreas || createEmptyBusinessAreaState(),
-        analysis.businessAreas || {}
+        analysis.businessAreas || {},
+        savedTranscript?.id || null
       );
       const mergedMetrics = mergeMetrics(
         selectedAccount.metrics || {},
@@ -498,6 +502,28 @@ function useAccountsSupabase() {
             await store.updateAccount(selectedAccount.id, { name: action.newName });
             break;
 
+          case 'delete_transcript':
+            if (typeof action.transcriptIndex === 'number') {
+              const updatedTranscripts = [...(selectedAccount.transcripts || [])];
+              updatedTranscripts.splice(action.transcriptIndex, 1);
+              await store.updateAccount(selectedAccount.id, { transcripts: updatedTranscripts });
+            }
+            break;
+
+          case 'delete_stakeholder':
+            const stakeholderToDelete = selectedAccount.stakeholders?.find(
+              s => s?.name && action?.name && safeToLowerCase(s.name) === safeToLowerCase(action.name)
+            );
+            if (stakeholderToDelete) {
+              await store.deleteStakeholder(selectedAccount.id, stakeholderToDelete.id);
+            }
+            break;
+
+          case 'delete_gap':
+            const updatedGaps = (selectedAccount.informationGaps || []).filter(g => g.id !== action.gapId);
+            await store.updateAccount(selectedAccount.id, { informationGaps: updatedGaps });
+            break;
+
           default:
             console.warn('Unknown action type:', action.type);
         }
@@ -735,7 +761,7 @@ function useAccountsLocalStorage() {
         addedAt: new Date().toISOString()
       };
 
-      // Merge all extracted data into the account
+      // Merge all extracted data into the account with transcript ID for source tracking
       const updatedAccount = {
         ...selectedAccount,
         transcripts: [...(selectedAccount.transcripts || []), newTranscript],
@@ -745,7 +771,8 @@ function useAccountsLocalStorage() {
         ),
         businessAreas: mergeBusinessAreas(
           selectedAccount.businessAreas || createEmptyBusinessAreaState(),
-          analysis.businessAreas || {}
+          analysis.businessAreas || {},
+          newTranscript.id
         ),
         metrics: mergeMetrics(
           selectedAccount.metrics || {},
@@ -976,6 +1003,23 @@ function useAccountsLocalStorage() {
 
         case 'rename_account':
           updatedAccount.name = action.newName;
+          break;
+
+        case 'delete_transcript':
+          if (typeof action.transcriptIndex === 'number') {
+            updatedAccount.transcripts = [...(updatedAccount.transcripts || [])];
+            updatedAccount.transcripts.splice(action.transcriptIndex, 1);
+          }
+          break;
+
+        case 'delete_stakeholder':
+          updatedAccount.stakeholders = (updatedAccount.stakeholders || []).filter(
+            s => !(s?.name && action?.name && safeToLowerCase(s.name) === safeToLowerCase(action.name))
+          );
+          break;
+
+        case 'delete_gap':
+          updatedAccount.informationGaps = (updatedAccount.informationGaps || []).filter(g => g.id !== action.gapId);
           break;
 
         default:

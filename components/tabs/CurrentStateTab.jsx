@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Quote, AlertTriangle, Minus, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Quote, AlertTriangle, Minus, X, FileText, Loader2, Download, Copy } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { BUSINESS_AREAS } from '../../lib/constants';
 
@@ -101,13 +101,28 @@ const BusinessAreaCard = ({ area, data, isIrrelevant }) => {
           {data?.currentState?.length > 0 && (
             <div>
               <div className="text-sm font-medium text-gray-700 mb-1">Current State</div>
-              <ul className="space-y-1">
-                {data.currentState.map((item, i) => (
-                  <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                    <span className="text-blue-500 mt-1">•</span>
-                    {item}
-                  </li>
-                ))}
+              <ul className="space-y-2">
+                {data.currentState.map((item, i) => {
+                  // Handle both old format (string) and new format (object with sourceCalls)
+                  const bulletText = typeof item === 'string' ? item : item?.bullet || item;
+                  const sourceCalls = typeof item === 'object' ? item?.sourceCalls : null;
+
+                  return (
+                    <li key={i} className="text-sm text-gray-600">
+                      <div className="flex items-start gap-2">
+                        <span className="text-blue-500 mt-1">•</span>
+                        <div className="flex-1">
+                          <div>{bulletText}</div>
+                          {sourceCalls && sourceCalls.length > 0 && (
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              Confirmed in {sourceCalls.length} call{sourceCalls.length > 1 ? 's' : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -116,13 +131,28 @@ const BusinessAreaCard = ({ area, data, isIrrelevant }) => {
           {data?.opportunities?.length > 0 && (
             <div>
               <div className="text-sm font-medium text-amber-700 mb-1">Opportunities / Pain Points</div>
-              <ul className="space-y-1">
-                {data.opportunities.map((item, i) => (
-                  <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                    <span className="text-amber-500 mt-1">•</span>
-                    {item}
-                  </li>
-                ))}
+              <ul className="space-y-2">
+                {data.opportunities.map((item, i) => {
+                  // Handle both old format (string) and new format (object with sourceCalls)
+                  const bulletText = typeof item === 'string' ? item : item?.bullet || item;
+                  const sourceCalls = typeof item === 'object' ? item?.sourceCalls : null;
+
+                  return (
+                    <li key={i} className="text-sm text-gray-600">
+                      <div className="flex items-start gap-2">
+                        <span className="text-amber-500 mt-1">•</span>
+                        <div className="flex-1">
+                          <div>{bulletText}</div>
+                          {sourceCalls && sourceCalls.length > 0 && (
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              Confirmed in {sourceCalls.length} call{sourceCalls.length > 1 ? 's' : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -157,6 +187,9 @@ const BusinessAreaCard = ({ area, data, isIrrelevant }) => {
 
 const CurrentStateTab = ({ account }) => {
   const businessAreas = account?.businessAreas || {};
+  const [generatingBusinessCase, setGeneratingBusinessCase] = useState(false);
+  const [businessCaseContent, setBusinessCaseContent] = useState(null);
+  const [showBusinessCaseModal, setShowBusinessCaseModal] = useState(false);
 
   // Sort and categorize areas
   const sortedAreas = useMemo(() => {
@@ -209,8 +242,83 @@ const CurrentStateTab = ({ account }) => {
 
   const irrelevantCount = sortedAreas.irrelevantAreas.length;
 
+  const handleGenerateBusinessCase = async () => {
+    setGeneratingBusinessCase(true);
+    try {
+      const response = await fetch('/api/generate-business-case', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate business case');
+      }
+
+      setBusinessCaseContent(data.content);
+      setShowBusinessCaseModal(true);
+    } catch (err) {
+      alert(`Failed to generate business case: ${err.message}`);
+    } finally {
+      setGeneratingBusinessCase(false);
+    }
+  };
+
+  const handleCopyBusinessCase = () => {
+    navigator.clipboard.writeText(businessCaseContent);
+  };
+
+  const handleDownloadBusinessCase = () => {
+    const blob = new Blob([businessCaseContent], { type: 'text/markdown' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${account.name}_Business_Case.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-4">
+      {/* Business Case Modal */}
+      {showBusinessCaseModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Business Case: {account.name}</h2>
+              <button onClick={() => setShowBusinessCaseModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto mb-4 bg-gray-50 p-4 rounded border">
+              <pre className="text-sm whitespace-pre-wrap font-sans">{businessCaseContent}</pre>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={handleCopyBusinessCase}
+                className="flex items-center gap-2 px-4 py-2 border rounded hover:bg-gray-50"
+              >
+                <Copy className="w-4 h-4" />
+                Copy
+              </button>
+              <button
+                onClick={handleDownloadBusinessCase}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                <Download className="w-4 h-4" />
+                Download Markdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Summary */}
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm text-gray-600">
@@ -235,6 +343,27 @@ const CurrentStateTab = ({ account }) => {
             <Minus className="w-3 h-3 text-gray-400" /> None
           </span>
         </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handleGenerateBusinessCase}
+          disabled={generatingBusinessCase || areasWithData === 0}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {generatingBusinessCase ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <FileText className="w-4 h-4" />
+              Generate Business Case
+            </>
+          )}
+        </button>
       </div>
 
       {/* Tip */}

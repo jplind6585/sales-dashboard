@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target } from 'lucide-react';
+import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight } from 'lucide-react';
 import {
   VERTICALS,
   OWNERSHIP_TYPES,
@@ -143,6 +143,239 @@ const SuggestedActions = ({ account }) => {
   );
 };
 
+const SalesJourneyTracker = ({ account }) => {
+  // Define sales journey stages
+  const JOURNEY_STAGES = [
+    { id: 1, name: 'Introduction', key: 'intro' },
+    { id: 2, name: 'Demo', key: 'demo' },
+    { id: 3, name: 'Evaluation', key: 'evaluation' },
+    { id: 4, name: 'Proposal', key: 'proposal' },
+    { id: 5, name: 'Legal/Contract', key: 'contract' }
+  ];
+
+  // Check qualification criteria
+  const transcripts = account?.transcripts || [];
+  const stakeholders = account?.stakeholders || [];
+
+  // 1. Check if at least 1 demo completed
+  const demoCount = transcripts.filter(t =>
+    t.callType === 'demo' ||
+    (t.summary && t.summary.toLowerCase().includes('demo'))
+  ).length;
+  const hasDemoCompleted = demoCount > 0;
+
+  // 2. Check if clearly interested (multiple calls, positive next steps, or champion exists)
+  const hasMultipleCalls = transcripts.length >= 2;
+  const hasNextSteps = transcripts.some(t => t.rawAnalysis?.nextSteps?.length > 0);
+  const hasChampion = stakeholders.some(s => s.role === 'Champion');
+  const isClearlyInterested = hasMultipleCalls || hasNextSteps || hasChampion;
+
+  // 3. Check if confirmed champion exists
+  const hasConfirmedChampion = hasChampion;
+
+  // Determine if we should show full journey
+  const showFullJourney = hasDemoCompleted && isClearlyInterested && hasConfirmedChampion;
+
+  // Determine current stage based on transcript types and account data
+  const determineCurrentStage = () => {
+    const latestTranscript = transcripts[transcripts.length - 1];
+    if (!latestTranscript) return 1;
+
+    // Check for proposal/contract stage
+    const hasProposalDiscussion = transcripts.some(t =>
+      t.callType === 'pricing' ||
+      t.callType === 'negotiation' ||
+      (t.summary && (t.summary.toLowerCase().includes('proposal') || t.summary.toLowerCase().includes('pricing') || t.summary.toLowerCase().includes('contract')))
+    );
+    if (hasProposalDiscussion) return 4;
+
+    // Check for evaluation stage
+    const hasEvaluationCall = transcripts.some(t =>
+      (t.summary && (t.summary.toLowerCase().includes('evaluation') || t.summary.toLowerCase().includes('trial') || t.summary.toLowerCase().includes('technical')))
+    );
+    if (hasEvaluationCall && hasDemoCompleted) return 3;
+
+    // Check for demo stage
+    if (hasDemoCompleted) return 2;
+
+    // Default to intro
+    return 1;
+  };
+
+  const currentStage = determineCurrentStage();
+
+  // Get next immediate steps
+  const getImmediateNextSteps = () => {
+    const steps = [];
+
+    if (!hasDemoCompleted) {
+      steps.push('Schedule product demo with key stakeholders');
+    } else if (!hasConfirmedChampion) {
+      steps.push('Identify and cultivate internal champion');
+    } else if (currentStage === 2) {
+      steps.push('Begin evaluation phase with business process review');
+    } else if (currentStage === 3) {
+      steps.push('Prepare proposal with pricing and implementation plan');
+    }
+
+    // Add generic next steps from latest transcript
+    const latestTranscript = transcripts[transcripts.length - 1];
+    if (latestTranscript?.rawAnalysis?.nextSteps) {
+      steps.push(...latestTranscript.rawAnalysis.nextSteps.slice(0, 2));
+    }
+
+    return steps.slice(0, 3); // Limit to 3 steps
+  };
+
+  if (!showFullJourney) {
+    // Simplified view - show only immediate next steps
+    return (
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-lg border border-blue-100">
+        <div className="mb-3">
+          <h3 className="font-semibold text-gray-900 mb-1">Next Steps</h3>
+          <p className="text-xs text-gray-600">
+            Complete these milestones to unlock full sales journey tracking
+          </p>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          {getImmediateNextSteps().map((step, i) => (
+            <div key={i} className="flex items-start gap-2 bg-white p-3 rounded border border-blue-100">
+              <Circle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+              <span className="text-sm text-gray-700">{step}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Show what's missing */}
+        <div className="border-t border-blue-200 pt-3 mt-3">
+          <div className="text-xs font-medium text-gray-600 mb-2">To unlock full journey:</div>
+          <div className="space-y-1 text-xs">
+            <div className={`flex items-center gap-2 ${hasDemoCompleted ? 'text-green-600' : 'text-gray-500'}`}>
+              {hasDemoCompleted ? <CheckCircle className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+              <span>Complete at least 1 demo</span>
+            </div>
+            <div className={`flex items-center gap-2 ${isClearlyInterested ? 'text-green-600' : 'text-gray-500'}`}>
+              {isClearlyInterested ? <CheckCircle className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+              <span>Show clear interest (multiple calls or next steps)</span>
+            </div>
+            <div className={`flex items-center gap-2 ${hasConfirmedChampion ? 'text-green-600' : 'text-gray-500'}`}>
+              {hasConfirmedChampion ? <CheckCircle className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+              <span>Identify a champion (add to Stakeholders tab)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Full journey view
+  return (
+    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-lg border border-blue-100">
+      <div className="mb-4">
+        <h3 className="font-semibold text-gray-900 mb-1">Sales Journey</h3>
+        <p className="text-xs text-gray-600">Track your progress through the sales process</p>
+      </div>
+
+      {/* Journey Timeline */}
+      <div className="relative">
+        <div className="flex items-center justify-between">
+          {JOURNEY_STAGES.map((stage, index) => {
+            const isCompleted = stage.id < currentStage;
+            const isCurrent = stage.id === currentStage;
+            const isUpcoming = stage.id > currentStage;
+
+            return (
+              <div key={stage.id} className="flex-1 relative">
+                <div className="flex items-center">
+                  {/* Stage Circle */}
+                  <div className="relative flex flex-col items-center">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm z-10 transition-all ${
+                        isCompleted
+                          ? 'bg-green-500 text-white'
+                          : isCurrent
+                          ? 'bg-blue-600 text-white ring-4 ring-blue-200'
+                          : 'bg-gray-200 text-gray-500'
+                      }`}
+                    >
+                      {isCompleted ? (
+                        <CheckCircle className="w-5 h-5" />
+                      ) : (
+                        <span>{stage.id}</span>
+                      )}
+                    </div>
+                    <div className="mt-2 text-center">
+                      <div
+                        className={`text-xs font-medium ${
+                          isCurrent ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-500'
+                        }`}
+                      >
+                        {stage.name}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Connector Line */}
+                  {index < JOURNEY_STAGES.length - 1 && (
+                    <div
+                      className={`flex-1 h-1 mx-2 mb-6 transition-all ${
+                        isCompleted ? 'bg-green-500' : 'bg-gray-200'
+                      }`}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Current Stage Details */}
+      <div className="mt-6 pt-4 border-t border-blue-200">
+        <div className="bg-white p-4 rounded-lg border border-blue-200">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
+            <span className="text-sm font-semibold text-gray-900">
+              Current: {JOURNEY_STAGES[currentStage - 1]?.name}
+            </span>
+          </div>
+
+          {getImmediateNextSteps().length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-gray-600 mb-2">Focus on:</div>
+              {getImmediateNextSteps().map((step, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                  <ChevronRight className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <span>{step}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="bg-white p-3 rounded-lg border border-blue-100">
+          <div className="text-xs text-gray-600">Demos</div>
+          <div className="text-lg font-bold text-blue-600">{demoCount}</div>
+        </div>
+        <div className="bg-white p-3 rounded-lg border border-blue-100">
+          <div className="text-xs text-gray-600">Total Calls</div>
+          <div className="text-lg font-bold text-blue-600">{transcripts.length}</div>
+        </div>
+        <div className="bg-white p-3 rounded-lg border border-blue-100">
+          <div className="text-xs text-gray-600">Champions</div>
+          <div className="text-lg font-bold text-blue-600">
+            {stakeholders.filter(s => s.role === 'Champion').length}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const OverviewTab = ({ account, onUpdateAccount }) => {
   const metrics = account?.metrics || {};
   const businessAreas = account?.businessAreas || {};
@@ -280,6 +513,9 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
 
       {/* Suggested Next Actions */}
       <SuggestedActions account={account} />
+
+      {/* Sales Journey Tracker */}
+      <SalesJourneyTracker account={account} />
 
       {/* Key Metrics */}
       <div className="bg-gray-50 p-4 rounded-lg">

@@ -8,6 +8,24 @@ const BANNER_SOLUTIONS = {
     'Standardize process across owners/regions',
     'Clear visibility into future fee revenue'
   ],
+  cost_tracking: [
+    'Real-time budget vs actual tracking with automatic updates',
+    'Clear visibility into "open to spend" for all projects',
+    'Integration with accounting systems for live data',
+    'Automated variance alerts and forecasting'
+  ],
+  cost_control: [
+    'Proactive budget management with threshold alerts',
+    'Track budget reallocations automatically',
+    'Multi-level approval workflows for over-budget scenarios',
+    'Predictive analytics for cost overrun risk'
+  ],
+  warranties: [
+    'Centralized warranty database with expiration tracking',
+    'Automated reminders before warranty expiration',
+    'Simple claim submission and tracking',
+    'Mobile access to warranty details from the field'
+  ],
   project_tracking: [
     'Single source of truth for all project data',
     'Consistent project updates across owners',
