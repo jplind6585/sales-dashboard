@@ -23,7 +23,7 @@ export default function AuthCallback() {
     // onAuthStateChange fires once the code is exchanged and session is set
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        router.replace('/modules')
+        router.replace('/modules/tasks')
       } else if (event === 'SIGNED_OUT') {
         router.replace('/login')
       }
@@ -32,7 +32,7 @@ export default function AuthCallback() {
     // Fallback: if already signed in (e.g. page refresh), redirect immediately
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        router.replace('/modules')
+        router.replace('/modules/tasks')
       }
     })
 

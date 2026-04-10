@@ -56,7 +56,7 @@ export default function AuthGuard({ children }) {
     if (!user && !isLoginPage) {
       router.push('/login')
     } else if (user && isLoginPage) {
-      router.push('/')
+      router.push('/modules/tasks')
     }
   }, [user, isInitialized, router, shouldBypassAuth])
 

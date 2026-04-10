@@ -16,15 +16,12 @@ export default function Home() {
         const { user } = await getCurrentUser();
 
         if (user) {
-          // Logged in - go to modules
-          router.replace('/modules');
+          router.replace('/modules/tasks');
         } else {
-          // Not logged in - go to login
           router.replace('/login');
         }
       } else {
-        // Auth disabled - go directly to account pipeline
-        router.replace('/modules/account-pipeline');
+        router.replace('/modules/tasks');
       }
     };
 
