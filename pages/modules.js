@@ -18,8 +18,6 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { useAuthStore } from '../stores/useAuthStore';
-import { getCurrentUser } from '../lib/auth';
-import { isSupabaseConfigured } from '../lib/supabase';
 import UserMenu from '../components/auth/UserMenu';
 
 const MODULES = [
@@ -214,37 +212,14 @@ const ModuleCard = ({ module }) => {
 
 export default function ModulesPage() {
   const router = useRouter();
-  const { user, setUser, setIsLoading, getUserName } = useAuthStore();
-  const [isReady, setIsReady] = useState(false);
+  const { user, getUserName } = useAuthStore();
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  useEffect(() => {
-    // Check authentication status
-    const checkAuth = async () => {
-      const useAuth = isSupabaseConfigured() && process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false';
-
-      if (useAuth) {
-        setIsLoading(true);
-        const { user } = await getCurrentUser();
-
-        if (!user) {
-          router.push('/login');
-        } else {
-          setUser(user);
-          setIsReady(true);
-        }
-        setIsLoading(false);
-      } else {
-        // Auth disabled - allow access
-        setIsReady(true);
-      }
-    };
-
-    checkAuth();
-  }, []);
+  // AuthGuard (in _app.js) handles all auth checking and redirects.
+  // This page just reads user from the store — no duplicate auth calls needed.
 
   const handleAiSend = async () => {
     if (!aiInput.trim() || isAiLoading) return;
@@ -282,13 +257,6 @@ export default function ModulesPage() {
     }
   };
 
-  if (!isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
