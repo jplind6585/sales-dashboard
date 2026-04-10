@@ -4,11 +4,13 @@ import * as transcriptsDb from '../lib/db/transcripts'
 import * as stakeholdersDb from '../lib/db/stakeholders'
 import * as gapsDb from '../lib/db/gaps'
 import * as notesDb from '../lib/db/notes'
+import { createTasks, getStageChangeTasks } from '../lib/db/tasks'
 
 export const useAccountStore = create((set, get) => ({
   // State
   accounts: [],
   selectedAccountId: null,
+  userId: null,
   isLoading: false,
   isSaving: false,
   error: null,
@@ -22,7 +24,7 @@ export const useAccountStore = create((set, get) => ({
 
   // Account Actions
   fetchAccounts: async (userId) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null, userId })
     try {
       const { accounts, error } = await accountsDb.getAccounts(userId)
       if (error) throw error
@@ -54,12 +56,29 @@ export const useAccountStore = create((set, get) => ({
   updateAccount: async (accountId, updates) => {
     set({ isSaving: true, error: null })
     try {
+      // Detect stage change before updating
+      const { accounts, userId } = get()
+      const previousStage = accounts.find(a => a.id === accountId)?.stage
+      const newStage = updates.stage
+
       const { account, error } = await accountsDb.updateAccount(accountId, updates)
       if (error) throw error
+
       set(state => ({
         accounts: state.accounts.map(a => a.id === accountId ? { ...a, ...account } : a),
         isSaving: false
       }))
+
+      // Fire stage-change task checklist (non-fatal, runs after state is updated)
+      if (newStage && newStage !== previousStage && userId && process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false') {
+        const taskItems = getStageChangeTasks(newStage, accountId, userId)
+        if (taskItems.length > 0) {
+          createTasks(userId, taskItems).catch(err =>
+            console.error('Stage-change task creation failed:', err)
+          )
+        }
+      }
+
       return { account }
     } catch (error) {
       set({ error: error.message, isSaving: false })
@@ -364,6 +383,7 @@ export const useAccountStore = create((set, get) => ({
   reset: () => set({
     accounts: [],
     selectedAccountId: null,
+    userId: null,
     isLoading: false,
     isSaving: false,
     error: null,

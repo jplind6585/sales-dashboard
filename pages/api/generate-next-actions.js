@@ -1,4 +1,6 @@
 import { STAGES, MEDDICC } from '../../lib/constants';
+import { createTasks } from '../../lib/db/tasks';
+import { getSupabase } from '../../lib/supabase';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -115,6 +117,32 @@ Generate 3-5 prioritized next actions. Return ONLY valid JSON array.`;
       actions = JSON.parse(jsonText);
     } catch {
       actions = [];
+    }
+
+    // Write actions to the tasks table if Supabase is enabled
+    if (process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false' && actions.length > 0) {
+      try {
+        const supabase = getSupabase(req, res)
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (user && account.id) {
+          const priorityMap = { high: 1, medium: 2, low: 3 }
+          const taskItems = actions.map(a => ({
+            title:       a.action,
+            description: a.reason || null,
+            type:        'triggered',
+            source:      'ai_suggestion',
+            sourceId:    account.id,
+            accountId:   account.id,
+            ownerId:     user.id,
+            priority:    priorityMap[a.priority] || 2,
+          }))
+          await createTasks(user.id, taskItems)
+        }
+      } catch (taskErr) {
+        // Non-fatal — log but don't block the response
+        console.error('Failed to persist next actions as tasks:', taskErr)
+      }
     }
 
     return res.status(200).json({

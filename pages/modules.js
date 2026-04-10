@@ -14,7 +14,8 @@ import {
   LineChart,
   MessageCircle,
   Settings,
-  Sparkles
+  Sparkles,
+  CheckSquare
 } from 'lucide-react';
 import { useAuthStore } from '../stores/useAuthStore';
 import { getCurrentUser } from '../lib/auth';
@@ -51,6 +52,16 @@ const MODULES = [
     color: 'from-indigo-500 to-indigo-600',
     available: true,
     status: 'in-progress'
+  },
+  {
+    id: 'tasks',
+    name: 'Tasks',
+    description: 'Your work queue. Triggered tasks, assigned work, recurring checklists, and AI-suggested next actions — all in one place.',
+    icon: CheckSquare,
+    href: '/modules/tasks',
+    color: 'from-blue-500 to-indigo-600',
+    available: true,
+    status: 'live'
   },
   {
     id: 'rfp',
