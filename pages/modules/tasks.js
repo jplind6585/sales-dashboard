@@ -1,15 +1,63 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import {
   CheckCircle2, Circle, Clock, AlertCircle, ChevronDown,
-  Plus, ArrowLeft, Users, Filter, RefreshCw, Zap,
-  Calendar, Building2, BarChart3, X, ChevronRight
+  Plus, Users, Filter, RefreshCw, Zap,
+  Calendar, Building2, BarChart3, X, ChevronRight,
+  LayoutGrid, TrendingUp, Send, ChevronUp
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import UserMenu from '../../components/auth/UserMenu';
 import SmartSuggestionsPanel from '../../components/smart-suggestions/SmartSuggestionsPanel';
+import TaskCompleteModal from '../../components/tasks/TaskCompleteModal';
+
+// ─── Modules quick-nav ────────────────────────────────────────────────────────
+const QUICK_MODULES = [
+  { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-600' },
+  { label: 'Outbound Engine', href: '/modules/outbound-engine', icon: Send, color: 'text-purple-600' },
+  { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
+  { label: 'All Modules', href: '/modules', icon: LayoutGrid, color: 'text-gray-600' },
+]
+
+function ModulesNav({ router }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+      >
+        <LayoutGrid className="w-4 h-4" />
+        Modules
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 w-52 z-20">
+          {QUICK_MODULES.map(m => (
+            <button
+              key={m.href}
+              onClick={() => { router.push(m.href); setOpen(false) }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+            >
+              <m.icon className={`w-4 h-4 ${m.color}`} />
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -425,6 +473,8 @@ export default function TasksPage() {
   const [showNewTask, setShowNewTask] = useState(false)
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
   const [providerToken, setProviderToken] = useState(null)
+  const [completeTask, setCompleteTask] = useState(null) // task being completed via AI modal
+  const demoSeeded = useRef(false)
 
   // Auth check — AuthGuard handles redirects; we just need the user + provider token
   useEffect(() => {
@@ -444,6 +494,28 @@ export default function TasksPage() {
     init()
   }, [])
 
+  const seedDemoTasks = useCallback(async () => {
+    if (demoSeeded.current) return
+    demoSeeded.current = true
+    const demos = [
+      { title: 'Email UDR for an update', description: 'Check in on where they are in the evaluation and see if they need anything from us.', type: 'assigned', priority: 2 },
+      { title: 'Create swim lanes for IRT', description: 'Map out the key stakeholders and workstreams for the IRT deal — who owns what in their buying process.', type: 'assigned', priority: 2 },
+    ]
+    const created = []
+    for (const d of demos) {
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(d),
+        })
+        const json = await res.json()
+        if (json.success) created.push(json.task)
+      } catch {}
+    }
+    if (created.length) setTasks(prev => [...created, ...prev])
+  }, [])
+
   const fetchTasks = useCallback(async () => {
     setLoading(true)
     try {
@@ -453,21 +525,31 @@ export default function TasksPage() {
       ])
       const tasksData = await tasksRes.json()
       const summaryData = await summaryRes.json()
-      if (tasksData.success) setTasks(tasksData.tasks || [])
+      const fetched = tasksData.tasks || []
+      if (tasksData.success) setTasks(fetched)
       if (summaryData.success) setSummary(summaryData.summary || [])
+      // Auto-seed demo tasks if list is empty
+      if (fetched.length === 0 && isSupabaseConfigured()) {
+        seedDemoTasks()
+      }
     } catch (err) {
       console.error('Failed to fetch tasks:', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [seedDemoTasks])
 
   useEffect(() => {
     if (isReady) fetchTasks()
   }, [isReady, fetchTasks])
 
   const handleStatusChange = async (taskId, newStatus) => {
-    // Optimistic update
+    // Completing a task → open AI assistant modal first
+    if (newStatus === 'complete') {
+      const task = tasks.find(t => t.id === taskId)
+      if (task) { setCompleteTask(task); return }
+    }
+    // Optimistic update for non-complete status changes
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -477,8 +559,23 @@ export default function TasksPage() {
       })
     } catch (err) {
       console.error('Failed to update task:', err)
-      fetchTasks() // revert on error
+      fetchTasks()
     }
+  }
+
+  const handleConfirmComplete = async () => {
+    if (!completeTask) return
+    setTasks(prev => prev.map(t => t.id === completeTask.id ? { ...t, status: 'complete' } : t))
+    try {
+      await fetch(`/api/tasks/${completeTask.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'complete' }),
+      })
+    } catch (err) {
+      console.error('Failed to complete task:', err)
+    }
+    setCompleteTask(null)
   }
 
   const handleDelete = async (taskId) => {
@@ -526,20 +623,12 @@ export default function TasksPage() {
       <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/modules')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-blue-600" />
-                  Tasks
-                </h1>
-                <p className="text-sm text-gray-500">Your work queue</p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-blue-600" />
+                <h1 className="text-xl font-bold text-gray-900">Tasks</h1>
               </div>
+              <ModulesNav router={router} />
             </div>
 
             <div className="flex items-center gap-3">
@@ -641,6 +730,15 @@ export default function TasksPage() {
           onClose={() => setShowNewTask(false)}
           onCreate={handleCreate}
           currentUserId={user?.id}
+        />
+      )}
+
+      {/* AI Task Complete Modal */}
+      {completeTask && (
+        <TaskCompleteModal
+          task={completeTask}
+          onComplete={handleConfirmComplete}
+          onClose={() => setCompleteTask(null)}
         />
       )}
     </div>

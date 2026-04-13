@@ -38,13 +38,21 @@ export default function AuthCallback() {
           .eq('id', session.user.id)
           .single()
 
-        if (!profile) {
+        const isNewUser = !profile
+        if (isNewUser) {
           await supabase.from('profiles').insert({
             id: session.user.id,
             email: session.user.email,
             full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
             role: 'rep',
           })
+
+          // Kick off Gong onboarding sync in background (non-blocking)
+          fetch('/api/gong/onboarding-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: session.user.id, email: session.user.email }),
+          }).catch(err => console.warn('Gong onboarding sync failed:', err))
         }
 
         router.replace('/modules/tasks')
