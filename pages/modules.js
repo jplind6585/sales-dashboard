@@ -15,7 +15,8 @@ import {
   MessageCircle,
   Settings,
   Sparkles,
-  CheckSquare
+  CheckSquare,
+  PieChart
 } from 'lucide-react';
 import { useAuthStore } from '../stores/useAuthStore';
 import UserMenu from '../components/auth/UserMenu';
@@ -58,6 +59,16 @@ const MODULES = [
     icon: CheckSquare,
     href: '/modules/tasks',
     color: 'from-blue-500 to-indigo-600',
+    available: true,
+    status: 'live'
+  },
+  {
+    id: 'pipeline-overview',
+    name: 'Pipeline Overview',
+    description: 'Manager view: pipeline funnel, deal health by rep, stale accounts, and team task performance.',
+    icon: PieChart,
+    href: '/modules/pipeline-overview',
+    color: 'from-teal-500 to-teal-600',
     available: true,
     status: 'live'
   },

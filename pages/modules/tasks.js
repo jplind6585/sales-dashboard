@@ -6,9 +6,10 @@ import {
   Calendar, Building2, BarChart3, X, ChevronRight
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { getCurrentUser } from '../../lib/auth';
+import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import UserMenu from '../../components/auth/UserMenu';
+import SmartSuggestionsPanel from '../../components/smart-suggestions/SmartSuggestionsPanel';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -423,6 +424,7 @@ export default function TasksPage() {
   const [view, setView] = useState('rep') // 'rep' | 'manager'
   const [showNewTask, setShowNewTask] = useState(false)
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
+  const [providerToken, setProviderToken] = useState(null)
 
   // Auth check
   useEffect(() => {
@@ -433,6 +435,9 @@ export default function TasksPage() {
         const { user } = await getCurrentUser()
         if (!user) { router.push('/login'); return }
         setUser(user)
+        // Grab Google provider_token for Gmail/Calendar
+        const { session } = await getSession()
+        if (session?.provider_token) setProviderToken(session.provider_token)
         setIsReady(true)
         setIsLoading(false)
       } else {
@@ -494,7 +499,7 @@ export default function TasksPage() {
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, type: 'assigned' }),
+        body: JSON.stringify({ ...data, type: data.type || 'assigned' }),
       })
       const json = await res.json()
       if (json.success) setTasks(prev => [json.task, ...prev])
@@ -613,6 +618,14 @@ export default function TasksPage() {
                 </button>
               ))}
               <span className="ml-auto text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            {/* Smart Suggestions from Gmail + Calendar */}
+            <div className="mb-6">
+              <SmartSuggestionsPanel
+                providerToken={providerToken}
+                onAddTask={handleCreate}
+              />
             </div>
 
             <RepView

@@ -1,8 +1,12 @@
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import LoginButton from '../components/auth/LoginButton'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, AlertTriangle } from 'lucide-react'
 
 export default function LoginPage() {
+  const router = useRouter()
+  const isUnauthorizedDomain = router.query.error === 'unauthorized_domain'
+
   return (
     <>
       <Head>
@@ -21,9 +25,18 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {isUnauthorizedDomain && (
+            <div className="mb-4 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700">
+                Access is restricted to <strong>@withbanner.com</strong> accounts. Please sign in with your Banner email.
+              </p>
+            </div>
+          )}
+
           <div className="border-t border-gray-200 pt-6">
             <p className="text-sm text-gray-500 text-center mb-4">
-              Sign in to continue
+              Sign in with your @withbanner.com account
             </p>
             <LoginButton />
           </div>

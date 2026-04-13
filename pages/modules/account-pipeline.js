@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { Building2, AlertCircle, Sparkles, ArrowLeft } from 'lucide-react';
 
@@ -19,6 +19,7 @@ import ErrorBoundary, { SectionErrorBoundary } from '../../components/common/Err
 import NewAccountModal from '../../components/modals/NewAccountModal';
 import NewTranscriptModal from '../../components/modals/NewTranscriptModal';
 import NewStakeholderModal from '../../components/modals/NewStakeholderModal';
+import DemoBriefModal from '../../components/modals/DemoBriefModal';
 
 // Tab components
 import OverviewTab from '../../components/tabs/OverviewTab';
@@ -52,6 +53,7 @@ export default function Home() {
   const [showNewTranscript, setShowNewTranscript] = useState(false);
   const [showNewStakeholder, setShowNewStakeholder] = useState(false);
   const [showAISidebar, setShowAISidebar] = useState(false);
+  const [showDemoBrief, setShowDemoBrief] = useState(false);
 
   // Form state
   const [accountName, setAccountName] = useState('');
@@ -61,6 +63,15 @@ export default function Home() {
   const [stakeholderTitle, setStakeholderTitle] = useState('');
   const [stakeholderDept, setStakeholderDept] = useState('');
   const [stakeholderRole, setStakeholderRole] = useState('Neutral');
+
+  // Auto-select account from query param (e.g. when navigating from Outbound Engine)
+  useEffect(() => {
+    const { account: accountId } = router.query;
+    if (accountId && accounts.length > 0) {
+      const target = accounts.find(a => a.id === accountId);
+      if (target) setSelectedAccount(target);
+    }
+  }, [router.query, accounts]);
 
   // Modal handlers
   const closeAccountModal = () => {
@@ -198,13 +209,24 @@ export default function Home() {
                         </a>
                       )}
                     </div>
-                    <button
-                      onClick={() => setShowAISidebar(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-sm transition-all"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      AI Assistant
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {['demo', 'solution_validation', 'proposal'].includes(selectedAccount?.stage) && (
+                        <button
+                          onClick={() => setShowDemoBrief(true)}
+                          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm transition-all text-sm"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          Demo Brief
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setShowAISidebar(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-sm transition-all"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        AI Assistant
+                      </button>
+                    </div>
                   </div>
 
                   {/* Tab navigation */}
@@ -273,6 +295,13 @@ export default function Home() {
           setStakeholderRole={setStakeholderRole}
           onClose={closeStakeholderModal}
           onAdd={handleAddStakeholder}
+        />
+      )}
+
+      {showDemoBrief && selectedAccount && (
+        <DemoBriefModal
+          account={selectedAccount}
+          onClose={() => setShowDemoBrief(false)}
         />
       )}
 

@@ -21,8 +21,32 @@ export default function AuthCallback() {
     const supabase = getSupabase()
 
     // onAuthStateChange fires once the code is exchanged and session is set
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
+        // Restrict sign-in to @withbanner.com
+        const email = session.user?.email || ''
+        if (!email.endsWith('@withbanner.com')) {
+          await supabase.auth.signOut()
+          router.replace('/login?error=unauthorized_domain')
+          return
+        }
+
+        // Auto-provision profile if it doesn't exist yet
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', session.user.id)
+          .single()
+
+        if (!profile) {
+          await supabase.from('profiles').insert({
+            id: session.user.id,
+            email: session.user.email,
+            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
+            role: 'rep',
+          })
+        }
+
         router.replace('/modules/tasks')
       } else if (event === 'SIGNED_OUT') {
         router.replace('/login')

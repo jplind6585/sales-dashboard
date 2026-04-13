@@ -33,7 +33,7 @@ import {
   CONTACT_STATUS
 } from '../../lib/outboundConstants';
 
-export default function CompanyDetailModal({ company, onClose, onUpdate }) {
+export default function CompanyDetailModal({ company, onClose, onUpdate, onCreateAccount }) {
   const [activeTab, setActiveTab] = useState('contacts');
   const [showAddContact, setShowAddContact] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
@@ -251,6 +251,23 @@ export default function CompanyDetailModal({ company, onClose, onUpdate }) {
               <div className="text-3xl font-bold text-blue-600">{company.percentProspected || 0}%</div>
               <div className="text-xs text-gray-500">Prospected</div>
             </div>
+            {onCreateAccount && (
+              company.accountId ? (
+                <button
+                  onClick={() => onCreateAccount(company)}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 border border-green-300 rounded-lg hover:bg-green-200 text-sm font-medium whitespace-nowrap"
+                >
+                  View Account →
+                </button>
+              ) : (
+                <button
+                  onClick={() => onCreateAccount(company)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
+                >
+                  + Create Account in Pipeline
+                </button>
+              )
+            )}
             <button
               onClick={onClose}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded"

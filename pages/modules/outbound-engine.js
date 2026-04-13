@@ -15,9 +15,11 @@ import {
 } from 'lucide-react';
 import UserMenu from '../../components/auth/UserMenu';
 import CompanyDetailModal from '../../components/outbound/CompanyDetailModalV2';
-import { getCompanies, calculatePercentProspected } from '../../lib/outboundStorage';
+import { getCompanies, calculatePercentProspected, updateCompany } from '../../lib/outboundStorage';
 import { VERTICALS, STATUS_OPTIONS, PRIORITY_OPTIONS } from '../../lib/outboundConstants';
 import { seedSampleData } from '../../lib/seedOutboundData';
+import { useAccountStore } from '../../stores/useAccountStore';
+import { useAuthStore } from '../../stores/useAuthStore';
 
 export default function OutboundEngine() {
   const router = useRouter();
@@ -29,6 +31,86 @@ export default function OutboundEngine() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortBy, setSortBy] = useState('name'); // name, prospected, contacts, lastContacted
   const [showFilters, setShowFilters] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+
+  const { user } = useAuthStore();
+  const { createAccount, addStakeholder, addNote } = useAccountStore();
+
+  const handleCreateAccount = async (company) => {
+    // If already linked, navigate to the account
+    if (company.accountId) {
+      router.push(`/modules/account-pipeline?account=${company.accountId}`);
+      return;
+    }
+
+    if (!user) {
+      alert('You must be logged in to create an account.');
+      return;
+    }
+
+    setCreatingAccount(true);
+    try {
+      // Map ownership type
+      const ownershipMap = {
+        'Own Only': 'own',
+        'Own & Manage': 'own_manage',
+        'PMC': '3rd_party_manage',
+      };
+
+      const { account, error } = await createAccount(user.id, {
+        name: company.name,
+        url: company.url || null,
+        vertical: company.vertical || null,
+        ownershipType: ownershipMap[company.ownManage] || null,
+        stage: 'intro_scheduled',
+        outbound_company_id: company.id,
+      });
+
+      if (error) throw new Error(error.message || error);
+
+      // Add contacts as stakeholders (non-fatal)
+      const classificationMap = {
+        ATL: 'Sponsor',
+        BTL: 'Influencer',
+        POTENTIAL_CHAMPION: 'Champion',
+      };
+      for (const contact of (company.contacts || [])) {
+        await addStakeholder(account.id, {
+          name: contact.name,
+          title: contact.title || null,
+          department: contact.department || null,
+          role: classificationMap[contact.classification] || 'Influencer',
+          email: contact.email || null,
+          phone: contact.directLine || contact.mobileLine || contact.companyLine || null,
+          linkedin: contact.linkedin || null,
+        }).catch(err => console.error('Stakeholder creation failed:', err));
+      }
+
+      // Add notes (non-fatal)
+      for (const note of (company.notes || [])) {
+        await addNote(account.id, {
+          content: note.content,
+          type: note.type || 'General',
+        }).catch(err => console.error('Note creation failed:', err));
+      }
+
+      // Store the accountId back in localStorage so the button switches to "View Account"
+      updateCompany(company.id, { accountId: account.id });
+      loadCompanies();
+      const updated = getCompanies().find(c => c.id === company.id);
+      if (updated) {
+        setSelectedCompany({ ...updated, percentProspected: calculatePercentProspected(updated) });
+      }
+
+      // Navigate to the new account
+      router.push(`/modules/account-pipeline?account=${account.id}`);
+    } catch (err) {
+      console.error('Create account from outbound failed:', err);
+      alert(`Failed to create account: ${err.message}`);
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
 
   // Load companies on mount
   useEffect(() => {
@@ -385,6 +467,7 @@ export default function OutboundEngine() {
         <CompanyDetailModal
           company={selectedCompany}
           onClose={() => setSelectedCompany(null)}
+          onCreateAccount={handleCreateAccount}
           onUpdate={() => {
             loadCompanies();
             // Reload the selected company with updated data
@@ -397,6 +480,16 @@ export default function OutboundEngine() {
             }
           }}
         />
+      )}
+
+      {/* Creating account overlay */}
+      {creatingAccount && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-[60] flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl px-8 py-6 text-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4" />
+            <p className="text-gray-700 font-medium">Creating account in pipeline...</p>
+          </div>
+        </div>
       )}
     </div>
   );
