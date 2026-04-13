@@ -415,7 +415,7 @@ function ManagerView({ summary, allTasks, onStatusChange, onDelete }) {
 
 export default function TasksPage() {
   const router = useRouter()
-  const { user, setUser, setIsLoading } = useAuthStore()
+  const { user, setUser } = useAuthStore()
 
   const [isReady, setIsReady] = useState(false)
   const [tasks, setTasks] = useState([])
@@ -426,25 +426,22 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
   const [providerToken, setProviderToken] = useState(null)
 
-  // Auth check
+  // Auth check — AuthGuard handles redirects; we just need the user + provider token
   useEffect(() => {
-    const checkAuth = async () => {
+    const init = async () => {
       const useAuth = isSupabaseConfigured() && process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false'
       if (useAuth) {
-        setIsLoading(true)
-        const { user } = await getCurrentUser()
-        if (!user) { router.push('/login'); return }
-        setUser(user)
-        // Grab Google provider_token for Gmail/Calendar
-        const { session } = await getSession()
-        if (session?.provider_token) setProviderToken(session.provider_token)
-        setIsReady(true)
-        setIsLoading(false)
-      } else {
-        setIsReady(true)
+        const { user: currentUser } = await getCurrentUser()
+        if (!currentUser) { router.push('/login'); return }
+        setUser(currentUser)
+        // Grab Google provider_token for Gmail/Calendar (non-blocking)
+        getSession().then(({ session }) => {
+          if (session?.provider_token) setProviderToken(session.provider_token)
+        }).catch(() => {})
       }
+      setIsReady(true)
     }
-    checkAuth()
+    init()
   }, [])
 
   const fetchTasks = useCallback(async () => {
