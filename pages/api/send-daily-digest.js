@@ -1,5 +1,5 @@
 import { createClient } from '../../lib/supabase'
-import { sendSlackMessage, buildRepDigest, buildManagerDigest } from '../../lib/slack'
+import { sendSlackMessage, buildRepDigest, buildManagerDigest, resolveAccountChannel } from '../../lib/slack'
 import { createTasks } from '../../lib/db/tasks'
 
 /**
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     // ── 2. Load all open tasks with account data ─────────────────────────────
     const { data: allTasks, error: tasksError } = await supabase
       .from('tasks')
-      .select('*, accounts(id, name, stage, updated_at)')
+      .select('*, accounts(id, name, stage, updated_at, slack_channel)')
       .in('status', ['open', 'in_progress', 'blocked'])
       .order('priority', { ascending: true })
       .order('due_date', { ascending: true, nullsFirst: false })
@@ -101,8 +101,20 @@ export default async function handler(req, res) {
         flaggedAccount: flagged,
       })
 
-      const { ok, error } = await sendSlackMessage(payload)
-      results.reps.push({ name, tasks: repTasks.length, overdue: overdueTasks.length, slackOk: ok })
+      // Route to the account channel that has the most tasks for this rep,
+      // falling back to SLACK_DEFAULT_CHANNEL
+      const accountChannelCounts = {}
+      for (const task of repTasks) {
+        if (task.accounts) {
+          const ch = resolveAccountChannel(task.accounts)
+          if (ch) accountChannelCounts[ch] = (accountChannelCounts[ch] || 0) + 1
+        }
+      }
+      const primaryChannel = Object.entries(accountChannelCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+        || process.env.SLACK_DEFAULT_CHANNEL
+
+      const { ok, error } = await sendSlackMessage(payload, primaryChannel)
+      results.reps.push({ name, tasks: repTasks.length, overdue: overdueTasks.length, slackOk: ok, channel: primaryChannel })
       if (!ok) results.errors.push(`Rep ${name}: ${error}`)
 
       repSummaries.push({
@@ -133,7 +145,8 @@ export default async function handler(req, res) {
     // ── 5. Manager digest ────────────────────────────────────────────────────
     if (managers.length > 0 && repSummaries.length > 0) {
       const managerPayload = buildManagerDigest(repSummaries)
-      const { ok, error } = await sendSlackMessage(managerPayload)
+      const managerChannel = process.env.SLACK_MANAGER_CHANNEL || process.env.SLACK_DEFAULT_CHANNEL
+      const { ok, error } = await sendSlackMessage(managerPayload, managerChannel)
       results.managerDigest = ok
       if (!ok) results.errors.push(`Manager digest: ${error}`)
     }

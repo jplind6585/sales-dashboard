@@ -431,7 +431,7 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
 
         {/* Stage & Classification */}
         <div className="col-span-2 bg-gray-50 p-4 rounded-lg">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4 mb-3">
             {/* Stage */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
@@ -487,6 +487,19 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Slack Channel */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Slack Channel</label>
+            <input
+              type="text"
+              value={account?.slackChannel || ''}
+              onChange={(e) => handleFieldChange('slackChannel', e.target.value || null)}
+              placeholder={account?.name ? `#${account.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '#account-channel'}
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            />
+            <p className="text-xs text-gray-400 mt-1">Stage changes and task completions post here. Leave blank to auto-derive from account name.</p>
           </div>
         </div>
       </div>

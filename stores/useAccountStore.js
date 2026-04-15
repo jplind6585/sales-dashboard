@@ -77,6 +77,20 @@ export const useAccountStore = create((set, get) => ({
             console.error('Stage-change task creation failed:', err)
           )
         }
+
+        // Fire Slack notification to account's channel
+        const updatedAccount = get().accounts.find(a => a.id === accountId)
+        fetch('/api/slack/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'stage_change',
+            accountName: updatedAccount?.name || 'Unknown Account',
+            slackChannel: updatedAccount?.slackChannel || null,
+            fromStage: previousStage,
+            toStage: newStage,
+          }),
+        }).catch(() => {}) // non-fatal
       }
 
       return { account }
