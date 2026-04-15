@@ -1,5 +1,29 @@
 import { createClient } from '../../lib/supabase'
 
+// Stage-based win probability (%)
+const STAGE_PROBABILITY = {
+  qualifying: 5,
+  intro_scheduled: 10,
+  active_pursuit: 20,
+  demo: 35,
+  solution_validation: 55,
+  proposal: 70,
+  legal: 85,
+  closed_won: 100,
+  closed_lost: 0,
+}
+
+function accountConfidence(account) {
+  const base = STAGE_PROBABILITY[account.stage] ?? 10
+  if (account.stage === 'closed_won') return 100
+  if (account.stage === 'closed_lost') return 0
+  // Bonuses: calls logged (up to +15), stakeholders mapped (up to +10), champion identified (+5)
+  const callBonus = Math.min((account.transcripts?.length || 0) * 3, 15)
+  const stakeholderBonus = Math.min((account.stakeholders?.length || 0) * 2, 10)
+  const championBonus = (account.stakeholders || []).some(s => s.role === 'Champion') ? 5 : 0
+  return Math.min(base + callBonus + stakeholderBonus + championBonus, 95)
+}
+
 /**
  * GET /api/pipeline-overview
  *
@@ -92,15 +116,23 @@ export default async function handler(req, res) {
           })()
         }))
 
+      // Pipeline confidence: average confidence across active (non-closed) accounts
+      const activeAccounts = repAccounts.filter(a => a.stage !== 'closed_won' && a.stage !== 'closed_lost')
+      const repConfidence = activeAccounts.length > 0
+        ? Math.round(activeAccounts.reduce((sum, a) => sum + accountConfidence(a), 0) / activeAccounts.length)
+        : null
+
       return {
         id: rep.id,
         name: rep.full_name || rep.email || 'Rep',
         totalAccounts: repAccounts.length,
+        activeAccounts: activeAccounts.length,
         openTasks: repTasks.length,
         overdueTasks: overdue.length,
         doneThisWeek,
         stageCounts,
         staleAccounts,
+        pipelineConfidence: repConfidence,
       }
     })
 
@@ -110,12 +142,20 @@ export default async function handler(req, res) {
       stageCounts[acct.stage] = (stageCounts[acct.stage] || 0) + 1
     }
 
+    // Overall pipeline confidence
+    const activeAccounts = accounts.filter(a => a.stage !== 'closed_won' && a.stage !== 'closed_lost')
+    const overallConfidence = activeAccounts.length > 0
+      ? Math.round(activeAccounts.reduce((sum, a) => sum + accountConfidence(a), 0) / activeAccounts.length)
+      : null
+
     return res.status(200).json({
       repSummaries,
       stageCounts,
       totalAccounts: accounts.length,
       totalOpenTasks: (openTasks || []).length,
       totalOverdue: (openTasks || []).filter(t => t.due_date && t.due_date < today).length,
+      pipelineConfidence: overallConfidence,
+      activeAccounts: activeAccounts.length,
     })
   } catch (err) {
     console.error('Pipeline overview error:', err)

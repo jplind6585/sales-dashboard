@@ -10,12 +10,36 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
+  // Slack settings
+  const [slackUserId, setSlackUserId] = useState('')
+  const [slackSaving, setSlackSaving] = useState(false)
+  const [slackSaved, setSlackSaved] = useState(false)
+
   // Load settings on mount
   useEffect(() => {
     const settings = getUserSettings()
     setEmailSignature(settings.emailSignature || '')
     setAutoAppend(settings.emailPreferences?.autoAppendSignature !== false)
+    // Load Slack user ID from profile
+    fetch('/api/me')
+      .then(r => r.json())
+      .then(d => { if (d.profile?.slack_user_id) setSlackUserId(d.profile.slack_user_id) })
+      .catch(() => {})
   }, [])
+
+  const handleSlackSave = async () => {
+    setSlackSaving(true)
+    try {
+      await fetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slack_user_id: slackUserId.trim() || null }),
+      })
+      setSlackSaved(true)
+      setTimeout(() => setSlackSaved(false), 3000)
+    } catch {}
+    finally { setSlackSaving(false) }
+  }
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -156,12 +180,44 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Additional Settings Sections (Future) */}
+        {/* Slack Settings */}
         <div className="bg-white rounded-xl shadow-sm border p-6 mt-6">
-          <h2 className="text-lg font-semibold mb-4">More Settings</h2>
-          <p className="text-sm text-gray-600">
-            Additional settings like notifications, integrations, and preferences will be added here.
+          <h2 className="text-lg font-semibold mb-2">Slack</h2>
+          <p className="text-sm text-gray-600 mb-6">
+            Connect your Slack account to receive your daily task digest as a direct message.
           </p>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Slack Member ID
+            </label>
+            <p className="text-sm text-gray-500 mb-2">
+              Find it in Slack: click your profile photo → 3 dots (•••) → <strong>Copy member ID</strong>. Looks like <code className="bg-gray-100 px-1 rounded">U01234ABCDE</code>.
+            </p>
+            <input
+              type="text"
+              value={slackUserId}
+              onChange={e => setSlackUserId(e.target.value)}
+              placeholder="U01234ABCDE"
+              className="w-full max-w-sm border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSlackSave}
+              disabled={slackSaving}
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {slackSaving ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : slackSaved ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {slackSaved ? 'Saved!' : 'Save Slack ID'}
+            </button>
+            {slackSaved && <span className="text-sm text-green-600 font-medium">Daily digests will now DM you directly.</span>}
+          </div>
         </div>
       </div>
     </div>

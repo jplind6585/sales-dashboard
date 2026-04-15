@@ -46,7 +46,7 @@ export default async function handler(req, res) {
     // ── 1. Load all profiles ─────────────────────────────────────────────────
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role')
+      .select('id, full_name, email, role, slack_user_id')
 
     if (profilesError) throw profilesError
 
@@ -101,17 +101,21 @@ export default async function handler(req, res) {
         flaggedAccount: flagged,
       })
 
-      // Route to the account channel that has the most tasks for this rep,
-      // falling back to SLACK_DEFAULT_CHANNEL
-      const accountChannelCounts = {}
-      for (const task of repTasks) {
-        if (task.accounts) {
-          const ch = resolveAccountChannel(task.accounts)
-          if (ch) accountChannelCounts[ch] = (accountChannelCounts[ch] || 0) + 1
+      // Route: rep's Slack DM (if slack_user_id set) → most-active account channel → default
+      let primaryChannel
+      if (rep.slack_user_id) {
+        primaryChannel = rep.slack_user_id // Slack accepts user IDs as DM channel
+      } else {
+        const accountChannelCounts = {}
+        for (const task of repTasks) {
+          if (task.accounts) {
+            const ch = resolveAccountChannel(task.accounts)
+            if (ch) accountChannelCounts[ch] = (accountChannelCounts[ch] || 0) + 1
+          }
         }
+        primaryChannel = Object.entries(accountChannelCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+          || process.env.SLACK_DEFAULT_CHANNEL
       }
-      const primaryChannel = Object.entries(accountChannelCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
-        || process.env.SLACK_DEFAULT_CHANNEL
 
       const { ok, error } = await sendSlackMessage(payload, primaryChannel)
       results.reps.push({ name, tasks: repTasks.length, overdue: overdueTasks.length, slackOk: ok, channel: primaryChannel })

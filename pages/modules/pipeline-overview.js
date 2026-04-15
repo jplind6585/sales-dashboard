@@ -102,7 +102,7 @@ export default function PipelineOverview() {
     )
   }
 
-  const { repSummaries = [], stageCounts = {}, totalAccounts, totalOpenTasks, totalOverdue } = data || {}
+  const { repSummaries = [], stageCounts = {}, totalAccounts, totalOpenTasks, totalOverdue, pipelineConfidence, activeAccounts } = data || {}
 
   // Pipeline funnel — ordered by stage
   const orderedStages = [
@@ -150,7 +150,21 @@ export default function PipelineOverview() {
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {/* Top stat cards */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
+          {/* Pipeline Confidence — hero card */}
+          <div className="col-span-1 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg shadow p-4 text-white">
+            <div className="text-sm text-blue-200 mb-1">Pipeline Confidence</div>
+            <div className="text-4xl font-bold">
+              {pipelineConfidence != null ? `${pipelineConfidence}%` : '—'}
+            </div>
+            <div className="text-xs text-blue-200 mt-1">{activeAccounts ?? 0} active accounts</div>
+            <div className="mt-3 h-2 bg-blue-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-white rounded-full transition-all"
+                style={{ width: `${pipelineConfidence ?? 0}%` }}
+              />
+            </div>
+          </div>
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-sm text-gray-500 mb-1">Total Accounts</div>
             <div className="text-3xl font-bold text-gray-800">{totalAccounts}</div>
@@ -268,7 +282,13 @@ export default function PipelineOverview() {
                         {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </div>
                       <div className="flex-1 font-medium text-gray-800">{rep.name}</div>
-                      <div className="grid grid-cols-4 gap-8 text-sm text-center">
+                      <div className="grid grid-cols-5 gap-8 text-sm text-center">
+                        <div>
+                          <div className="text-xs text-gray-400 mb-0.5">Confidence</div>
+                          <div className={`font-semibold ${rep.pipelineConfidence >= 50 ? 'text-green-600' : rep.pipelineConfidence >= 25 ? 'text-yellow-600' : 'text-gray-700'}`}>
+                            {rep.pipelineConfidence != null ? `${rep.pipelineConfidence}%` : '—'}
+                          </div>
+                        </div>
                         <div>
                           <div className="text-xs text-gray-400 mb-0.5">Accounts</div>
                           <div className="font-semibold">{rep.totalAccounts}</div>
