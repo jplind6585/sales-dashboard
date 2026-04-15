@@ -87,10 +87,10 @@ _Last updated: 2026-04-15 (afternoon)_
 
 ## 🐛 Known Bugs
 
-| Bug | Notes |
-|---|---|
-| **Create task does nothing** | New task modal submits but task is not created / not appearing |
-| **Active/All/Complete filter broken** | Filter buttons don't actually filter the task list |
+| Bug | Status | Notes |
+|---|---|---|
+| **Create task does nothing** | ✅ Fixed 2026-04-15 | Root cause: server-side Supabase client used browser client with no session, so all task API routes returned 401 |
+| **Active/All/Complete filter** | ✅ Fixed 2026-04-15 | Was a symptom of the auth bug — no tasks loaded = nothing to filter |
 
 ---
 
@@ -128,6 +128,9 @@ _Last updated: 2026-04-15 (afternoon)_
 - CSV import
 - AI outreach content generation (email sequences, LinkedIn messages)
 - Contact enrichment (Apollo, ZoomInfo)
+
+### UAT & Training
+- **Full UAT suite per module** — build a structured user acceptance test for each module covering every feature. Serves two purposes: (1) regression testing when we ship new features, (2) becomes the training doc for new reps onboarding to the tool. Modules to cover: Tasks, Account Pipeline (all tabs), Outbound Engine, Pipeline Overview, Settings, Slack integration, Gong sync, Gmail/Calendar suggestions.
 
 ### Lower Priority
 - **Slack → app commands** — type `/update UDR` in Slack and get a digest of that account back
