@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Mail, Calendar, RefreshCw, Plus, X, ChevronDown, ChevronRight,
-  AlertCircle, Clock, Loader2, CheckCircle2, ExternalLink
+  AlertCircle, Clock, Loader2, CheckCircle2, ExternalLink, Info
 } from 'lucide-react'
 
 const CATEGORY_COLORS = {
@@ -35,8 +35,8 @@ function formatEventTime(isoString) {
  * SmartSuggestionsPanel
  *
  * Shows Gmail-derived task suggestions and upcoming calendar meetings.
- * User clicks "Sync" to pull fresh data, then can add suggestions as tasks
- * or add prep tasks for upcoming meetings.
+ * Auto-syncs on mount when a provider token is available.
+ * Clicking a suggestion expands a detail panel with reason + source context.
  *
  * Props:
  * - providerToken: string — Google OAuth token from Supabase session
@@ -54,6 +54,9 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
   const [dismissedEmails, setDismissedEmails] = useState(new Set())
   const [addedEmails, setAddedEmails] = useState(new Set())
   const [addedCalendar, setAddedCalendar] = useState(new Set())
+  const [expandedEmailIndex, setExpandedEmailIndex] = useState(null)
+
+  const hasSyncedRef = useRef(false)
 
   const sync = async () => {
     if (!providerToken) {
@@ -90,12 +93,22 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
       setDismissedEmails(new Set())
       setAddedEmails(new Set())
       setAddedCalendar(new Set())
+      setExpandedEmailIndex(null)
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
   }
+
+  // Auto-sync on mount once provider token is available
+  useEffect(() => {
+    if (providerToken && !hasSyncedRef.current) {
+      hasSyncedRef.current = true
+      setOpen(true)
+      sync()
+    }
+  }, [providerToken])
 
   const handleAddEmailTask = (suggestion) => {
     onAddTask({
@@ -228,53 +241,97 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                 <div className="space-y-2">
                   {visibleEmailSuggestions.map((s, i) => {
                     const added = addedEmails.has(s.title)
+                    const isExpanded = expandedEmailIndex === i
                     return (
                       <div
                         key={i}
-                        className={`flex items-start gap-2 p-3 rounded-lg border transition-colors ${
+                        className={`rounded-lg border transition-colors ${
                           added ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 hover:border-blue-200'
                         }`}
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${added ? 'text-green-700 line-through' : 'text-gray-800'}`}>
-                            {s.title}
-                          </p>
-                          <p className="text-xs text-gray-400 truncate mt-0.5">{s.emailSubject}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            {s.category && (
-                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[s.category] || 'bg-gray-100 text-gray-600'}`}>
-                                {s.category.replace('_', ' ')}
-                              </span>
-                            )}
-                            {s.priority && (
-                              <span className={`text-xs font-medium ${PRIORITY_COLORS[s.priority]}`}>
-                                {s.priority}
-                              </span>
+                        {/* Main row */}
+                        <div
+                          className="flex items-start gap-2 p-3 cursor-pointer"
+                          onClick={() => !added && setExpandedEmailIndex(isExpanded ? null : i)}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium ${added ? 'text-green-700 line-through' : 'text-gray-800'}`}>
+                              {s.title}
+                            </p>
+                            <p className="text-xs text-gray-400 truncate mt-0.5">{s.emailSubject}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              {s.category && (
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[s.category] || 'bg-gray-100 text-gray-600'}`}>
+                                  {s.category.replace('_', ' ')}
+                                </span>
+                              )}
+                              {s.priority && (
+                                <span className={`text-xs font-medium ${PRIORITY_COLORS[s.priority]}`}>
+                                  {s.priority}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {added ? (
+                              <CheckCircle2 className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleAddEmailTask(s) }}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                                  title="Add as task"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setDismissedEmails(prev => new Set([...prev, s.title])) }}
+                                  className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
+                                  title="Dismiss"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setExpandedEmailIndex(isExpanded ? null : i) }}
+                                  className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
+                                  title="Show context"
+                                >
+                                  <Info className="w-3.5 h-3.5" />
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {added ? (
-                            <CheckCircle2 className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => handleAddEmailTask(s)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                                title="Add as task"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setDismissedEmails(prev => new Set([...prev, s.title]))}
-                                className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
-                                title="Dismiss"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
+
+                        {/* Expanded context panel */}
+                        {isExpanded && !added && (
+                          <div className="mx-3 mb-3 p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs space-y-2">
+                            {s.reason && (
+                              <div>
+                                <p className="font-semibold text-blue-800 mb-0.5">Why surfaced</p>
+                                <p className="text-blue-700 leading-relaxed">{s.reason}</p>
+                              </div>
+                            )}
+                            {s.emailSubject && (
+                              <div>
+                                <p className="font-semibold text-blue-800 mb-0.5">Source email</p>
+                                <p className="text-blue-700">{s.emailSubject}</p>
+                              </div>
+                            )}
+                            {s.sender && (
+                              <div>
+                                <p className="font-semibold text-blue-800 mb-0.5">From</p>
+                                <p className="text-blue-700">{s.sender}</p>
+                              </div>
+                            )}
+                            {s.context && (
+                              <div>
+                                <p className="font-semibold text-blue-800 mb-0.5">Context</p>
+                                <p className="text-blue-700 leading-relaxed">{s.context}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}

@@ -105,17 +105,18 @@ function isOverdue(task) {
 
 // ─── New Task Modal ───────────────────────────────────────────────────────────
 
-function NewTaskModal({ onClose, onCreate, currentUserId }) {
+function NewTaskModal({ onClose, onCreate, currentUserId, users }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState(2)
+  const [ownerId, setOwnerId] = useState(currentUserId || '')
   const [saving, setSaving] = useState(false)
 
   const handleCreate = async () => {
     if (!title.trim()) return
     setSaving(true)
-    await onCreate({ title: title.trim(), description: description.trim() || null, dueDate: dueDate || null, priority })
+    await onCreate({ title: title.trim(), description: description.trim() || null, dueDate: dueDate || null, priority, ownerId: ownerId || currentUserId })
     setSaving(false)
     onClose()
   }
@@ -175,6 +176,22 @@ function NewTaskModal({ onClose, onCreate, currentUserId }) {
               </select>
             </div>
           </div>
+          {users && users.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assign to</label>
+              <select
+                value={ownerId}
+                onChange={e => setOwnerId(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name || u.email}{u.id === currentUserId ? ' (you)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 p-6 border-t">
           <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">
@@ -474,6 +491,7 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
   const [providerToken, setProviderToken] = useState(null)
   const [completeTask, setCompleteTask] = useState(null) // task being completed via AI modal
+  const [users, setUsers] = useState([])
   const demoSeeded = useRef(false)
 
   // Auth check — AuthGuard handles redirects; we just need the user + provider token
@@ -488,6 +506,8 @@ export default function TasksPage() {
         getSession().then(({ session }) => {
           if (session?.provider_token) setProviderToken(session.provider_token)
         }).catch(() => {})
+        // Fetch team members for assign-to dropdown (non-blocking)
+        fetch('/api/users').then(r => r.json()).then(d => { if (d.users) setUsers(d.users) }).catch(() => {})
       }
       setIsReady(true)
     }
@@ -744,6 +764,7 @@ export default function TasksPage() {
           onClose={() => setShowNewTask(false)}
           onCreate={handleCreate}
           currentUserId={user?.id}
+          users={users}
         />
       )}
 
