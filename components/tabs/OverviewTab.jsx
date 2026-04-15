@@ -496,7 +496,7 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
               type="text"
               value={account?.slackChannel || ''}
               onChange={(e) => handleFieldChange('slackChannel', e.target.value || null)}
-              placeholder={account?.name ? `#${account.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '#account-channel'}
+              placeholder={account?.name ? `#pursuit_${account.name.toLowerCase().replace(/[^a-z0-9]/g, '')}` : '#pursuit_accountname'}
               className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
             />
             <p className="text-xs text-gray-400 mt-1">Stage changes and task completions post here. Leave blank to auto-derive from account name.</p>
