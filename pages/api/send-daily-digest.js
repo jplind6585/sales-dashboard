@@ -19,13 +19,23 @@ import { createTasks } from '../../lib/db/tasks'
  * preventing random callers from triggering it.
  */
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  // Simple shared-secret auth for cron/external callers
-  const secret = process.env.DIGEST_SECRET
-  if (secret && req.headers['x-digest-secret'] !== secret) {
+  // Accept auth from:
+  // 1. Vercel cron jobs: Authorization: Bearer {CRON_SECRET}
+  // 2. Manual callers: x-digest-secret: {DIGEST_SECRET}
+  const cronSecret = process.env.CRON_SECRET
+  const digestSecret = process.env.DIGEST_SECRET
+  const authHeader = req.headers['authorization']
+  const digestHeader = req.headers['x-digest-secret']
+
+  const validCron = cronSecret && authHeader === `Bearer ${cronSecret}`
+  const validManual = digestSecret && digestHeader === digestSecret
+  const noSecretsConfigured = !cronSecret && !digestSecret
+
+  if (!validCron && !validManual && !noSecretsConfigured) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
