@@ -1,6 +1,6 @@
 # Sales Dashboard — Roadmap
 
-_Last updated: 2026-04-15_
+_Last updated: 2026-04-15 (afternoon)_
 
 ---
 
@@ -77,43 +77,63 @@ _Last updated: 2026-04-15_
 
 | Item | Action needed |
 |---|---|
-| **Slack SQL migration** | Run in Supabase SQL Editor: `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS slack_channel TEXT;` |
+| **Slack channel migration** | Run in Supabase SQL Editor: `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS slack_channel TEXT;` |
+| **Slack user ID migration** | Run in Supabase SQL Editor: `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slack_user_id TEXT;` |
 | **Supabase Google OAuth scopes** | Supabase dashboard → Authentication → Providers → Google → Additional OAuth Scopes → add: `https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly` |
 | **Existing users re-auth** | Reps need to sign out and back in to grant Gmail + Calendar permissions |
 | **Gong env vars** | Add `GONG_ACCESS_KEY` and `GONG_SECRET_KEY` to Vercel for call import + onboarding sync |
 
 ---
 
+## 🐛 Known Bugs
+
+| Bug | Notes |
+|---|---|
+| **Create task does nothing** | New task modal submits but task is not created / not appearing |
+| **Active/All/Complete filter broken** | Filter buttons don't actually filter the task list |
+
+---
+
 ## 🗂 Backlog
 
-### High Priority
-- **Rep Slack DMs for daily digest** — instead of routing to the account channel, send each rep's digest directly to their Slack DM (needs a `slack_user_id` field on profiles)
-- **Task completions → account Slack channel** — currently only stage changes fire to account channels; task completions should also route there
-- **Pipeline confidence / forecast number** — weighted probability per account based on deal health, stage, and activity recency for a CEO-level forecast view
+### Tasks — High Priority
+- **"Work in Claude" button on tasks** — each task gets a button that opens a persistent Claude chat scoped to that task. The chat link is saved to the task so you can close it and pick it back up later exactly where you left off. Ideally one chat per account (not per task) so context builds across tasks for the same deal. Need to think through context window limits when accounts have lots of transcripts/decks/content.
+- **Cross-assign tasks** — any user (rep or manager) should be able to create a task assigned to anyone else. Currently tasks only assign to self. Add an "Assign to" dropdown in the New Task modal.
+- **Smart Suggestions auto-refresh** — currently requires manual re-sync every page visit. Should refresh automatically on page load (not just on mount if already cached).
+- **Smart Suggestions expand on click** — clicking a suggestion should expand a small panel below it showing the reason it was surfaced, source (email subject / calendar event / Gong call), and any relevant context.
+- **Smart Suggestions from Gong** — currently only pulls from Gmail + Google Calendar. Should also surface action items from recent Gong call transcripts (next steps, follow-ups, commitments made).
+- **Stage-triggered task checklists** — when specific events happen, auto-create a checklist of tasks. Example: booking an intro meeting should auto-create: "Add to sales-ops channel", "Update pursuit channel", "Update HubSpot deal (AE, value, notes)", "Send [link] with deal details". Need to define the full trigger → checklist mapping with James/Mark.
 
-### Medium Priority
-- **Email send from app** — draft follow-up emails in the AI window and send directly via Gmail API (currently drafts only, user has to copy/paste)
-- **Rep performance dashboard** — week-over-week task completion rate, call volume, deal velocity per rep
+### Tasks — Medium Priority
+- **Slack DMs for daily digest** ✅ built, needs Supabase SQL migration + reps to set their Member ID in Settings
+- **Pipeline confidence score** ✅ built, live in Pipeline Overview
+
+### Account Pipeline — High Priority
+- **HubSpot sync** — push stage changes and notes to HubSpot CRM (came up in task checklist discussion — reps currently have to update manually)
+
+### Account Pipeline — Medium Priority
+- **Email send from app** — draft follow-up emails in the AI window and send directly via Gmail API (currently drafts only)
 - **Account activity feed** — unified timeline of calls, notes, stage changes, and tasks per account
-- **Global search** — search across accounts, tasks, transcripts, stakeholders
-- **HubSpot sync** — push stage changes and notes to HubSpot CRM
 - **Gong upcoming calls** — surface next scheduled calls from Gong alongside past transcripts
 
-### Lower Priority
-- **Slack → app commands** — type `/update UDR` in Slack and get a digest of that account back
-- **Mobile-optimized task view** — current UI is desktop-first
-- **Email digest** — alternative to Slack for reps who prefer email
-- **Content module expansion** — more templates, saved outputs, version history
-- **Analysis caching** — hash transcripts and cache results so identical uploads don't re-hit the API
-- **Email learning dashboard** — UI to view/override what the email style learning system has picked up
+### Platform
+- **Global search** — search across accounts, tasks, transcripts, stakeholders
+- **Rep performance dashboard** — week-over-week task completion rate, call volume, deal velocity per rep
 
-### Outbound Engine Phase 2 (Paused)
+### Outbound Engine Phase 2
+- Build this out further (to be scoped with James/Mark)
 - Add/edit company modal
 - Edit contact details inline
 - Bulk operations (delete, export)
 - CSV import
 - AI outreach content generation (email sequences, LinkedIn messages)
 - Contact enrichment (Apollo, ZoomInfo)
+
+### Lower Priority
+- **Slack → app commands** — type `/update UDR` in Slack and get a digest of that account back
+- **Mobile-optimized task view** — current UI is desktop-first
+- **Content module expansion** — more templates, saved outputs, version history
+- **Analysis caching** — hash transcripts so identical uploads don't re-hit the API
 
 ---
 
