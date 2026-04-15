@@ -1,5 +1,5 @@
 import { getTask, updateTask, deleteTask } from '../../../lib/db/tasks'
-import { getSupabase } from '../../../lib/supabase'
+import { createServerSupabaseClient } from '../../../lib/supabase'
 
 export default async function handler(req, res) {
   const { id } = req.query
@@ -8,8 +8,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Task ID is required' })
   }
 
-  // Resolve the current user
-  const supabase = getSupabase(req, res)
+  // Resolve the current user from the session cookie
+  const supabase = createServerSupabaseClient(req, res)
   const { data: { user } } = await supabase.auth.getUser()
   const currentUser = user || (process.env.NEXT_PUBLIC_USE_SUPABASE === 'false' ? { id: 'local-user' } : null)
 

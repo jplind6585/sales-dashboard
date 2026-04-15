@@ -1,9 +1,9 @@
 import { getTasks, createTask } from '../../lib/db/tasks'
-import { getSupabase } from '../../lib/supabase'
+import { createServerSupabaseClient } from '../../lib/supabase'
 
 export default async function handler(req, res) {
-  // Resolve the current user from the session
-  const supabase = getSupabase(req, res)
+  // Resolve the current user from the session cookie
+  const supabase = createServerSupabaseClient(req, res)
   const { data: { user }, error: authError } = await supabase.auth.getUser()
 
   // When Supabase auth is disabled (NEXT_PUBLIC_USE_SUPABASE=false), stub a user
