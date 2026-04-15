@@ -572,6 +572,20 @@ export default function TasksPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'complete' }),
       })
+      // Fire Slack notification to account's channel (non-blocking)
+      if (completeTask.account?.name) {
+        fetch('/api/slack/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'task_complete',
+            accountName: completeTask.account.name,
+            slackChannel: completeTask.account.slackChannel || null,
+            taskTitle: completeTask.title,
+            repName: user?.email?.split('@')[0] || null,
+          }),
+        }).catch(() => {})
+      }
     } catch (err) {
       console.error('Failed to complete task:', err)
     }
