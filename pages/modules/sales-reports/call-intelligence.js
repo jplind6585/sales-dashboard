@@ -169,8 +169,10 @@ export default function CallIntelligence() {
     } catch { /* silent */ }
   }
 
-  async function runAnalysis(limit = null) {
-    let unanalyzed = calls.filter(c => !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
+  async function runAnalysis(limit = null, forceReanalyze = false) {
+    let unanalyzed = forceReanalyze
+      ? calls.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon' && c.analysis?.icp_score == null)
+      : calls.filter(c => !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
     if (limit) unanalyzed = unanalyzed.slice(0, limit)
     if (!unanalyzed.length || analyzing) return
     setAnalyzing(true)
@@ -294,6 +296,7 @@ export default function CallIntelligence() {
   const activeCalls = calls.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
   const analyzedCalls = activeCalls.filter(c => c.analysis)
   const unanalyzedCount = activeCalls.filter(c => !c.analysis).length
+  const missingScoresCount = analyzedCalls.filter(c => c.analysis?.icp_score == null).length
 
   const goneColdDeals = useMemo(() => {
     if (!calls.some(c => c.hubspotDealId)) return []
@@ -414,7 +417,7 @@ export default function CallIntelligence() {
           </div>
         </div>
       )}
-      {enrichStats && !enriching && (
+      {enrichStats && !enriching && enrichStats.withDeals > 0 && (
         <div className="bg-green-50 border-b border-green-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-green-800">
@@ -422,6 +425,28 @@ export default function CallIntelligence() {
               <span>HubSpot check complete — {enrichStats.withDeals} calls linked to deals{enrichStats.closedWon > 0 ? `, ${enrichStats.closedWon} Closed Won hidden` : ''}</span>
             </div>
             <button onClick={() => setEnrichStats(null)} className="text-green-600 text-sm">✕</button>
+          </div>
+        </div>
+      )}
+      {enrichStats && !enriching && enrichStats.withDeals === 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 text-sm text-amber-800 mb-1">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>HubSpot check ran but no deals were found in Gong's CRM context. The Gong-HubSpot integration may return context in an unexpected format.</span>
+              </div>
+              {enrichStats.debugContext != null && (
+                <details className="mt-1">
+                  <summary className="text-xs text-amber-600 cursor-pointer hover:text-amber-800">Show raw context from Gong (share with developer)</summary>
+                  <pre className="mt-1 text-xs bg-amber-100 rounded p-2 overflow-x-auto max-h-32 text-amber-900">{JSON.stringify(enrichStats.debugContext, null, 2)}</pre>
+                </details>
+              )}
+              {enrichStats.debugContext === null && (
+                <p className="text-xs text-amber-600">No context field returned — Gong may not be passing CRM data on these calls.</p>
+              )}
+            </div>
+            <button onClick={() => setEnrichStats(null)} className="text-amber-600 ml-4 text-sm shrink-0">✕</button>
           </div>
         </div>
       )}
@@ -461,6 +486,34 @@ export default function CallIntelligence() {
           </div>
         </div>
       )}
+      {/* Stale analysis — missing ICP/discovery scores */}
+      {!analyzing && !loadingCalls && unanalyzedCount === 0 && missingScoresCount > 0 && (
+        <div className="bg-violet-50 border-b border-violet-200 px-6 py-3 shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-violet-800">
+              <RefreshCw className="w-4 h-4 shrink-0" />
+              <span>{missingScoresCount} calls need re-analysis to add ICP fit + discovery scores</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {missingScoresCount > 20 && (
+                <button
+                  onClick={() => runAnalysis(20, true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-violet-400 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50"
+                >
+                  <Zap className="w-3.5 h-3.5" /> Update 20
+                </button>
+              )}
+              <button
+                onClick={() => runAnalysis(null, true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700"
+              >
+                <Zap className="w-3.5 h-3.5" /> Update All ({missingScoresCount})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loadError && (
         <div className="bg-red-50 border-b border-red-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">

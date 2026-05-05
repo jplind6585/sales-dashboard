@@ -16,18 +16,31 @@ const GONG_API_BASE = 'https://api.gong.io';
 
 function extractHubSpotInfo(context) {
   const systems = Array.isArray(context) ? context : (context ? [context] : []);
+
   for (const sys of systems) {
     if (!sys || typeof sys !== 'object') continue;
-    if (!(sys.system || '').toLowerCase().includes('hubspot')) continue;
-    for (const obj of (sys.objects || [])) {
-      const objType = (obj.objectType || '').toLowerCase();
-      if (!objType.includes('deal')) continue;
-      const dealId = String(obj.objectId || obj.id || '');
-      if (!dealId) continue;
+
+    const sysName = (sys.system || sys.systemType || sys.crm || '').toLowerCase();
+    // Accept HubSpot regardless of case, or no system name (check objects directly)
+    const isHubSpot = !sysName || sysName.includes('hubspot') || sysName.includes('hub');
+    if (!isHubSpot) continue;
+
+    const objects = sys.objects || sys.records || sys.entities || [];
+    for (const obj of objects) {
+      const objType = (obj.objectType || obj.type || obj.entityType || '').toLowerCase();
+      // Include if it looks like a deal, or if there's no type (try it anyway)
+      const isDeal = !objType || objType.includes('deal') || objType.includes('opportunity');
+      if (!isDeal) continue;
+
+      const dealId = String(obj.objectId || obj.id || obj.entityId || obj.recordId || '');
+      if (!dealId || dealId === 'undefined' || dealId === 'null') continue;
+
       let dealStage = null;
-      for (const f of (obj.fields || [])) {
-        if ((f.name || '').toLowerCase() === 'dealstage') {
-          dealStage = f.value;
+      const fields = obj.fields || obj.properties || obj.attributes || [];
+      for (const f of fields) {
+        const name = (f.name || f.key || f.fieldName || '').toLowerCase();
+        if (name === 'dealstage' || name === 'deal_stage' || name === 'hs_deal_stage_probability') {
+          dealStage = f.value || f.stringValue || f.displayValue;
           break;
         }
       }
@@ -37,7 +50,7 @@ function extractHubSpotInfo(context) {
   return { dealId: null, dealStage: null };
 }
 
-async function fetchGongContextBatch(callIds, headers) {
+async function fetchGongContextBatch(callIds, headers, logSample = false) {
   try {
     const r = await fetch(`${GONG_API_BASE}/v2/calls/extensive`, {
       method: 'POST',
@@ -51,6 +64,10 @@ async function fetchGongContextBatch(callIds, headers) {
     const d = await r.json().catch(() => ({}));
     const out = {};
     for (const call of (d.calls || [])) {
+      // Log the raw context for the first call so we can debug the structure
+      if (logSample && call.context) {
+        console.log('[intel-enrich] sample context for call', call.id, JSON.stringify(call.context).slice(0, 500));
+      }
       out[call.id] = extractHubSpotInfo(call.context || []);
     }
     return out;
@@ -107,9 +124,13 @@ export default async function handler(req, res) {
 
   for (let i = 0; i < batches.length; i += PARALLEL) {
     const chunk = batches.slice(i, i + PARALLEL);
-    const results = await Promise.all(chunk.map(b => fetchGongContextBatch(b, gongHeaders)));
+    // Log context structure from first batch only (for debugging)
+    const results = await Promise.all(chunk.map((b, idx) => fetchGongContextBatch(b, gongHeaders, i === 0 && idx === 0)));
     results.forEach(r => Object.assign(contextMap, r));
   }
+
+  const withDealsFound = Object.values(contextMap).filter(v => v.dealId).length;
+  console.log(`[intel-enrich] processed ${callIds.length} calls, found ${withDealsFound} with HubSpot deal IDs`);
 
   // For deal IDs without a stage in Gong context, look up HubSpot directly
   const needHubSpot = [
@@ -149,5 +170,22 @@ export default async function handler(req, res) {
   const withDeals = upserts.filter(u => u.hubspot_deal_id).length;
   const closedWon = upserts.filter(u => u.hubspot_deal_stage?.toLowerCase() === 'closedwon').length;
 
-  return apiSuccess(res, { enriched: callIds.length, withDeals, closedWon });
+  // If no deals found, return a sample of the raw context for debugging
+  let debugContext = null;
+  if (withDeals === 0 && callIds.length > 0) {
+    try {
+      const sampleRes = await fetch(`${GONG_API_BASE}/v2/calls/extensive`, {
+        method: 'POST',
+        headers: gongHeaders,
+        body: JSON.stringify({
+          filter: { callIds: callIds.slice(0, 1) },
+          contentSelector: { exposedFields: { context: ['*'] } },
+        }),
+      });
+      const sampleData = await sampleRes.json().catch(() => ({}));
+      debugContext = sampleData.calls?.[0]?.context ?? null;
+    } catch { /* ignore */ }
+  }
+
+  return apiSuccess(res, { enriched: callIds.length, withDeals, closedWon, debugContext });
 }
