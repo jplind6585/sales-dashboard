@@ -38,6 +38,10 @@ export default async function handler(req, res) {
     buying_signals: r.analysis?.buying_signals,
     red_flags: r.analysis?.red_flags,
     summary: r.analysis?.summary,
+    icp_score: r.analysis?.icp_score,
+    icp_rationale: r.analysis?.icp_rationale,
+    discovery_score: r.analysis?.discovery_score,
+    discovery_gaps: r.analysis?.discovery_gaps,
     gong_url: r.gong_url,
   }));
 

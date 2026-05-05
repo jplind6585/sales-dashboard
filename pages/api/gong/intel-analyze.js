@@ -80,12 +80,22 @@ export default async function handler(req, res) {
 
     const durationMin = Math.round((durationSeconds || 0) / 60);
 
-    const analysisPrompt = `Analyze this sales call transcript for Banner (CapEx management software). Extract structured insights.
+    const analysisPrompt = `Analyze this sales call transcript for Banner (CapEx management software for commercial real estate). Extract structured insights.
 
 Call: "${title || 'Untitled'}" | Type: ${callType || 'unknown'} | Duration: ${durationMin} min | Rep: ${repName || 'Unknown'}
 
 TRANSCRIPT:
 ${transcriptText.slice(0, 28000)}
+
+ICP scoring guide (Banner's ideal customer):
+  9-10: CRE company managing large portfolios, CapEx-heavy, currently on spreadsheets/manual processes
+  7-8: Right industry, most criteria met, minor gaps
+  5-6: Partial fit — right industry but smaller or unclear CapEx focus
+  3-4: Wrong vertical or not CapEx-heavy
+  1-2: Clearly outside ICP
+
+Discovery score guide (MEDDICC coverage):
+  Score based on how well rep uncovered: economic buyer (who controls budget), decision process (how they evaluate and decide), timeline, quantified pain (specific $ or operational impact), champion (internal advocate identified). 10 = all five uncovered.
 
 Return ONLY valid JSON:
 {
@@ -97,12 +107,16 @@ Return ONLY valid JSON:
   "sentiment": "positive|neutral|negative",
   "buying_signals": ["specific buying signal from the call"],
   "red_flags": ["specific concern or red flag"],
-  "next_steps_mentioned": ["next step discussed in the call"]
+  "next_steps_mentioned": ["next step discussed in the call"],
+  "icp_score": 7,
+  "icp_rationale": "one sentence on why this score — what fit or mismatch was present",
+  "discovery_score": 6,
+  "discovery_gaps": ["economic buyer not identified", "no timeline established"]
 }`;
 
     const rawAnalysis = await callAnthropic(apiKey, {
       model: 'claude-haiku-4-5-20251001',
-      maxTokens: 1500,
+      maxTokens: 2000,
       messages: [{ role: 'user', content: analysisPrompt }],
     });
 
@@ -116,6 +130,10 @@ Return ONLY valid JSON:
       buying_signals: [],
       red_flags: [],
       next_steps_mentioned: [],
+      icp_score: null,
+      icp_rationale: null,
+      discovery_score: null,
+      discovery_gaps: [],
     });
 
     // Persist to Supabase — this is the source of truth across sessions

@@ -1,21 +1,21 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import ReactMarkdown from 'react-markdown'
 import {
   ArrowLeft, RefreshCw, Download, X, ExternalLink,
   Sparkles, Send, Phone, TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertCircle, CheckCircle, Zap, Users,
-  EyeOff, Eye, Info,
+  EyeOff, Eye, Info, Clock, Mail, Copy,
 } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
-// ─── Small helper components ──────────────────────────────────────────────────
+// ─── Small helpers ────────────────────────────────────────────────────────────
 
 function SentimentBadge({ sentiment }) {
   const cfg = {
     positive: { cls: 'bg-green-100 text-green-700', icon: <TrendingUp className="w-3 h-3" />, label: 'Positive' },
-    neutral:  { cls: 'bg-gray-100 text-gray-600',   icon: <Minus className="w-3 h-3" />,        label: 'Neutral' },
+    neutral:  { cls: 'bg-gray-100 text-gray-600',   icon: <Minus className="w-3 h-3" />,       label: 'Neutral' },
     negative: { cls: 'bg-red-100 text-red-700',     icon: <TrendingDown className="w-3 h-3" />, label: 'Negative' },
   }[sentiment] || { cls: 'bg-gray-100 text-gray-500', icon: null, label: sentiment || '—' }
   return (
@@ -26,37 +26,45 @@ function SentimentBadge({ sentiment }) {
 }
 
 function TypeBadge({ type }) {
-  const cfg = {
-    intro: 'bg-teal-100 text-teal-700',
-    demo:  'bg-indigo-100 text-indigo-700',
-  }[type] || 'bg-gray-100 text-gray-600'
+  const cfg = { intro: 'bg-teal-100 text-teal-700', demo: 'bg-indigo-100 text-indigo-700' }[type] || 'bg-gray-100 text-gray-600'
   return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cfg}`}>{type || '—'}</span>
 }
 
+function ScoreBadge({ score, type = 'icp' }) {
+  if (score == null) return <span className="text-gray-300 text-xs">—</span>
+  const color = score >= 8 ? 'bg-green-100 text-green-700'
+    : score >= 5 ? 'bg-amber-100 text-amber-700'
+    : 'bg-red-100 text-red-700'
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold ${color}`} title={type === 'icp' ? 'ICP fit score' : 'Discovery score'}>
+      {score}
+    </span>
+  )
+}
+
 const CATEGORY_COLORS = {
-  pricing:     'bg-red-100 text-red-700',
-  timeline:    'bg-orange-100 text-orange-700',
-  technical:   'bg-blue-100 text-blue-700',
-  authority:   'bg-purple-100 text-purple-700',
-  competition: 'bg-yellow-100 text-yellow-800',
-  other:       'bg-gray-100 text-gray-600',
+  pricing: 'bg-red-100 text-red-700', timeline: 'bg-orange-100 text-orange-700',
+  technical: 'bg-blue-100 text-blue-700', authority: 'bg-purple-100 text-purple-700',
+  competition: 'bg-yellow-100 text-yellow-800', other: 'bg-gray-100 text-gray-600',
 }
 
 function CategoryBadge({ category }) {
-  const cls = CATEGORY_COLORS[category] || CATEGORY_COLORS.other
-  return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{category}</span>
+  return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[category] || CATEGORY_COLORS.other}`}>{category}</span>
 }
 
-function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge }) {
+function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge, sub }) {
   const pct = maxCount > 0 ? Math.max(4, (count / maxCount) * 100) : 4
   return (
     <div className="flex items-center gap-3 py-1.5">
-      <div className="w-40 text-sm text-gray-700 truncate shrink-0">{label}</div>
+      <div className="w-44 shrink-0">
+        <div className="text-sm text-gray-700 truncate">{label}</div>
+        {sub && <div className="text-xs text-gray-400">{sub}</div>}
+      </div>
       <div className="flex-1 bg-gray-100 rounded-full h-2">
         <div className={`${colorClass} h-2 rounded-full`} style={{ width: `${pct}%` }} />
       </div>
       {badge && <div className="shrink-0">{badge}</div>}
-      <span className="text-sm text-gray-500 w-5 text-right shrink-0">{count}</span>
+      <span className="text-sm text-gray-500 w-8 text-right shrink-0">{typeof count === 'number' ? count : count}</span>
     </div>
   )
 }
@@ -73,12 +81,11 @@ function KPICard({ label, value, sub, valueColor = 'text-gray-900' }) {
 
 function TalkRatioBar({ ratio }) {
   const rep = Math.round(ratio || 50)
-  const prospect = 100 - rep
   const repColor = rep < 40 ? 'bg-blue-400' : rep <= 55 ? 'bg-green-500' : 'bg-amber-500'
   return (
     <div>
       <div className="flex text-xs text-gray-500 mb-1 justify-between">
-        <span>Rep {rep}%</span><span>Prospect {prospect}%</span>
+        <span>Rep {rep}%</span><span>Prospect {100 - rep}%</span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden bg-gray-100">
         <div className={`${repColor} transition-all`} style={{ width: `${rep}%` }} />
@@ -88,7 +95,22 @@ function TalkRatioBar({ ratio }) {
   )
 }
 
-// ─── Main page ─────────────────────────────────────────────────────────────────
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  function copy() {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <button onClick={copy} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors">
+      <Copy className="w-3.5 h-3.5" />
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  )
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function CallIntelligence() {
   const router = useRouter()
@@ -120,30 +142,23 @@ export default function CallIntelligence() {
   const [showIgnored, setShowIgnored] = useState(false)
   const [showClosedWon, setShowClosedWon] = useState(false)
 
+  const [reengagingId, setReengagingId] = useState(null)
+  const [reengagementEmails, setReengagementEmails] = useState({})
+
   const chatEndRef = useRef(null)
 
-  useEffect(() => {
-    fetchCalls()
-    fetchAggregate()
-  }, [])
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
+  useEffect(() => { fetchCalls(); fetchAggregate() }, [])
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
 
   async function fetchCalls() {
-    setLoadingCalls(true)
-    setLoadError(null)
+    setLoadingCalls(true); setLoadError(null)
     try {
       const res = await fetch('/api/gong/intel-calls')
       const data = await res.json()
       if (!data.success) throw new Error(data.error || 'Failed to load calls')
       setCalls(data.calls || [])
-    } catch (e) {
-      setLoadError(e.message)
-    } finally {
-      setLoadingCalls(false)
-    }
+    } catch (e) { setLoadError(e.message) }
+    finally { setLoadingCalls(false) }
   }
 
   async function fetchAggregate() {
@@ -155,56 +170,26 @@ export default function CallIntelligence() {
   }
 
   async function runAnalysis(limit = null) {
-    // Skip ignored and closed-won calls
-    let unanalyzed = calls.filter(c =>
-      !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon'
-    )
+    let unanalyzed = calls.filter(c => !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
     if (limit) unanalyzed = unanalyzed.slice(0, limit)
-    if (unanalyzed.length === 0 || analyzing) return
-
+    if (!unanalyzed.length || analyzing) return
     setAnalyzing(true)
     setAnalyzeProgress({ done: 0, total: unanalyzed.length, currentTitle: '' })
-
     const persistFailures = []
-
     for (const call of unanalyzed) {
       setAnalyzeProgress(p => ({ ...p, currentTitle: call.title }))
       try {
         const res = await fetch('/api/gong/intel-analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            callId: call.gongCallId,
-            title: call.title,
-            date: call.date,
-            callType: call.callType,
-            repName: call.repName,
-            repEmail: call.repEmail,
-            durationSeconds: call.durationSeconds,
-            gongUrl: call.gongUrl,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId: call.gongCallId, title: call.title, date: call.date, callType: call.callType, repName: call.repName, repEmail: call.repEmail, durationSeconds: call.durationSeconds, gongUrl: call.gongUrl }),
         })
         const data = await res.json()
-        if (data.analysis) {
-          setCalls(prev => prev.map(c =>
-            c.gongCallId === call.gongCallId
-              ? { ...c, analysis: data.analysis, analyzedAt: new Date().toISOString() }
-              : c
-          ))
-        }
-        if (data.persisted === false) {
-          persistFailures.push(data.persistError || 'unknown error')
-        }
-      } catch (e) {
-        console.error('Analysis failed for:', call.title, e)
-      }
+        if (data.analysis) setCalls(prev => prev.map(c => c.gongCallId === call.gongCallId ? { ...c, analysis: data.analysis, analyzedAt: new Date().toISOString() } : c))
+        if (data.persisted === false) persistFailures.push(data.persistError || 'unknown')
+      } catch (e) { console.error('Analysis failed:', call.title, e) }
       setAnalyzeProgress(p => ({ ...p, done: p.done + 1 }))
     }
-
-    if (persistFailures.length > 0) {
-      setPersistWarning(`Analysis results shown but not saved to database (${persistFailures.length} calls affected). Results will be lost on page refresh. DB error: ${persistFailures[0]}`)
-    }
-
+    if (persistFailures.length) setPersistWarning(`Analysis shown but not saved for ${persistFailures.length} calls. DB error: ${persistFailures[0]}`)
     await refreshAggregate()
     setAnalyzing(false)
   }
@@ -215,59 +200,51 @@ export default function CallIntelligence() {
       const res = await fetch('/api/gong/intel-aggregate', { method: 'POST' })
       const data = await res.json()
       if (data.success && data.aggregate) setAggregate(data.aggregate)
-    } catch (e) {
-      console.error('Aggregate refresh failed:', e)
-    } finally {
-      setRefreshingAggregate(false)
-    }
+    } catch (e) { console.error('Aggregate refresh failed:', e) }
+    finally { setRefreshingAggregate(false) }
   }
 
   async function runEnrichment() {
     const callIds = calls.map(c => c.gongCallId)
     if (!callIds.length || enriching) return
-    setEnriching(true)
-    setEnrichStats(null)
+    setEnriching(true); setEnrichStats(null)
     try {
       const res = await fetch('/api/gong/intel-enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callIds }),
       })
       const data = await res.json()
-      if (data.success) {
-        setEnrichStats(data)
-        await fetchCalls()
-      }
-    } catch (e) {
-      console.error('Enrichment failed:', e)
-    } finally {
-      setEnriching(false)
-    }
+      if (data.success) { setEnrichStats(data); await fetchCalls() }
+    } catch (e) { console.error('Enrichment failed:', e) }
+    finally { setEnriching(false) }
+  }
+
+  async function generateReengagement(call, e) {
+    e?.stopPropagation()
+    if (reengagingId === call.gongCallId) return
+    setReengagingId(call.gongCallId)
+    try {
+      const res = await fetch('/api/gong/intel-reengagement', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId: call.gongCallId }),
+      })
+      const data = await res.json()
+      if (data.success) setReengagementEmails(prev => ({ ...prev, [call.gongCallId]: data.email }))
+    } catch (e) { console.error('Reengagement failed:', e) }
+    finally { setReengagingId(null) }
   }
 
   async function toggleIgnore(call, e) {
     e?.stopPropagation()
     const newIgnored = !call.ignored
-    // Optimistic update
-    setCalls(prev => prev.map(c =>
-      c.gongCallId === call.gongCallId ? { ...c, ignored: newIgnored } : c
-    ))
-    if (selectedCall?.gongCallId === call.gongCallId) {
-      setSelectedCall(prev => ({ ...prev, ignored: newIgnored }))
-    }
+    setCalls(prev => prev.map(c => c.gongCallId === call.gongCallId ? { ...c, ignored: newIgnored } : c))
+    if (selectedCall?.gongCallId === call.gongCallId) setSelectedCall(prev => ({ ...prev, ignored: newIgnored }))
     try {
       await fetch('/api/gong/intel-ignore', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callId: call.gongCallId, ignored: newIgnored }),
       })
-    } catch (e) {
-      // Revert on failure
-      console.error('Toggle ignore failed:', e)
-      setCalls(prev => prev.map(c =>
-        c.gongCallId === call.gongCallId ? { ...c, ignored: call.ignored } : c
-      ))
-    }
+    } catch { setCalls(prev => prev.map(c => c.gongCallId === call.gongCallId ? { ...c, ignored: call.ignored } : c)) }
   }
 
   async function sendChat() {
@@ -275,47 +252,34 @@ export default function CallIntelligence() {
     if (!msg || chatLoading) return
     setChatInput('')
     const newMessages = [...chatMessages, { role: 'user', content: msg }]
-    setChatMessages(newMessages)
-    setChatLoading(true)
-
+    setChatMessages(newMessages); setChatLoading(true)
     try {
       const res = await fetch('/api/gong/intel-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg, messages: chatMessages }),
       })
       const data = await res.json()
       setChatMessages([...newMessages, { role: 'assistant', content: data.reply || 'No response.' }])
-    } catch (e) {
-      setChatMessages([...newMessages, { role: 'error', content: e.message }])
-    } finally {
-      setChatLoading(false)
-    }
+    } catch (e) { setChatMessages([...newMessages, { role: 'error', content: e.message }]) }
+    finally { setChatLoading(false) }
   }
 
   function exportCSV() {
-    const headers = ['Date', 'Rep', 'Type', 'Duration (min)', 'Talk Ratio (%)', 'Sentiment', 'Top Theme', 'Summary', 'Gong URL']
+    const headers = ['Date', 'Rep', 'Type', 'Duration (min)', 'Talk Ratio (%)', 'Sentiment', 'ICP Score', 'Discovery Score', 'Top Theme', 'Summary', 'Gong URL']
     const rows = filteredCalls.map(c => [
       c.date ? new Date(c.date).toLocaleDateString() : '',
-      c.repName || '',
-      c.callType || '',
+      c.repName || '', c.callType || '',
       c.durationSeconds ? Math.round(c.durationSeconds / 60) : '',
-      c.analysis?.rep_talk_ratio ?? '',
-      c.analysis?.sentiment || '',
-      (c.analysis?.themes || [])[0] || '',
-      c.analysis?.summary || '',
-      c.gongUrl || '',
+      c.analysis?.rep_talk_ratio ?? '', c.analysis?.sentiment || '',
+      c.analysis?.icp_score ?? '', c.analysis?.discovery_score ?? '',
+      (c.analysis?.themes || [])[0] || '', c.analysis?.summary || '', c.gongUrl || '',
     ])
-    const csv = [headers, ...rows]
-      .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
-      .join('\n')
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
+    a.href = URL.createObjectURL(blob)
     a.download = `call-intelligence-${new Date().toISOString().split('T')[0]}.csv`
     a.click()
-    URL.revokeObjectURL(url)
   }
 
   function toggleSort(field) {
@@ -323,13 +287,29 @@ export default function CallIntelligence() {
     else { setSortField(field); setSortDir('desc') }
   }
 
-  // ── Computed values ──────────────────────────────────────────────────────────
+  // ── Computed ──────────────────────────────────────────────────────────────────
   const ignoredCount = calls.filter(c => c.ignored).length
   const closedWonCount = calls.filter(c => c.dealStage?.toLowerCase() === 'closedwon').length
   const uncheckedCount = calls.filter(c => !c.hubspotCheckedAt).length
   const activeCalls = calls.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
   const analyzedCalls = activeCalls.filter(c => c.analysis)
   const unanalyzedCount = activeCalls.filter(c => !c.analysis).length
+
+  const goneColdDeals = useMemo(() => {
+    if (!calls.some(c => c.hubspotDealId)) return []
+    const byDeal = {}
+    calls.forEach(call => {
+      if (!call.hubspotDealId || call.ignored) return
+      const stage = call.dealStage?.toLowerCase()
+      if (stage === 'closedwon' || stage === 'closedlost') return
+      if (!byDeal[call.hubspotDealId] || new Date(call.date) > new Date(byDeal[call.hubspotDealId].date)) {
+        byDeal[call.hubspotDealId] = call
+      }
+    })
+    return Object.values(byDeal)
+      .filter(call => (Date.now() - new Date(call.date)) / (1000 * 60 * 60 * 24) >= 21)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+  }, [calls])
 
   const filteredCalls = calls
     .filter(c => showIgnored || !c.ignored)
@@ -342,33 +322,34 @@ export default function CallIntelligence() {
       else if (sortField === 'duration') { av = a.durationSeconds || 0; bv = b.durationSeconds || 0 }
       else if (sortField === 'ratio') { av = a.analysis?.rep_talk_ratio || 0; bv = b.analysis?.rep_talk_ratio || 0 }
       else if (sortField === 'sentiment') { av = a.analysis?.sentiment || ''; bv = b.analysis?.sentiment || '' }
+      else if (sortField === 'icp') { av = a.analysis?.icp_score || 0; bv = b.analysis?.icp_score || 0 }
       else { av = a[sortField] || ''; bv = b[sortField] || '' }
       return sortDir === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
     })
 
-  // KPI values from aggregate
   const topObjection = aggregate?.top_objections?.[0]
   const topCompetitor = aggregate?.competitor_mentions?.[0]
   const sentBreakdown = aggregate?.sentiment_breakdown || {}
-  const totalSentiment = (sentBreakdown.positive || 0) + (sentBreakdown.neutral || 0) + (sentBreakdown.negative || 0)
-  const positivePct = totalSentiment > 0 ? Math.round((sentBreakdown.positive || 0) / totalSentiment * 100) : null
+  const totalSent = (sentBreakdown.positive || 0) + (sentBreakdown.neutral || 0) + (sentBreakdown.negative || 0)
+  const positivePct = totalSent > 0 ? Math.round((sentBreakdown.positive || 0) / totalSent * 100) : null
 
   const SortArrow = ({ field }) => (
-    <span className="ml-1 text-gray-400">
-      {sortField === field ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
-    </span>
+    <span className="ml-1 text-gray-400">{sortField === field ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
   )
 
-  // Header subtitle
-  const headerSubtitle = loadingCalls
-    ? 'Loading…'
-    : [
-        `${activeCalls.length} active calls`,
-        `${analyzedCalls.length} analyzed`,
-        closedWonCount > 0 ? `${closedWonCount} closed won hidden` : null,
-        ignoredCount > 0 ? `${ignoredCount} ignored` : null,
-        'Last 6 months',
-      ].filter(Boolean).join(' · ')
+  const tabs = [
+    { id: 'overview', label: 'Overview', disabled: !aggregate },
+    ...(goneColdDeals.length > 0 ? [{ id: 'cold', label: `Gone Cold (${goneColdDeals.length})`, disabled: false }] : []),
+    { id: 'calls', label: `All Calls (${filteredCalls.length})`, disabled: false },
+  ]
+
+  const headerSubtitle = loadingCalls ? 'Loading…' : [
+    `${activeCalls.length} active calls`,
+    `${analyzedCalls.length} analyzed`,
+    closedWonCount > 0 ? `${closedWonCount} closed won hidden` : null,
+    ignoredCount > 0 ? `${ignoredCount} ignored` : null,
+    'Last 6 months',
+  ].filter(Boolean).join(' · ')
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -379,7 +360,7 @@ export default function CallIntelligence() {
         <div className="max-w-[1400px] mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <button onClick={() => router.push('/modules/sales-reports')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <button onClick={() => router.push('/modules/sales-reports')} className="p-2 hover:bg-gray-100 rounded-lg">
                 <ArrowLeft className="w-5 h-5 text-gray-600" />
               </button>
               <div>
@@ -393,34 +374,17 @@ export default function CallIntelligence() {
             </div>
             <div className="flex items-center gap-2">
               {analyzedCalls.length > 0 && (
-                <button
-                  onClick={refreshAggregate}
-                  disabled={refreshingAggregate}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${refreshingAggregate ? 'animate-spin' : ''}`} />
-                  Refresh Insights
+                <button onClick={refreshAggregate} disabled={refreshingAggregate} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
+                  <RefreshCw className={`w-4 h-4 ${refreshingAggregate ? 'animate-spin' : ''}`} /> Refresh Insights
                 </button>
               )}
               {analyzedCalls.length > 0 && (
-                <button
-                  onClick={exportCSV}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  Export CSV
+                <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
+                  <Download className="w-4 h-4" /> Export CSV
                 </button>
               )}
-              <button
-                onClick={() => setShowChat(c => !c)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
-                  showChat
-                    ? 'bg-green-600 text-white hover:bg-green-700'
-                    : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'
-                }`}
-              >
-                <Sparkles className="w-4 h-4" />
-                {showChat ? 'Close Chat' : 'AI Chat'}
+              <button onClick={() => setShowChat(c => !c)} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${showChat ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'}`}>
+                <Sparkles className="w-4 h-4" /> {showChat ? 'Close Chat' : 'AI Chat'}
               </button>
               {user && <UserMenu />}
             </div>
@@ -428,105 +392,75 @@ export default function CallIntelligence() {
         </div>
       </div>
 
-      {/* HubSpot enrichment prompt */}
+      {/* Banners */}
       {!enriching && !loadingCalls && uncheckedCount > 0 && (
         <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-blue-800">
               <Info className="w-4 h-4 shrink-0" />
-              <span>Deal status not checked for {uncheckedCount} calls — Closed Won deals are auto-hidden once checked</span>
+              <span>Deal status not checked for {uncheckedCount} calls — Closed Won deals auto-hidden once checked</span>
             </div>
-            <button
-              onClick={runEnrichment}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
+            <button onClick={runEnrichment} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
               Check HubSpot Status
             </button>
           </div>
         </div>
       )}
-
-      {/* Enrichment in progress */}
       {enriching && (
         <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center gap-2 text-sm text-blue-800">
             <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
-            <span>Checking HubSpot deal stages for {calls.length} calls… this may take 15–30 seconds</span>
+            <span>Checking HubSpot deal stages… this may take 15–30 seconds</span>
           </div>
         </div>
       )}
-
-      {/* Enrichment complete */}
       {enrichStats && !enriching && (
         <div className="bg-green-50 border-b border-green-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-green-800">
               <CheckCircle className="w-4 h-4 shrink-0" />
-              <span>
-                HubSpot check complete — {enrichStats.withDeals} calls linked to deals
-                {enrichStats.closedWon > 0 ? `, ${enrichStats.closedWon} Closed Won hidden` : ''}
-              </span>
+              <span>HubSpot check complete — {enrichStats.withDeals} calls linked to deals{enrichStats.closedWon > 0 ? `, ${enrichStats.closedWon} Closed Won hidden` : ''}</span>
             </div>
-            <button onClick={() => setEnrichStats(null)} className="text-green-600 hover:text-green-800 text-sm">✕</button>
+            <button onClick={() => setEnrichStats(null)} className="text-green-600 text-sm">✕</button>
           </div>
         </div>
       )}
-
-      {/* Analysis progress banner */}
       {analyzing && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-sm text-amber-800">
                 <Zap className="w-4 h-4 animate-pulse" />
-                <span>Analyzing calls… {analyzeProgress.done}/{analyzeProgress.total}</span>
-                {analyzeProgress.currentTitle && (
-                  <span className="text-amber-600 truncate max-w-xs">— {analyzeProgress.currentTitle}</span>
-                )}
+                <span>Analyzing… {analyzeProgress.done}/{analyzeProgress.total}</span>
+                {analyzeProgress.currentTitle && <span className="text-amber-600 truncate max-w-xs">— {analyzeProgress.currentTitle}</span>}
               </div>
               <span className="text-xs text-amber-600">{Math.round((analyzeProgress.done / analyzeProgress.total) * 100)}%</span>
             </div>
             <div className="h-1.5 bg-amber-200 rounded-full">
-              <div
-                className="h-1.5 bg-amber-500 rounded-full transition-all duration-300"
-                style={{ width: `${(analyzeProgress.done / analyzeProgress.total) * 100}%` }}
-              />
+              <div className="h-1.5 bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${(analyzeProgress.done / analyzeProgress.total) * 100}%` }} />
             </div>
           </div>
         </div>
       )}
-
-      {/* Unanalyzed calls prompt */}
       {!analyzing && !loadingCalls && unanalyzedCount > 0 && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-amber-800">
-              <AlertCircle className="w-4 h-4" />
-              <span>{unanalyzedCount} active call{unanalyzedCount > 1 ? 's' : ''} haven't been analyzed yet</span>
+              <AlertCircle className="w-4 h-4" /><span>{unanalyzedCount} active call{unanalyzedCount > 1 ? 's' : ''} not yet analyzed</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex gap-2">
               {unanalyzedCount > 20 && (
-                <button
-                  onClick={() => runAnalysis(20)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-400 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50 transition-colors"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  Analyze 20 Most Recent
+                <button onClick={() => runAnalysis(20)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-400 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50">
+                  <Zap className="w-3.5 h-3.5" /> Analyze 20 Most Recent
                 </button>
               )}
-              <button
-                onClick={() => runAnalysis()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Analyze All ({unanalyzedCount})
+              <button onClick={() => runAnalysis()} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600">
+                <Zap className="w-3.5 h-3.5" /> Analyze All ({unanalyzedCount})
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Error banner */}
       {loadError && (
         <div className="bg-red-50 border-b border-red-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
@@ -535,137 +469,126 @@ export default function CallIntelligence() {
           </div>
         </div>
       )}
-
-      {/* Persistence warning */}
       {persistWarning && (
         <div className="bg-red-50 border-b border-red-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <span className="text-sm text-red-700">{persistWarning}</span>
-            <button onClick={() => setPersistWarning(null)} className="text-sm text-red-500 hover:text-red-700 ml-4">✕</button>
+            <button onClick={() => setPersistWarning(null)} className="text-sm text-red-500 ml-4">✕</button>
           </div>
         </div>
       )}
 
       {/* Main content */}
       <div className="max-w-[1400px] mx-auto px-6 py-6 flex-1 w-full">
-
-        {/* Loading skeleton */}
         {loadingCalls && (
           <div className="space-y-6 animate-pulse">
-            <div className="grid grid-cols-5 gap-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-gray-200 h-24" />
-              ))}
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 h-64" />
+            <div className="bg-white rounded-xl border border-gray-200 h-16" />
+            <div className="grid grid-cols-5 gap-4">{[...Array(5)].map((_, i) => <div key={i} className="bg-white rounded-xl border border-gray-200 h-24" />)}</div>
           </div>
         )}
 
         {!loadingCalls && (
           <>
+            {/* Executive summary hero */}
+            {aggregate?.executive_summary && (
+              <div className="bg-gradient-to-r from-gray-900 to-gray-700 rounded-xl p-5 mb-5 text-white">
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Key Finding</p>
+                <p className="text-lg font-medium leading-snug">{aggregate.executive_summary}</p>
+              </div>
+            )}
+
             {/* KPI row */}
             {aggregate && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-                <KPICard
-                  label="Calls Analyzed"
-                  value={analyzedCalls.length}
-                  sub={`${activeCalls.filter(c => c.callType === 'intro').length} intro · ${activeCalls.filter(c => c.callType === 'demo').length} demo`}
-                />
-                <KPICard
-                  label="Positive Sentiment"
+                <KPICard label="Calls Analyzed" value={analyzedCalls.length}
+                  sub={`${activeCalls.filter(c => c.callType === 'intro').length} intro · ${activeCalls.filter(c => c.callType === 'demo').length} demo`} />
+                <KPICard label="Positive Sentiment"
                   value={positivePct !== null ? `${positivePct}%` : '—'}
                   sub={`${sentBreakdown.neutral || 0} neutral · ${sentBreakdown.negative || 0} negative`}
-                  valueColor={positivePct >= 60 ? 'text-green-600' : positivePct >= 40 ? 'text-amber-600' : 'text-red-600'}
-                />
-                <KPICard
-                  label="Top Objection"
-                  value={topObjection?.text ? topObjection.text.split(' ').slice(0, 4).join(' ') + '…' : '—'}
-                  sub={topObjection ? `${topObjection.count}x · ${topObjection.category}` : null}
-                  valueColor="text-gray-800"
-                />
-                <KPICard
-                  label="Avg Talk Ratio"
-                  value={aggregate.avg_rep_talk_ratio ? `${aggregate.avg_rep_talk_ratio}% rep` : '—'}
-                  sub={aggregate.avg_rep_talk_ratio
-                    ? (aggregate.avg_rep_talk_ratio <= 55 ? 'Good range' : 'Rep talking too much')
-                    : null}
-                  valueColor={aggregate.avg_rep_talk_ratio <= 55 ? 'text-green-600' : 'text-amber-600'}
-                />
-                <KPICard
-                  label="Top Competitor"
-                  value={topCompetitor?.name || 'None'}
-                  sub={topCompetitor ? `${topCompetitor.count} mention${topCompetitor.count > 1 ? 's' : ''}` : 'No competitors mentioned'}
-                />
+                  valueColor={positivePct >= 60 ? 'text-green-600' : positivePct >= 40 ? 'text-amber-600' : 'text-red-600'} />
+                <KPICard label="Avg ICP Fit"
+                  value={aggregate.avg_icp_score ? `${aggregate.avg_icp_score}/10` : '—'}
+                  sub={aggregate.avg_icp_score ? (aggregate.avg_icp_score >= 7 ? 'Strong pipeline fit' : aggregate.avg_icp_score >= 5 ? 'Mixed fit — review ICP' : 'Weak fit — off-ICP volume') : null}
+                  valueColor={aggregate.avg_icp_score >= 7 ? 'text-green-600' : aggregate.avg_icp_score >= 5 ? 'text-amber-600' : 'text-red-600'} />
+                <KPICard label="Avg Discovery"
+                  value={aggregate.avg_discovery_score ? `${aggregate.avg_discovery_score}/10` : '—'}
+                  sub={aggregate.avg_discovery_score ? (aggregate.avg_discovery_score >= 7 ? 'Solid MEDDICC coverage' : 'Discovery gaps present') : null}
+                  valueColor={aggregate.avg_discovery_score >= 7 ? 'text-green-600' : aggregate.avg_discovery_score >= 5 ? 'text-amber-600' : 'text-red-600'} />
+                <KPICard label="Top Competitor" value={topCompetitor?.name || 'None'}
+                  sub={topCompetitor ? `${topCompetitor.count} mention${topCompetitor.count > 1 ? 's' : ''}` : 'No competitors mentioned'} />
               </div>
             )}
 
-            {/* Empty state */}
+            {/* Empty states */}
             {!aggregate && analyzedCalls.length === 0 && activeCalls.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center mb-6">
                 <Phone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                  {activeCalls.length} active calls found, none analyzed yet
-                </h3>
-                <p className="text-gray-500 text-sm mb-6">
-                  Click "Analyze All" above to run AI analysis on each call.
-                </p>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">{activeCalls.length} active calls, none analyzed yet</h3>
+                <p className="text-gray-500 text-sm">Click "Analyze All" above to run AI analysis.</p>
               </div>
             )}
-
             {calls.length === 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center mb-6">
                 <Phone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-700 mb-2">No Intro or Demo calls found</h3>
-                <p className="text-gray-500 text-sm">
-                  No calls with "Intro" or "Demo" in the title were found in Gong in the last 6 months.
-                </p>
+                <p className="text-gray-500 text-sm">No calls with "Intro" or "Demo" in the title in the last 6 months.</p>
               </div>
             )}
 
-            {/* Content area */}
             {calls.length > 0 && (
               <div className="flex gap-6">
-
-                {/* Left — tabs */}
                 <div className="flex-1 min-w-0">
 
                   {/* Tab bar */}
                   <div className="flex gap-0 border-b border-gray-200 mb-6">
-                    {[
-                      { id: 'overview', label: 'Overview', disabled: !aggregate },
-                      { id: 'calls', label: `All Calls (${filteredCalls.length})`, disabled: false },
-                    ].map(tab => (
-                      <button
-                        key={tab.id}
-                        onClick={() => !tab.disabled && setActiveTab(tab.id)}
-                        disabled={tab.disabled}
-                        className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                          activeTab === tab.id
-                            ? 'border-green-600 text-green-600'
-                            : tab.disabled
-                            ? 'border-transparent text-gray-300 cursor-not-allowed'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                      >
-                        {tab.label}
-                        {tab.disabled && <span className="ml-1.5 text-xs">(analyze first)</span>}
+                    {tabs.map(tab => (
+                      <button key={tab.id} onClick={() => !tab.disabled && setActiveTab(tab.id)} disabled={tab.disabled}
+                        className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-green-600 text-green-600' : tab.disabled ? 'border-transparent text-gray-300 cursor-not-allowed' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                        {tab.label}{tab.disabled && <span className="ml-1.5 text-xs">(analyze first)</span>}
                       </button>
                     ))}
                   </div>
 
-                  {/* Overview tab */}
+                  {/* ── Overview tab ── */}
                   {activeTab === 'overview' && aggregate && (
                     <div className="space-y-6">
 
-                      {aggregate.investor_narrative && (
-                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
-                          <h3 className="text-sm font-semibold text-green-800 uppercase tracking-wide mb-3 flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4" /> Summary Narrative
+                      {/* Loss reasons — primary section */}
+                      {aggregate.loss_reasons?.length > 0 && (
+                        <div className="bg-white rounded-xl border border-red-100 p-6">
+                          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4 flex items-center gap-2">
+                            <TrendingDown className="w-4 h-4 text-red-500" /> Why Deals Go Cold
                           </h3>
-                          <p className="text-gray-700 leading-relaxed">{aggregate.investor_narrative}</p>
+                          <div className="space-y-1">
+                            {aggregate.loss_reasons.map((lr, i) => (
+                              <BarRow key={i} label={lr.reason}
+                                count={`${lr.pct_of_negative_calls}%`}
+                                maxCount={aggregate.loss_reasons[0].pct_of_negative_calls}
+                                colorClass="bg-red-400"
+                                sub={lr.example || null} />
+                            ))}
+                          </div>
                         </div>
                       )}
 
+                      {/* Buyer priorities */}
+                      {(aggregate.buyer_priorities?.length > 0 || aggregate.top_themes?.length > 0) && (
+                        <div className="bg-white rounded-xl border border-gray-200 p-6">
+                          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">What Buyers Care About</h3>
+                          <div className="space-y-1">
+                            {(aggregate.buyer_priorities || aggregate.top_themes).slice(0, 8).map((item, i) => (
+                              <BarRow key={i}
+                                label={typeof item === 'string' ? item : (item.priority || item.theme)}
+                                count={item.count || 0}
+                                maxCount={(aggregate.buyer_priorities || aggregate.top_themes)[0]?.count || 1}
+                                colorClass="bg-blue-500"
+                                sub={item.example || null} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Key insights */}
                       {aggregate.key_insights?.length > 0 && (
                         <div className="bg-white rounded-xl border border-gray-200 p-6">
                           <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Key Insights</h3>
@@ -680,78 +603,42 @@ export default function CallIntelligence() {
                         </div>
                       )}
 
+                      {/* Objections + Win/Loss */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {aggregate.top_objections?.length > 0 && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Top Objections</h3>
                             <div className="space-y-1">
                               {aggregate.top_objections.map((obj, i) => (
-                                <BarRow
-                                  key={i}
-                                  label={obj.text}
-                                  count={obj.count}
+                                <BarRow key={i} label={obj.text} count={obj.count}
                                   maxCount={aggregate.top_objections[0].count}
-                                  colorClass={CATEGORY_COLORS[obj.category]?.split(' ')[0]?.replace('bg-', 'bg-') || 'bg-red-400'}
-                                  badge={<CategoryBadge category={obj.category} />}
-                                />
+                                  colorClass={CATEGORY_COLORS[obj.category]?.split(' ')[0] || 'bg-red-400'}
+                                  badge={<CategoryBadge category={obj.category} />} />
                               ))}
                             </div>
                           </div>
                         )}
-
-                        {aggregate.top_themes?.length > 0 && (
-                          <div className="bg-white rounded-xl border border-gray-200 p-6">
-                            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Top Themes</h3>
-                            <div className="space-y-1">
-                              {aggregate.top_themes.slice(0, 8).map((t, i) => (
-                                <BarRow
-                                  key={i}
-                                  label={t.theme}
-                                  count={t.count}
-                                  maxCount={aggregate.top_themes[0].count}
-                                  colorClass="bg-blue-500"
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {(aggregate.win_patterns?.length > 0 || aggregate.loss_patterns?.length > 0) && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Win / Loss Patterns</h3>
                             {aggregate.win_patterns?.length > 0 && (
                               <div className="mb-4">
-                                <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1">
-                                  <CheckCircle className="w-3.5 h-3.5" /> Positive calls
-                                </p>
-                                <ul className="space-y-1.5">
-                                  {aggregate.win_patterns.map((p, i) => (
-                                    <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                                      <span className="text-green-500 mt-0.5">•</span>{p}
-                                    </li>
-                                  ))}
-                                </ul>
+                                <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> Positive calls</p>
+                                <ul className="space-y-1.5">{aggregate.win_patterns.map((p, i) => <li key={i} className="text-sm text-gray-600 flex items-start gap-2"><span className="text-green-500 mt-0.5">•</span>{p}</li>)}</ul>
                               </div>
                             )}
                             {aggregate.loss_patterns?.length > 0 && (
                               <div>
-                                <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2 flex items-center gap-1">
-                                  <AlertCircle className="w-3.5 h-3.5" /> Negative calls
-                                </p>
-                                <ul className="space-y-1.5">
-                                  {aggregate.loss_patterns.map((p, i) => (
-                                    <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                                      <span className="text-red-400 mt-0.5">•</span>{p}
-                                    </li>
-                                  ))}
-                                </ul>
+                                <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Negative calls</p>
+                                <ul className="space-y-1.5">{aggregate.loss_patterns.map((p, i) => <li key={i} className="text-sm text-gray-600 flex items-start gap-2"><span className="text-red-400 mt-0.5">•</span>{p}</li>)}</ul>
                               </div>
                             )}
                           </div>
                         )}
+                      </div>
 
+                      {/* Competitors + Rep performance */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {aggregate.competitor_mentions?.length > 0 && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Competitor Mentions</h3>
@@ -759,103 +646,174 @@ export default function CallIntelligence() {
                               {aggregate.competitor_mentions.map((c, i) => (
                                 <div key={i} className="flex items-start gap-3">
                                   <div className="w-7 h-7 rounded-full bg-yellow-100 text-yellow-800 text-xs font-bold flex items-center justify-center shrink-0">{c.count}</div>
-                                  <div>
-                                    <p className="text-sm font-semibold text-gray-800">{c.name}</p>
-                                    {c.typical_context && <p className="text-xs text-gray-500 mt-0.5">{c.typical_context}</p>}
-                                  </div>
+                                  <div><p className="text-sm font-semibold text-gray-800">{c.name}</p>{c.typical_context && <p className="text-xs text-gray-500 mt-0.5">{c.typical_context}</p>}</div>
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
+                        {aggregate.rep_stats?.length > 0 && (
+                          <div className="bg-white rounded-xl border border-gray-200 p-6">
+                            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4 flex items-center gap-2"><Users className="w-4 h-4" /> Rep Performance</h3>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b border-gray-100">
+                                    {['Rep', 'Calls', 'ICP', 'Discovery', 'Positive %'].map(h => (
+                                      <th key={h} className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pr-3">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {aggregate.rep_stats.map((rep, i) => (
+                                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                                      <td className="py-3 font-medium text-gray-800 pr-3">{rep.rep}</td>
+                                      <td className="py-3 text-gray-600 pr-3">{rep.call_count}</td>
+                                      <td className="py-3 pr-3"><ScoreBadge score={rep.avg_icp_score} type="icp" /></td>
+                                      <td className="py-3 pr-3"><ScoreBadge score={rep.avg_discovery_score} type="discovery" /></td>
+                                      <td className={`py-3 font-medium ${(rep.positive_pct || 0) >= 60 ? 'text-green-600' : (rep.positive_pct || 0) >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
+                                        {rep.positive_pct !== undefined ? `${rep.positive_pct}%` : '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      {aggregate.rep_stats?.length > 0 && (
-                        <div className="bg-white rounded-xl border border-gray-200 p-6">
-                          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4 flex items-center gap-2">
-                            <Users className="w-4 h-4" /> Rep Performance
-                          </h3>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="border-b border-gray-100">
-                                  <th className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide">Rep</th>
-                                  <th className="text-right py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide">Calls</th>
-                                  <th className="text-right py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide">Talk Ratio</th>
-                                  <th className="text-right py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide">Positive %</th>
-                                  <th className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pl-4">Top Objection</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {aggregate.rep_stats.map((rep, i) => (
-                                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                                    <td className="py-3 font-medium text-gray-800">{rep.rep}</td>
-                                    <td className="py-3 text-right text-gray-600">{rep.call_count}</td>
-                                    <td className={`py-3 text-right font-medium ${(rep.avg_talk_ratio || 50) <= 55 ? 'text-green-600' : 'text-amber-600'}`}>
-                                      {rep.avg_talk_ratio ? `${rep.avg_talk_ratio}%` : '—'}
-                                    </td>
-                                    <td className={`py-3 text-right font-medium ${(rep.positive_pct || 0) >= 60 ? 'text-green-600' : (rep.positive_pct || 0) >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
-                                      {rep.positive_pct !== undefined ? `${rep.positive_pct}%` : '—'}
-                                    </td>
-                                    <td className="py-3 text-gray-500 text-xs pl-4">{rep.top_objection || '—'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                      {/* Investor narrative */}
+                      {aggregate.investor_narrative && (
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
+                          <h3 className="text-sm font-semibold text-green-800 uppercase tracking-wide mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Investor Narrative</h3>
+                          <p className="text-gray-700 leading-relaxed">{aggregate.investor_narrative}</p>
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Calls tab */}
+                  {/* ── Gone Cold tab ── */}
+                  {activeTab === 'cold' && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-500">
+                        {goneColdDeals.length} deal{goneColdDeals.length > 1 ? 's' : ''} where the last intro or demo call was 21+ days ago and the HubSpot deal is still active. Oldest first.
+                      </p>
+                      {goneColdDeals.map(call => {
+                        const daysSince = Math.round((Date.now() - new Date(call.date)) / (1000 * 60 * 60 * 24))
+                        const email = reengagementEmails[call.gongCallId]
+                        const isGenerating = reengagingId === call.gongCallId
+                        return (
+                          <div key={call.gongCallId} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                            <div className="p-5">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <TypeBadge type={call.callType} />
+                                    <span className="flex items-center gap-1 text-xs text-gray-400">
+                                      <Clock className="w-3 h-3" /> {daysSince} days ago
+                                    </span>
+                                    {call.analysis?.icp_score && <ScoreBadge score={call.analysis.icp_score} type="icp" />}
+                                  </div>
+                                  <p className="font-semibold text-gray-900 truncate">{call.title}</p>
+                                  <p className="text-sm text-gray-500">{call.repName} · {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</p>
+                                  {call.analysis?.summary && (
+                                    <p className="text-xs text-gray-500 mt-2 line-clamp-2">{call.analysis.summary}</p>
+                                  )}
+                                  {call.analysis?.buying_signals?.length > 0 && (
+                                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                      <CheckCircle className="w-3 h-3" /> {call.analysis.buying_signals[0]}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {call.gongUrl && (
+                                    <a href={call.gongUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-green-600">
+                                      <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                  )}
+                                  {!email && (
+                                    <button
+                                      onClick={e => generateReengagement(call, e)}
+                                      disabled={isGenerating}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
+                                    >
+                                      <Mail className="w-3.5 h-3.5" />
+                                      {isGenerating ? 'Writing…' : 'Draft Follow-up'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {email && (
+                              <div className="border-t border-gray-100 bg-gray-50 p-5">
+                                <div className="flex items-center justify-between mb-3">
+                                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Generated Follow-up</p>
+                                  <div className="flex items-center gap-3">
+                                    {email.suggested_content && (
+                                      <p className="text-xs text-blue-600 italic max-w-xs truncate" title={email.suggested_content}>💡 {email.suggested_content}</p>
+                                    )}
+                                    <button
+                                      onClick={() => generateReengagement(call)}
+                                      disabled={reengagingId === call.gongCallId}
+                                      className="text-xs text-gray-400 hover:text-gray-600"
+                                    >
+                                      Regenerate
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2">
+                                    <div>
+                                      <p className="text-xs text-gray-400 mb-0.5">Subject</p>
+                                      <p className="text-sm font-medium text-gray-800">{email.subject}</p>
+                                    </div>
+                                    <CopyButton text={email.subject} />
+                                  </div>
+                                  <div className="bg-white rounded-lg border border-gray-200 px-3 py-2">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-xs text-gray-400">Body</p>
+                                      <CopyButton text={email.body} />
+                                    </div>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{email.body}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* ── All Calls tab ── */}
                   {activeTab === 'calls' && (
                     <div className="bg-white rounded-xl border border-gray-200">
-                      {/* Filter bar */}
                       <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-wrap gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           {['all', 'intro', 'demo'].map(t => (
-                            <button
-                              key={t}
-                              onClick={() => setTypeFilter(t)}
-                              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                                typeFilter === t
-                                  ? 'bg-green-600 text-white'
-                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                              }`}
-                            >
+                            <button key={t} onClick={() => setTypeFilter(t)}
+                              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${typeFilter === t ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                               {t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
                             </button>
                           ))}
                           {ignoredCount > 0 && (
-                            <button
-                              onClick={() => setShowIgnored(s => !s)}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                                showIgnored ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                              }`}
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              {showIgnored ? 'Hide Ignored' : `Ignored (${ignoredCount})`}
+                            <button onClick={() => setShowIgnored(s => !s)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg ${showIgnored ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                              <Eye className="w-3.5 h-3.5" /> {showIgnored ? 'Hide Ignored' : `Ignored (${ignoredCount})`}
                             </button>
                           )}
                           {closedWonCount > 0 && (
-                            <button
-                              onClick={() => setShowClosedWon(s => !s)}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                                showClosedWon ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                              }`}
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              {showClosedWon ? 'Hide Closed Won' : `Closed Won (${closedWonCount})`}
+                            <button onClick={() => setShowClosedWon(s => !s)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg ${showClosedWon ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                              <CheckCircle className="w-3.5 h-3.5" /> {showClosedWon ? 'Hide Closed Won' : `Closed Won (${closedWonCount})`}
                             </button>
                           )}
                         </div>
-                        <button onClick={exportCSV} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                        <button onClick={exportCSV} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
                           <Download className="w-4 h-4" /> Export CSV
                         </button>
                       </div>
-
-                      {/* Table */}
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
@@ -865,16 +823,13 @@ export default function CallIntelligence() {
                                 { label: 'Title', field: null },
                                 { label: 'Rep', field: 'rep' },
                                 { label: 'Type', field: null },
+                                { label: 'ICP', field: 'icp' },
                                 { label: 'Duration', field: 'duration' },
                                 { label: 'Talk Ratio', field: 'ratio' },
                                 { label: 'Sentiment', field: 'sentiment' },
-                                { label: 'Top Theme', field: null },
                               ].map(col => (
-                                <th
-                                  key={col.label}
-                                  onClick={() => col.field && toggleSort(col.field)}
-                                  className={`text-left px-4 py-3 text-xs text-gray-400 font-semibold uppercase tracking-wide whitespace-nowrap ${col.field ? 'cursor-pointer hover:text-gray-600' : ''}`}
-                                >
+                                <th key={col.label} onClick={() => col.field && toggleSort(col.field)}
+                                  className={`text-left px-4 py-3 text-xs text-gray-400 font-semibold uppercase tracking-wide whitespace-nowrap ${col.field ? 'cursor-pointer hover:text-gray-600' : ''}`}>
                                   {col.label}{col.field && <SortArrow field={col.field} />}
                                 </th>
                               ))}
@@ -883,21 +838,15 @@ export default function CallIntelligence() {
                           </thead>
                           <tbody>
                             {filteredCalls.map(call => (
-                              <tr
-                                key={call.gongCallId}
-                                onClick={() => !call.ignored && setSelectedCall(call)}
-                                className={`border-b border-gray-50 transition-colors ${
-                                  call.ignored
-                                    ? 'opacity-40 cursor-default bg-gray-50'
-                                    : 'hover:bg-green-50 cursor-pointer'
-                                }`}
-                              >
+                              <tr key={call.gongCallId} onClick={() => !call.ignored && setSelectedCall(call)}
+                                className={`border-b border-gray-50 transition-colors ${call.ignored ? 'opacity-40 cursor-default bg-gray-50' : 'hover:bg-green-50 cursor-pointer'}`}>
                                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                                   {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
                                 </td>
-                                <td className="px-4 py-3 font-medium text-gray-800 max-w-[220px] truncate">{call.title}</td>
+                                <td className="px-4 py-3 font-medium text-gray-800 max-w-[200px] truncate">{call.title}</td>
                                 <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{call.repName || '—'}</td>
                                 <td className="px-4 py-3"><TypeBadge type={call.callType} /></td>
+                                <td className="px-4 py-3"><ScoreBadge score={call.analysis?.icp_score} type="icp" /></td>
                                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                                   {call.durationSeconds ? `${Math.round(call.durationSeconds / 60)}m` : '—'}
                                 </td>
@@ -907,30 +856,15 @@ export default function CallIntelligence() {
                                     : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {call.analysis?.sentiment
-                                    ? <SentimentBadge sentiment={call.analysis.sentiment} />
-                                    : <span className="text-gray-300 text-xs">Unanalyzed</span>}
-                                </td>
-                                <td className="px-4 py-3 text-gray-500 text-xs max-w-[140px] truncate">
-                                  {call.analysis?.themes?.[0] || '—'}
+                                  {call.analysis?.sentiment ? <SentimentBadge sentiment={call.analysis.sentiment} /> : <span className="text-gray-300 text-xs">Unanalyzed</span>}
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      onClick={e => toggleIgnore(call, e)}
-                                      title={call.ignored ? 'Unignore call' : 'Ignore call'}
-                                      className="text-gray-300 hover:text-gray-500 transition-colors"
-                                    >
+                                    <button onClick={e => toggleIgnore(call, e)} title={call.ignored ? 'Unignore' : 'Ignore'} className="text-gray-300 hover:text-gray-500">
                                       {call.ignored ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                                     </button>
                                     {call.gongUrl && (
-                                      <a
-                                        href={call.gongUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={e => e.stopPropagation()}
-                                        className="text-gray-400 hover:text-green-600 transition-colors"
-                                      >
+                                      <a href={call.gongUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-gray-400 hover:text-green-600">
                                         <ExternalLink className="w-4 h-4" />
                                       </a>
                                     )}
@@ -940,10 +874,7 @@ export default function CallIntelligence() {
                             ))}
                           </tbody>
                         </table>
-
-                        {filteredCalls.length === 0 && (
-                          <div className="text-center py-12 text-gray-400 text-sm">No calls match the current filter.</div>
-                        )}
+                        {filteredCalls.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">No calls match the current filter.</div>}
                       </div>
                     </div>
                   )}
@@ -955,89 +886,40 @@ export default function CallIntelligence() {
                     <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-green-600 to-emerald-600 text-white">
                       <div className="flex items-center gap-2">
                         <Sparkles className="w-4 h-4" />
-                        <div>
-                          <p className="text-sm font-semibold">Ask the Data</p>
-                          <p className="text-xs text-green-100">{analyzedCalls.length} calls in context</p>
-                        </div>
+                        <div><p className="text-sm font-semibold">Ask the Data</p><p className="text-xs text-green-100">{analyzedCalls.length} calls in context</p></div>
                       </div>
-                      <button onClick={() => setShowChat(false)} className="p-1 hover:bg-green-500 rounded transition-colors">
-                        <X className="w-4 h-4" />
-                      </button>
+                      <button onClick={() => setShowChat(false)} className="p-1 hover:bg-green-500 rounded"><X className="w-4 h-4" /></button>
                     </div>
-
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
                       {chatMessages.length === 0 && (
                         <div className="text-center py-4">
                           <Sparkles className="w-10 h-10 text-green-200 mx-auto mb-3" />
                           <p className="text-sm text-gray-500 mb-4">Ask anything about the calls</p>
                           <div className="space-y-2">
-                            {[
-                              'Where are we losing deals?',
-                              'What objections come up most in demos?',
-                              'Which rep handles objections best?',
-                              'Write an investor update on our sales process',
-                            ].map((q, i) => (
-                              <button
-                                key={i}
-                                onClick={() => setChatInput(q)}
-                                className="block w-full text-left text-sm px-3 py-2 bg-gray-50 hover:bg-green-50 rounded-lg text-gray-600 hover:text-green-700 transition-colors border border-transparent hover:border-green-200"
-                              >
-                                {q}
-                              </button>
+                            {['Where are we losing deals?', 'What objections come up most in demos?', 'Which rep has the best discovery scores?', 'Write an investor update on our sales process'].map((q, i) => (
+                              <button key={i} onClick={() => setChatInput(q)} className="block w-full text-left text-sm px-3 py-2 bg-gray-50 hover:bg-green-50 rounded-lg text-gray-600 hover:text-green-700 border border-transparent hover:border-green-200">{q}</button>
                             ))}
                           </div>
                         </div>
                       )}
-
                       {chatMessages.map((msg, i) => (
                         <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[90%] rounded-xl px-4 py-3 text-sm ${
-                            msg.role === 'user'
-                              ? 'bg-green-600 text-white'
-                              : msg.role === 'error'
-                              ? 'bg-red-50 text-red-700 border border-red-200'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
+                          <div className={`max-w-[90%] rounded-xl px-4 py-3 text-sm ${msg.role === 'user' ? 'bg-green-600 text-white' : msg.role === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-800'}`}>
                             {msg.role === 'assistant'
-                              ? <div className="prose prose-sm max-w-none text-gray-800 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
-                                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                                </div>
-                              : <p className="whitespace-pre-wrap">{msg.content}</p>
-                            }
+                              ? <div className="prose prose-sm max-w-none text-gray-800 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                              : <p className="whitespace-pre-wrap">{msg.content}</p>}
                           </div>
                         </div>
                       ))}
-
-                      {chatLoading && (
-                        <div className="flex justify-start">
-                          <div className="bg-gray-100 rounded-xl px-4 py-3">
-                            <div className="flex gap-1">
-                              {[0, 1, 2].map(i => (
-                                <div key={i} className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      {chatLoading && <div className="flex justify-start"><div className="bg-gray-100 rounded-xl px-4 py-3"><div className="flex gap-1">{[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:`${i*0.15}s`}}/>)}</div></div></div>}
                       <div ref={chatEndRef} />
                     </div>
-
                     <div className="p-3 border-t">
                       <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={chatInput}
-                          onChange={e => setChatInput(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
-                          placeholder="Ask about the calls…"
-                          className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                          disabled={chatLoading}
-                        />
-                        <button
-                          onClick={sendChat}
-                          disabled={chatLoading || !chatInput.trim()}
-                          className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors"
-                        >
+                        <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
+                          placeholder="Ask about the calls…" disabled={chatLoading}
+                          className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                        <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40">
                           <Send className="w-4 h-4" />
                         </button>
                       </div>
@@ -1055,7 +937,6 @@ export default function CallIntelligence() {
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/30" onClick={() => setSelectedCall(null)} />
           <div className="relative bg-white w-full max-w-xl h-full overflow-y-auto shadow-2xl">
-            {/* Drawer header */}
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-start justify-between z-10">
               <div className="flex-1 min-w-0 pr-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -1069,27 +950,19 @@ export default function CallIntelligence() {
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => toggleIgnore(selectedCall)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors text-gray-500 border-gray-200 hover:bg-gray-50"
-                  title={selectedCall.ignored ? 'Unignore this call' : 'Ignore this call'}
-                >
+                <button onClick={() => toggleIgnore(selectedCall)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
                   {selectedCall.ignored ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                   {selectedCall.ignored ? 'Unignore' : 'Ignore'}
                 </button>
                 {selectedCall.gongUrl && (
-                  <a href={selectedCall.gongUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 border border-green-200 rounded-lg hover:bg-green-50 transition-colors">
-                    <ExternalLink className="w-3.5 h-3.5" /> View in Gong
+                  <a href={selectedCall.gongUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 border border-green-200 rounded-lg hover:bg-green-50">
+                    <ExternalLink className="w-3.5 h-3.5" /> Gong
                   </a>
                 )}
-                <button onClick={() => setSelectedCall(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
+                <button onClick={() => setSelectedCall(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
               </div>
             </div>
 
-            {/* No analysis */}
             {!selectedCall.analysis && (
               <div className="px-6 py-12 text-center">
                 <AlertCircle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
@@ -1097,7 +970,6 @@ export default function CallIntelligence() {
               </div>
             )}
 
-            {/* Analysis content */}
             {selectedCall.analysis && (
               <div className="px-6 py-6 space-y-6">
 
@@ -1105,6 +977,28 @@ export default function CallIntelligence() {
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Summary</h3>
                     <p className="text-sm text-gray-700 leading-relaxed">{selectedCall.analysis.summary}</p>
+                  </div>
+                )}
+
+                {/* ICP + Discovery scores */}
+                {(selectedCall.analysis.icp_score != null || selectedCall.analysis.discovery_score != null) && (
+                  <div className="grid grid-cols-2 gap-4">
+                    {selectedCall.analysis.icp_score != null && (
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">ICP Fit</p>
+                        <p className="text-2xl font-bold text-gray-800">{selectedCall.analysis.icp_score}<span className="text-sm text-gray-400 font-normal">/10</span></p>
+                        {selectedCall.analysis.icp_rationale && <p className="text-xs text-gray-500 mt-1">{selectedCall.analysis.icp_rationale}</p>}
+                      </div>
+                    )}
+                    {selectedCall.analysis.discovery_score != null && (
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Discovery</p>
+                        <p className="text-2xl font-bold text-gray-800">{selectedCall.analysis.discovery_score}<span className="text-sm text-gray-400 font-normal">/10</span></p>
+                        {selectedCall.analysis.discovery_gaps?.length > 0 && (
+                          <p className="text-xs text-amber-600 mt-1">{selectedCall.analysis.discovery_gaps.slice(0, 2).join(' · ')}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1117,9 +1011,7 @@ export default function CallIntelligence() {
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Themes</h3>
                     <div className="flex flex-wrap gap-2">
-                      {selectedCall.analysis.themes.map((t, i) => (
-                        <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full font-medium">{t}</span>
-                      ))}
+                      {selectedCall.analysis.themes.map((t, i) => <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full font-medium">{t}</span>)}
                     </div>
                   </div>
                 )}
@@ -1130,15 +1022,8 @@ export default function CallIntelligence() {
                     <div className="space-y-3">
                       {selectedCall.analysis.objections.map((obj, i) => (
                         <div key={i} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <CategoryBadge category={obj.category} />
-                            <p className="text-sm font-medium text-gray-800">{obj.text}</p>
-                          </div>
-                          {obj.rep_response && (
-                            <p className="text-xs text-gray-500">
-                              <span className="font-medium text-gray-600">Rep responded: </span>{obj.rep_response}
-                            </p>
-                          )}
+                          <div className="flex items-center gap-2 mb-1.5"><CategoryBadge category={obj.category} /><p className="text-sm font-medium text-gray-800">{obj.text}</p></div>
+                          {obj.rep_response && <p className="text-xs text-gray-500"><span className="font-medium text-gray-600">Rep responded: </span>{obj.rep_response}</p>}
                         </div>
                       ))}
                     </div>
@@ -1149,30 +1034,14 @@ export default function CallIntelligence() {
                   <div className="grid grid-cols-2 gap-4">
                     {selectedCall.analysis.buying_signals?.length > 0 && (
                       <div>
-                        <h3 className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2 flex items-center gap-1">
-                          <CheckCircle className="w-3.5 h-3.5" /> Buying Signals
-                        </h3>
-                        <ul className="space-y-1.5">
-                          {selectedCall.analysis.buying_signals.map((s, i) => (
-                            <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                              <span className="text-green-500 mt-0.5">•</span>{s}
-                            </li>
-                          ))}
-                        </ul>
+                        <h3 className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2 flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> Buying Signals</h3>
+                        <ul className="space-y-1.5">{selectedCall.analysis.buying_signals.map((s, i) => <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5"><span className="text-green-500 mt-0.5">•</span>{s}</li>)}</ul>
                       </div>
                     )}
                     {selectedCall.analysis.red_flags?.length > 0 && (
                       <div>
-                        <h3 className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2 flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5" /> Red Flags
-                        </h3>
-                        <ul className="space-y-1.5">
-                          {selectedCall.analysis.red_flags.map((f, i) => (
-                            <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                              <span className="text-red-400 mt-0.5">•</span>{f}
-                            </li>
-                          ))}
-                        </ul>
+                        <h3 className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Red Flags</h3>
+                        <ul className="space-y-1.5">{selectedCall.analysis.red_flags.map((f, i) => <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5"><span className="text-red-400 mt-0.5">•</span>{f}</li>)}</ul>
                       </div>
                     )}
                   </div>
@@ -1183,9 +1052,7 @@ export default function CallIntelligence() {
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Next Steps Mentioned</h3>
                     <ul className="space-y-1.5">
                       {selectedCall.analysis.next_steps_mentioned.map((s, i) => (
-                        <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                          <ChevronRight className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />{s}
-                        </li>
+                        <li key={i} className="text-sm text-gray-600 flex items-start gap-2"><ChevronRight className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />{s}</li>
                       ))}
                     </ul>
                   </div>
@@ -1196,10 +1063,7 @@ export default function CallIntelligence() {
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Competitor Mentions</h3>
                     <div className="space-y-2">
                       {selectedCall.analysis.competitor_mentions.map((c, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <span className="font-medium text-yellow-700">{c.name}</span>
-                          <span className="text-gray-500">— {c.context}</span>
-                        </div>
+                        <div key={i} className="flex items-start gap-2 text-sm"><span className="font-medium text-yellow-700">{c.name}</span><span className="text-gray-500">— {c.context}</span></div>
                       ))}
                     </div>
                   </div>
