@@ -1,6 +1,6 @@
 # Sales Dashboard — Roadmap
 
-_Last updated: 2026-04-15_
+_Last updated: 2026-05-05_
 
 ---
 
@@ -104,6 +104,33 @@ _Last updated: 2026-04-15_
 |---|---|---|
 | Create task does nothing | ✅ Fixed 2026-04-15 | Server-side Supabase used browser client with no session → all task API routes returned 401 |
 | Active/All/Complete filter broken | ✅ Fixed 2026-04-15 | Symptom of the auth bug above — no tasks loaded = nothing to filter |
+
+---
+
+## 📊 Call Intelligence — Build Queue
+
+Items in rough priority order. First 5 are actively in progress or next up.
+
+### In Progress / Next Up
+- **Complete full analysis (262 calls)** — prerequisite for everything below. Insights based on partial data can't be trusted.
+- **Reframe "Top Themes" → "Top Buyer Priorities"** — prompt change in `intel-aggregate.js`. Same data, framed as market intelligence: "Buyers prioritizing: escaping spreadsheets, portfolio visibility, accounting integration" instead of theme counts.
+- **Loss Reasons breakdown** — first-class section in the aggregate output. Ranked list: what % of negative-sentiment calls are attributed to authority mismatch, no acute pain, wrong ICP, reschedule decay, competition. Currently buried in Win/Loss bullets.
+- **ICP fit score per call** — Haiku prompt addition: 1–10 score on how well the prospect matches Banner's ICP (CRE, CapEx-heavy, still on spreadsheets). Aggregate by score bucket to find the threshold below which deals don't close. Output becomes a data-backed ICP threshold for SDRs.
+- **Discovery quality / MEDDICC coverage score** — Haiku prompt addition: did the rep surface economic buyer, decision process, specific pain metric, champion? Maps to MEDDICC fields already tracked in Account Pipeline. Low-discovery calls are fake pipeline.
+
+### Soon
+- **"Gone cold" deal flag** — using HubSpot stage data now cached per call, flag deals where the deal stage hasn't advanced since the intro/demo. Show a filtered view: "intro calls where deal is still in intro 30+ days later." This is the recoverable loss pool.
+- **Gone cold → follow-up email/content proposal** — for each gone-cold deal, Claude drafts a re-engagement email and suggests relevant content (case study, ROI model, reference customer) based on the original call's objections and themes. Rep clicks to copy or send.
+- **Revenue impact on insights** — pull `deal_amount` from HubSpot alongside deal stage. Tie aggregate insights to dollars: "Authority mismatches present in $Xm of pipeline, 3x lower close rate." Changes the aggregate prompt to output dollar-weighted insights.
+- **Month-over-month trend analysis** — 6 months of call data exists, enough for trends. Add `trend` field to aggregate: loss reason %, ICP score, discovery score by month. Surface as sparklines or delta vs. prior month on the top-level numbers.
+- **Executive headline** — after revenue + trend data exist, have Claude generate a single-sentence `executive_summary` field: "We're losing ~40% of qualified deals to two fixable issues: wrong-contact engagement and weak next-step discipline." Replaces the top KPI row as the hero element.
+- **CEO summary tab** — a "Summary" tab showing: headline → loss reasons → rep performance → 3 actions. The existing Overview tab becomes the analyst/operational view.
+
+### Future
+- **Dock integration for re-engagement** — when a deal goes cold, auto-populate a Dock information room (Banner's tool for deal rooms) with relevant content, case studies, and a personalized message based on the call analysis. Triggered from the "gone cold" flag. James uses Dock today; this closes the loop from insight → action → delivery without rep copy-paste.
+- **To-Do list auto-population from gone cold** — when a deal is flagged as gone cold, auto-create a task in the rep's task list: "Re-engage [Company] — last contacted [date], suggested follow-up attached." Links back to the Call Intelligence gone-cold view. (Note: To-Do list integration exists in the app already; this would be the first auto-created task from Call Intelligence.)
+- **ICP threshold enforcement** — once ICP score data accumulates, surface the data-backed threshold (e.g., "deals scoring below 6 close at 4% vs. 38% above") and expose it as a rep-facing qualification checklist on the Intro call booking flow.
+- **Gong Smart Suggestions** — surface action items from recent Gong call transcripts (next steps, commitments, follow-ups) in the Tasks Smart Suggestions panel, alongside Gmail and Calendar. Closes the loop: call happens → task auto-surfaces.
 
 ---
 
