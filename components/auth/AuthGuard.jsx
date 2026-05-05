@@ -51,17 +51,23 @@ export default function AuthGuard({ children }) {
   useEffect(() => {
     if (!isInitialized || shouldBypassAuth) return
 
-    const isLoginPage = router.pathname === '/login'
+    const isPublicPage = router.pathname === '/login' ||
+      router.pathname.startsWith('/auth/') ||
+      router.pathname.startsWith('/share/')
 
-    if (!user && !isLoginPage) {
+    if (!user && !isPublicPage) {
       router.push('/login')
-    } else if (user && isLoginPage) {
+    } else if (user && router.pathname === '/login') {
       router.push('/modules/tasks')
     }
   }, [user, isInitialized, router, shouldBypassAuth])
 
-  // Show loading state while initializing
-  if (!isInitialized || isLoading) {
+  // Show loading state while initializing (skip for public pages to avoid flash)
+  const isPublicPage = router.pathname === '/login' ||
+    router.pathname.startsWith('/auth/') ||
+    router.pathname.startsWith('/share/')
+
+  if (!isPublicPage && (!isInitialized || isLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -80,8 +86,13 @@ export default function AuthGuard({ children }) {
     return children
   }
 
-  // Don't render protected content if not authenticated (except login page)
-  if (!user && router.pathname !== '/login') {
+  // Public pages always render
+  if (isPublicPage) {
+    return children
+  }
+
+  // Don't render protected content if not authenticated
+  if (!user) {
     return null
   }
 
