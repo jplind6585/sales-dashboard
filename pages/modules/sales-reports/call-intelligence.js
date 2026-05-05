@@ -97,6 +97,7 @@ export default function CallIntelligence() {
   const [aggregate, setAggregate] = useState(null)
   const [loadingCalls, setLoadingCalls] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const [persistWarning, setPersistWarning] = useState(null)
 
   const [analyzing, setAnalyzing] = useState(false)
   const [analyzeProgress, setAnalyzeProgress] = useState({ done: 0, total: 0, currentTitle: '' })
@@ -155,6 +156,8 @@ export default function CallIntelligence() {
     setAnalyzing(true)
     setAnalyzeProgress({ done: 0, total: unanalyzed.length, currentTitle: '' })
 
+    const persistFailures = []
+
     for (const call of unanalyzed) {
       setAnalyzeProgress(p => ({ ...p, currentTitle: call.title }))
       try {
@@ -173,17 +176,25 @@ export default function CallIntelligence() {
           }),
         })
         const data = await res.json()
-        if (data.success) {
+        // Always update in-memory state if we got an analysis back
+        if (data.analysis) {
           setCalls(prev => prev.map(c =>
             c.gongCallId === call.gongCallId
               ? { ...c, analysis: data.analysis, analyzedAt: new Date().toISOString() }
               : c
           ))
         }
+        if (data.persisted === false) {
+          persistFailures.push(data.persistError || 'unknown error')
+        }
       } catch (e) {
         console.error('Analysis failed for:', call.title, e)
       }
       setAnalyzeProgress(p => ({ ...p, done: p.done + 1 }))
+    }
+
+    if (persistFailures.length > 0) {
+      setPersistWarning(`Analysis results shown but not saved to database (${persistFailures.length} calls affected). Results will be lost on page refresh. DB error: ${persistFailures[0]}`)
     }
 
     // Compute aggregate after all calls analyzed
@@ -407,6 +418,16 @@ export default function CallIntelligence() {
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <span className="text-sm text-red-700">{loadError}</span>
             <button onClick={fetchCalls} className="text-sm text-red-600 underline">Retry</button>
+          </div>
+        </div>
+      )}
+
+      {/* Persistence warning */}
+      {persistWarning && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-3 shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+            <span className="text-sm text-red-700">{persistWarning}</span>
+            <button onClick={() => setPersistWarning(null)} className="text-sm text-red-500 hover:text-red-700 ml-4">✕</button>
           </div>
         </div>
       )}

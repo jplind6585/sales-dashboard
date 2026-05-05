@@ -137,11 +137,17 @@ Return ONLY valid JSON:
     );
 
     if (upsertError) {
-      console.error('intel-analyze: Supabase write failed for', callId, upsertError);
-      return apiError(res, 500, `Analysis completed but failed to save: ${upsertError.message}. Check that the gong_call_analyses table exists and has correct permissions.`);
+      console.error('intel-analyze: Supabase write failed for', callId, upsertError.message, upsertError.code, upsertError.details);
     }
 
-    return apiSuccess(res, { callId, analysis });
+    // Always return the analysis even if the DB write failed —
+    // the UI will update in-memory and show a persistence warning if needed
+    return apiSuccess(res, {
+      callId,
+      analysis,
+      persisted: !upsertError,
+      persistError: upsertError ? upsertError.message : null,
+    });
   } catch (error) {
     console.error('intel-analyze error:', error);
     return apiError(res, 500, error.message);
