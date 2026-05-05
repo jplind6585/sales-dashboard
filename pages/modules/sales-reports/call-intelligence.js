@@ -173,6 +173,10 @@ export default function CallIntelligence() {
     const saved = localStorage.getItem('banner_intel_sales_reps')
     if (saved) {
       try { setSalesReps(new Set(JSON.parse(saved))) } catch { /* ignore */ }
+    } else {
+      const defaults = ['James Lindberg', 'Logan King', 'Jovan Arsovski', 'Mark Murphy']
+      setSalesReps(new Set(defaults))
+      localStorage.setItem('banner_intel_sales_reps', JSON.stringify(defaults))
     }
     fetchCalls(); fetchAggregate()
   }, [])
