@@ -59,7 +59,10 @@ export default async function handler(req, res) {
       return apiError(res, 400, 'Calls have been analyzed but no content was extracted yet. Try re-analyzing some calls first.');
     }
 
-    const callSummaries = richRows.map(r => ({
+    // Cap at 150 most recent to stay within Claude's context + output limits
+    const cappedRows = richRows.slice(0, 150);
+
+    const callSummaries = cappedRows.map(r => ({
       title: r.title,
       date: r.call_date ? new Date(r.call_date).toLocaleDateString() : null,
       rep: r.rep_name,
@@ -68,7 +71,7 @@ export default async function handler(req, res) {
       ...(r.analysis || {}),
     }));
 
-    const aggregatePrompt = `You are analyzing ${richRows.length} sales calls for Banner, a CapEx management software company for commercial real estate. Your audience is the CEO.
+    const aggregatePrompt = `You are analyzing ${cappedRows.length} sales calls for Banner, a CapEx management software company for commercial real estate. Your audience is the CEO.
 
 Individual call analyses:
 ${JSON.stringify(callSummaries, null, 2)}
@@ -93,21 +96,21 @@ Return ONLY valid JSON with this aggregate analysis:
 
     const rawAggregate = await callAnthropic(apiKey, {
       model: 'claude-sonnet-4-6',
-      maxTokens: 4500,
+      maxTokens: 6000,
       messages: [{ role: 'user', content: aggregatePrompt }],
     });
 
     const analysis = parseClaudeJson(rawAggregate, {});
 
     await db.from('gong_aggregate_analysis').insert({
-      call_count: richRows.length,
-      date_range_start: richRows[richRows.length - 1]?.call_date || null,
-      date_range_end: richRows[0]?.call_date || null,
+      call_count: cappedRows.length,
+      date_range_start: cappedRows[cappedRows.length - 1]?.call_date || null,
+      date_range_end: cappedRows[0]?.call_date || null,
       analysis,
       computed_at: new Date().toISOString(),
     });
 
-    return apiSuccess(res, { aggregate: analysis, callCount: richRows.length });
+    return apiSuccess(res, { aggregate: analysis, callCount: cappedRows.length });
   } else {
     return apiError(res, 405, 'Method not allowed');
   }
