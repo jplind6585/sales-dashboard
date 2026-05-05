@@ -34,17 +34,32 @@ export default async function handler(req, res) {
     const apiKey = validateAnthropicKey(res);
     if (!apiKey) return;
 
-    const { data: rows, error } = await db
+    const { repNames } = req.body || {};
+
+    let query = db
       .from('gong_call_analyses')
       .select('*')
       .or('ignored.is.null,ignored.eq.false')
+      .not('analysis', 'is', null)
       .order('call_date', { ascending: false });
+
+    if (repNames?.length) {
+      query = query.in('rep_name', repNames);
+    }
+
+    const { data: rows, error } = await query;
 
     if (error || !rows || rows.length === 0) {
       return apiError(res, 400, 'No analyzed calls found — analyze some calls first.');
     }
 
-    const callSummaries = rows.map(r => ({
+    // Only include rows with actual analysis content to avoid polluting the aggregate
+    const richRows = rows.filter(r => r.analysis?.summary || r.analysis?.themes?.length > 0);
+    if (!richRows.length) {
+      return apiError(res, 400, 'Calls have been analyzed but no content was extracted yet. Try re-analyzing some calls first.');
+    }
+
+    const callSummaries = richRows.map(r => ({
       title: r.title,
       date: r.call_date ? new Date(r.call_date).toLocaleDateString() : null,
       rep: r.rep_name,
@@ -53,7 +68,7 @@ export default async function handler(req, res) {
       ...(r.analysis || {}),
     }));
 
-    const aggregatePrompt = `You are analyzing ${rows.length} sales calls (Intro and Demo) for Banner, a CapEx management software company for commercial real estate. Your audience is the CEO.
+    const aggregatePrompt = `You are analyzing ${richRows.length} sales calls for Banner, a CapEx management software company for commercial real estate. Your audience is the CEO.
 
 Individual call analyses:
 ${JSON.stringify(callSummaries, null, 2)}
@@ -85,14 +100,14 @@ Return ONLY valid JSON with this aggregate analysis:
     const analysis = parseClaudeJson(rawAggregate, {});
 
     await db.from('gong_aggregate_analysis').insert({
-      call_count: rows.length,
-      date_range_start: rows[rows.length - 1]?.call_date || null,
-      date_range_end: rows[0]?.call_date || null,
+      call_count: richRows.length,
+      date_range_start: richRows[richRows.length - 1]?.call_date || null,
+      date_range_end: richRows[0]?.call_date || null,
       analysis,
       computed_at: new Date().toISOString(),
     });
 
-    return apiSuccess(res, { aggregate: analysis, callCount: rows.length });
+    return apiSuccess(res, { aggregate: analysis, callCount: richRows.length });
   } else {
     return apiError(res, 405, 'Method not allowed');
   }

@@ -136,6 +136,8 @@ export default function CallIntelligence() {
 
   const [enriching, setEnriching] = useState(false)
   const [enrichStats, setEnrichStats] = useState(null)
+  const [shareUrl, setShareUrl] = useState(null)
+  const [sharing, setSharing] = useState(false)
 
   const [activeTab, setActiveTab] = useState('overview')
   const [selectedCall, setSelectedCall] = useState(null)
@@ -243,15 +245,34 @@ export default function CallIntelligence() {
   async function refreshAggregate() {
     setRefreshingAggregate(true)
     try {
-      const res = await fetch('/api/gong/intel-aggregate', { method: 'POST' })
+      const repNames = salesReps ? [...salesReps] : null
+      const res = await fetch('/api/gong/intel-aggregate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repNames }),
+      })
       const data = await res.json()
       if (data.success && data.aggregate) setAggregate(data.aggregate)
+      else if (!data.success && data.error) console.error('Aggregate failed:', data.error)
     } catch (e) { console.error('Aggregate refresh failed:', e) }
     finally { setRefreshingAggregate(false) }
   }
 
+  async function createShareLink() {
+    setSharing(true)
+    try {
+      const res = await fetch('/api/gong/intel-share', { method: 'POST' })
+      const data = await res.json()
+      if (data.success && data.url) {
+        setShareUrl(data.url)
+        await navigator.clipboard.writeText(data.url)
+      }
+    } catch (e) { console.error('Share failed:', e) }
+    finally { setSharing(false) }
+  }
+
   async function runEnrichment() {
-    const callIds = calls.map(c => c.gongCallId)
+    const callIds = activeCalls.map(c => c.gongCallId)
     if (!callIds.length || enriching) return
     setEnriching(true); setEnrichStats(null)
     try {
@@ -363,6 +384,7 @@ export default function CallIntelligence() {
   }, [calls])
 
   const filteredCalls = calls
+    .filter(c => salesReps == null || (c.repName && salesReps.has(c.repName)))
     .filter(c => showIgnored || !c.ignored)
     .filter(c => showClosedWon || c.dealStage?.toLowerCase() !== 'closedwon')
     .filter(c => typeFilter === 'all' || c.callType === typeFilter)
@@ -429,9 +451,20 @@ export default function CallIntelligence() {
                   <RefreshCw className={`w-4 h-4 ${refreshingAggregate ? 'animate-spin' : ''}`} /> Refresh Insights
                 </button>
               )}
+              <button onClick={runEnrichment} disabled={enriching} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50" title="Match calls to HubSpot deals — filters out post-sale CS calls">
+                <RefreshCw className={`w-4 h-4 ${enriching ? 'animate-spin' : ''}`} /> Sync HubSpot
+              </button>
               {analyzedCalls.length > 0 && (
                 <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
                   <Download className="w-4 h-4" /> Export CSV
+                </button>
+              )}
+              {aggregate && (
+                <button onClick={createShareLink} disabled={sharing}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${shareUrl ? 'bg-green-100 text-green-700' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'} disabled:opacity-50`}
+                  title={shareUrl ? 'Link copied!' : 'Generate shareable link (no login required)'}>
+                  <ExternalLink className="w-4 h-4" />
+                  {sharing ? 'Generating…' : shareUrl ? 'Link Copied!' : 'Share'}
                 </button>
               )}
               <button onClick={() => setShowChat(c => !c)} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${showChat ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'}`}>
@@ -489,57 +522,24 @@ export default function CallIntelligence() {
       )}
 
       {/* Banners */}
-      {!enriching && !loadingCalls && uncheckedCount > 0 && (
-        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 shrink-0">
-          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-blue-800">
-              <Info className="w-4 h-4 shrink-0" />
-              <span>Deal status not checked for {uncheckedCount} calls — Closed Won deals auto-hidden once checked</span>
-            </div>
-            <button onClick={runEnrichment} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-              Check HubSpot Status
-            </button>
-          </div>
-        </div>
-      )}
       {enriching && (
         <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center gap-2 text-sm text-blue-800">
             <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
-            <span>Checking HubSpot deal stages… this may take 15–30 seconds</span>
+            <span>Syncing HubSpot deals… matching call participants to contacts</span>
           </div>
         </div>
       )}
-      {enrichStats && !enriching && enrichStats.withDeals > 0 && (
-        <div className="bg-green-50 border-b border-green-200 px-6 py-3 shrink-0">
+      {enrichStats && !enriching && (
+        <div className={`border-b px-6 py-3 shrink-0 ${enrichStats.withDeals > 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-green-800">
-              <CheckCircle className="w-4 h-4 shrink-0" />
-              <span>HubSpot check complete — {enrichStats.withDeals} calls linked to deals{enrichStats.closedWon > 0 ? `, ${enrichStats.closedWon} Closed Won hidden` : ''}</span>
+            <div className="flex items-center gap-2 text-sm">
+              {enrichStats.withDeals > 0
+                ? <span className="text-green-800"><CheckCircle className="w-4 h-4 inline mr-1" />Synced — {enrichStats.withDeals} calls linked to HubSpot deals ({enrichStats.hsContactsIndexed} contacts indexed)</span>
+                : <span className="text-amber-800"><AlertCircle className="w-4 h-4 inline mr-1" />Sync complete but no deals matched. Check that HUBSPOT_API_KEY has access to Contacts and Deals.</span>
+              }
             </div>
-            <button onClick={() => setEnrichStats(null)} className="text-green-600 text-sm">✕</button>
-          </div>
-        </div>
-      )}
-      {enrichStats && !enriching && enrichStats.withDeals === 0 && (
-        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 shrink-0">
-          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 text-sm text-amber-800 mb-1">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>HubSpot check ran but no deals were found in Gong's CRM context. The Gong-HubSpot integration may return context in an unexpected format.</span>
-              </div>
-              {enrichStats.debugContext != null && (
-                <details className="mt-1">
-                  <summary className="text-xs text-amber-600 cursor-pointer hover:text-amber-800">Show raw context from Gong (share with developer)</summary>
-                  <pre className="mt-1 text-xs bg-amber-100 rounded p-2 overflow-x-auto max-h-32 text-amber-900">{JSON.stringify(enrichStats.debugContext, null, 2)}</pre>
-                </details>
-              )}
-              {enrichStats.debugContext === null && (
-                <p className="text-xs text-amber-600">No context field returned — Gong may not be passing CRM data on these calls.</p>
-              )}
-            </div>
-            <button onClick={() => setEnrichStats(null)} className="text-amber-600 ml-4 text-sm shrink-0">✕</button>
+            <button onClick={() => setEnrichStats(null)} className="text-gray-400 text-sm ml-4">✕</button>
           </div>
         </div>
       )}

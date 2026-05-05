@@ -1,6 +1,8 @@
-// Fetches HubSpot deal stages for Gong calls using Gong's CRM context.
-// Called from the UI when user clicks "Check HubSpot Status". Results are cached
-// in gong_call_analyses so subsequent loads are instant.
+// Matches Gong call participants to HubSpot contacts, tags each call with its
+// deal + close date. Replaces the Gong CRM context approach which wasn't returning data.
+//
+// Logic: include a call if the deal has no close date (still open) OR the call
+// happened before the deal closed. This filters out post-sale CS calls automatically.
 
 import {
   apiError,
@@ -13,90 +15,105 @@ import {
 import { createServerSupabaseClient } from '../../../lib/supabase';
 
 const GONG_API_BASE = 'https://api.gong.io';
+const HS_API_BASE = 'https://api.hubapi.com';
 
-function extractHubSpotInfo(context) {
-  const systems = Array.isArray(context) ? context : (context ? [context] : []);
+async function fetchHubSpotEmailDealMap(key) {
+  const deals = [];
+  let after = null;
+  let pages = 0;
 
-  for (const sys of systems) {
-    if (!sys || typeof sys !== 'object') continue;
+  do {
+    const url = `${HS_API_BASE}/crm/v3/objects/deals?properties=dealname,dealstage,closedate&associations=contacts&limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+    if (!r.ok) break;
+    const d = await r.json().catch(() => ({}));
+    deals.push(...(d.results || []));
+    after = d.paging?.next?.after || null;
+    pages++;
+  } while (after && pages < 50);
 
-    const sysName = (sys.system || sys.systemType || sys.crm || '').toLowerCase();
-    // Accept HubSpot regardless of case, or no system name (check objects directly)
-    const isHubSpot = !sysName || sysName.includes('hubspot') || sysName.includes('hub');
-    if (!isHubSpot) continue;
+  console.log(`[intel-enrich] HubSpot: fetched ${deals.length} deals across ${pages} pages`);
+  if (!deals.length) return {};
 
-    const objects = sys.objects || sys.records || sys.entities || [];
-    for (const obj of objects) {
-      const objType = (obj.objectType || obj.type || obj.entityType || '').toLowerCase();
-      // Include if it looks like a deal, or if there's no type (try it anyway)
-      const isDeal = !objType || objType.includes('deal') || objType.includes('opportunity');
-      if (!isDeal) continue;
-
-      const dealId = String(obj.objectId || obj.id || obj.entityId || obj.recordId || '');
-      if (!dealId || dealId === 'undefined' || dealId === 'null') continue;
-
-      let dealStage = null;
-      const fields = obj.fields || obj.properties || obj.attributes || [];
-      for (const f of fields) {
-        const name = (f.name || f.key || f.fieldName || '').toLowerCase();
-        if (name === 'dealstage' || name === 'deal_stage' || name === 'hs_deal_stage_probability') {
-          dealStage = f.value || f.stringValue || f.displayValue;
-          break;
-        }
-      }
-      return { dealId, dealStage };
+  // Build contactId → dealInfo map
+  const contactToDeal = {};
+  for (const deal of deals) {
+    const isClosed = ['closedwon', 'closedlost'].includes(deal.properties?.dealstage);
+    // Only store closeDate for actually-closed deals — open deals have a target date
+    // which is not useful for filtering
+    const closeDate = isClosed ? (deal.properties?.closedate || null) : null;
+    for (const assoc of (deal.associations?.contacts?.results || [])) {
+      const cid = assoc.id;
+      if (!contactToDeal[cid]) contactToDeal[cid] = [];
+      contactToDeal[cid].push({
+        dealId: deal.id,
+        dealName: deal.properties?.dealname || null,
+        dealStage: deal.properties?.dealstage || null,
+        dealCloseDate: closeDate,
+      });
     }
   }
-  return { dealId: null, dealStage: null };
-}
 
-async function fetchGongContextBatch(callIds, headers, logSample = false) {
-  try {
-    const r = await fetch(`${GONG_API_BASE}/v2/calls/extensive`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        filter: { callIds },
-        contentSelector: { exposedFields: { context: ['*'] } },
-      }),
-    });
-    if (!r.ok) return {};
-    const d = await r.json().catch(() => ({}));
-    const out = {};
-    for (const call of (d.calls || [])) {
-      // Log the raw context for the first call so we can debug the structure
-      if (logSample && call.context) {
-        console.log('[intel-enrich] sample context for call', call.id, JSON.stringify(call.context).slice(0, 500));
+  const contactIds = Object.keys(contactToDeal);
+  if (!contactIds.length) return {};
+
+  // Fetch emails for all contact IDs in batches of 100
+  const emailToDeal = {};
+  for (let i = 0; i < contactIds.length; i += 100) {
+    const batch = contactIds.slice(i, i + 100);
+    try {
+      const r = await fetch(`${HS_API_BASE}/crm/v3/objects/contacts/batch/read`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ properties: ['email'], inputs: batch.map(id => ({ id })) }),
+      });
+      if (!r.ok) continue;
+      const d = await r.json().catch(() => ({}));
+      for (const contact of (d.results || [])) {
+        const email = contact.properties?.email?.toLowerCase();
+        if (!email) continue;
+        emailToDeal[email] = contactToDeal[contact.id] || [];
       }
-      out[call.id] = extractHubSpotInfo(call.context || []);
-    }
-    return out;
-  } catch { return {}; }
+    } catch { /* continue */ }
+  }
+
+  return emailToDeal;
 }
 
-async function fetchHubSpotStages(dealIds) {
-  const key = process.env.HUBSPOT_API_KEY;
-  if (!key || !dealIds.length) return {};
-  try {
-    const r = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        properties: ['dealstage'],
-        inputs: dealIds.map(id => ({ id })),
-      }),
-    });
-    if (!r.ok) return {};
-    const d = await r.json().catch(() => ({}));
-    const out = {};
-    for (const deal of (d.results || [])) {
-      out[deal.id] = deal.properties?.dealstage || null;
-    }
-    return out;
-  } catch { return {}; }
+async function fetchGongParticipants(callIds, headers) {
+  const out = {};
+  const BATCH = 20;
+  const PARALLEL = 5;
+  const batches = [];
+  for (let i = 0; i < callIds.length; i += BATCH) batches.push(callIds.slice(i, i + BATCH));
+
+  for (let i = 0; i < batches.length; i += PARALLEL) {
+    const chunk = batches.slice(i, i + PARALLEL);
+    const results = await Promise.all(chunk.map(async batch => {
+      try {
+        const r = await fetch(`${GONG_API_BASE}/v2/calls/extensive`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            filter: { callIds: batch },
+            contentSelector: { exposedFields: { parties: true } },
+          }),
+        });
+        if (!r.ok) return {};
+        const d = await r.json().catch(() => ({}));
+        const result = {};
+        for (const call of (d.calls || [])) {
+          const externalEmails = (call.parties || [])
+            .filter(p => p.affiliation === 'external' && p.emailAddress)
+            .map(p => p.emailAddress.toLowerCase());
+          if (externalEmails.length) result[call.id] = externalEmails;
+        }
+        return result;
+      } catch { return {}; }
+    }));
+    results.forEach(r => Object.assign(out, r));
+  }
+  return out;
 }
 
 export default async function handler(req, res) {
@@ -106,6 +123,9 @@ export default async function handler(req, res) {
   const { callIds } = req.body || {};
   if (!callIds?.length) return apiError(res, 400, 'callIds array required');
 
+  const hsKey = process.env.HUBSPOT_API_KEY;
+  if (!hsKey) return apiError(res, 500, 'HUBSPOT_API_KEY not configured');
+
   const credentials = validateGongCredentials(res);
   if (!credentials) return;
   const { accessKey, secretKey } = credentials;
@@ -113,79 +133,47 @@ export default async function handler(req, res) {
 
   const db = createServerSupabaseClient(req, res);
 
-  // Batch-fetch Gong extensive context (20 per request, 5 in parallel)
-  const contextMap = {};
-  const GONG_BATCH = 20;
-  const PARALLEL = 5;
-  const batches = [];
-  for (let i = 0; i < callIds.length; i += GONG_BATCH) {
-    batches.push(callIds.slice(i, i + GONG_BATCH));
-  }
+  // Fetch HubSpot email→deal map and Gong participants in parallel
+  const [emailDealMap, participantMap] = await Promise.all([
+    fetchHubSpotEmailDealMap(hsKey),
+    fetchGongParticipants(callIds, gongHeaders),
+  ]);
 
-  for (let i = 0; i < batches.length; i += PARALLEL) {
-    const chunk = batches.slice(i, i + PARALLEL);
-    // Log context structure from first batch only (for debugging)
-    const results = await Promise.all(chunk.map((b, idx) => fetchGongContextBatch(b, gongHeaders, i === 0 && idx === 0)));
-    results.forEach(r => Object.assign(contextMap, r));
-  }
-
-  const withDealsFound = Object.values(contextMap).filter(v => v.dealId).length;
-  console.log(`[intel-enrich] processed ${callIds.length} calls, found ${withDealsFound} with HubSpot deal IDs`);
-
-  // For deal IDs without a stage in Gong context, look up HubSpot directly
-  const needHubSpot = [
-    ...new Set(
-      Object.values(contextMap)
-        .filter(info => info.dealId && !info.dealStage)
-        .map(info => info.dealId)
-    ),
-  ];
-
-  let hsStages = {};
-  for (let i = 0; i < needHubSpot.length; i += 100) {
-    const stages = await fetchHubSpotStages(needHubSpot.slice(i, i + 100));
-    Object.assign(hsStages, stages);
-  }
-
-  // Build upsert rows
+  const emailCount = Object.keys(emailDealMap).length;
   const now = new Date().toISOString();
+  let matched = 0;
+
   const upserts = callIds.map(gongCallId => {
-    const info = contextMap[gongCallId] || { dealId: null, dealStage: null };
-    const stage = info.dealStage || (info.dealId ? hsStages[info.dealId] : null) || null;
+    const emails = participantMap[gongCallId] || [];
+    let bestDeal = null;
+
+    for (const email of emails) {
+      const deals = emailDealMap[email];
+      if (!deals?.length) continue;
+      // Prefer open deals (no close date) over closed ones
+      const openDeal = deals.find(d => !d.dealCloseDate);
+      bestDeal = openDeal || deals[0];
+      break;
+    }
+
+    if (bestDeal) matched++;
+
     return {
       gong_call_id: gongCallId,
-      hubspot_deal_id: info.dealId || null,
-      hubspot_deal_stage: stage,
+      hubspot_deal_id: bestDeal?.dealId || null,
+      hubspot_deal_stage: bestDeal?.dealStage || null,
+      deal_name: bestDeal?.dealName || null,
+      deal_close_date: bestDeal?.dealCloseDate || null,
       hubspot_checked_at: now,
     };
   });
 
-  // Upsert in batches of 100 to stay within Supabase limits
   for (let i = 0; i < upserts.length; i += 100) {
     await db
       .from('gong_call_analyses')
       .upsert(upserts.slice(i, i + 100), { onConflict: 'gong_call_id' });
   }
 
-  const withDeals = upserts.filter(u => u.hubspot_deal_id).length;
-  const closedWon = upserts.filter(u => u.hubspot_deal_stage?.toLowerCase() === 'closedwon').length;
-
-  // If no deals found, return a sample of the raw context for debugging
-  let debugContext = null;
-  if (withDeals === 0 && callIds.length > 0) {
-    try {
-      const sampleRes = await fetch(`${GONG_API_BASE}/v2/calls/extensive`, {
-        method: 'POST',
-        headers: gongHeaders,
-        body: JSON.stringify({
-          filter: { callIds: callIds.slice(0, 1) },
-          contentSelector: { exposedFields: { context: ['*'] } },
-        }),
-      });
-      const sampleData = await sampleRes.json().catch(() => ({}));
-      debugContext = sampleData.calls?.[0]?.context ?? null;
-    } catch { /* ignore */ }
-  }
-
-  return apiSuccess(res, { enriched: callIds.length, withDeals, closedWon, debugContext });
+  console.log(`[intel-enrich] matched ${matched} of ${callIds.length} calls to HubSpot deals`);
+  return apiSuccess(res, { enriched: callIds.length, withDeals: matched, hsContactsIndexed: emailCount });
 }

@@ -62,8 +62,13 @@ export default async function handler(req, res) {
       pageCount++;
     } while (cursor && pageCount < 15);
 
-    // Include all calls — CS calls filtered client-side by rep selection
-    const filtered = allCalls;
+    // Exclude post-sale calls: calls that happened after their deal's close date
+    // (requires HubSpot enrichment to have run first; un-enriched calls are always included)
+    const filtered = allCalls.filter(call => {
+      const closeDate = cachedMap[call.id]?.dealCloseDate;
+      if (!closeDate) return true;
+      return new Date(call.started || 0) <= new Date(closeDate);
+    });
 
     // Fetch ALL cached analyses from Supabase — avoid .in() with 200+ IDs (URL length limits)
     const db = createServerSupabaseClient(req, res);
@@ -71,7 +76,7 @@ export default async function handler(req, res) {
 
     const { data: rows, error: dbError } = await db
       .from('gong_call_analyses')
-      .select('gong_call_id, analysis, analyzed_at, ignored, ignore_reason, hubspot_deal_id, hubspot_deal_stage, hubspot_checked_at');
+      .select('gong_call_id, analysis, analyzed_at, ignored, ignore_reason, hubspot_deal_id, hubspot_deal_stage, hubspot_checked_at, deal_close_date, deal_name');
 
     if (dbError) {
       console.error('intel-calls: Supabase read error:', dbError);
@@ -85,6 +90,8 @@ export default async function handler(req, res) {
         hubspotDealId: row.hubspot_deal_id || null,
         dealStage: row.hubspot_deal_stage || null,
         hubspotCheckedAt: row.hubspot_checked_at || null,
+        dealCloseDate: row.deal_close_date || null,
+        dealName: row.deal_name || null,
       };
     });
 
@@ -114,6 +121,8 @@ export default async function handler(req, res) {
         hubspotDealId: cached?.hubspotDealId || null,
         dealStage: cached?.dealStage || null,
         hubspotCheckedAt: cached?.hubspotCheckedAt || null,
+        dealCloseDate: cached?.dealCloseDate || null,
+        dealName: cached?.dealName || null,
       };
     });
 
