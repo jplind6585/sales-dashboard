@@ -147,8 +147,9 @@ export default function CallIntelligence() {
     } catch { /* silent — aggregate is optional */ }
   }
 
-  async function runAnalysis() {
-    const unanalyzed = calls.filter(c => !c.analysis)
+  async function runAnalysis(limit = null) {
+    let unanalyzed = calls.filter(c => !c.analysis)
+    if (limit) unanalyzed = unanalyzed.slice(0, limit)
     if (unanalyzed.length === 0 || analyzing) return
 
     setAnalyzing(true)
@@ -378,13 +379,24 @@ export default function CallIntelligence() {
               <AlertCircle className="w-4 h-4" />
               <span>{unanalyzedCount} call{unanalyzedCount > 1 ? 's' : ''} haven't been analyzed yet</span>
             </div>
-            <button
-              onClick={runAnalysis}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              Analyze {unanalyzedCount} Calls
-            </button>
+            <div className="flex items-center gap-2">
+              {unanalyzedCount > 20 && (
+                <button
+                  onClick={() => runAnalysis(20)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-400 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50 transition-colors"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Analyze 20 Most Recent
+                </button>
+              )}
+              <button
+                onClick={() => runAnalysis()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Analyze All ({unanalyzedCount})
+              </button>
+            </div>
           </div>
         </div>
       )}
