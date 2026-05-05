@@ -152,6 +152,7 @@ export default function CallIntelligence() {
 
   const [reengagingId, setReengagingId] = useState(null)
   const [reengagementEmails, setReengagementEmails] = useState({})
+  const [selectedCallIds, setSelectedCallIds] = useState(new Set())
 
   const chatEndRef = useRef(null)
   const repFilterRef = useRef(null)
@@ -210,10 +211,12 @@ export default function CallIntelligence() {
     } catch { /* silent */ }
   }
 
-  async function runAnalysis(limit = null, forceReanalyze = false) {
+  async function runAnalysis(limit = null, forceReanalyze = false, explicitCalls = null) {
+    // explicitCalls = specific call list (batch selection); otherwise use activeCalls filtered by rep
+    const pool = explicitCalls ?? activeCalls
     let unanalyzed = forceReanalyze
-      ? calls.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon' && c.analysis?.icp_score == null)
-      : calls.filter(c => !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
+      ? pool.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon' && c.analysis?.icp_score == null)
+      : pool.filter(c => !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
     if (limit) unanalyzed = unanalyzed.slice(0, limit)
     if (!unanalyzed.length || analyzing) return
     setAnalyzing(true)
@@ -958,14 +961,42 @@ export default function CallIntelligence() {
                             </button>
                           )}
                         </div>
-                        <button onClick={exportCSV} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
-                          <Download className="w-4 h-4" /> Export CSV
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {selectedCallIds.size > 0 && (
+                            <>
+                              <span className="text-xs text-gray-500">{selectedCallIds.size} selected</span>
+                              <button
+                                onClick={() => {
+                                  const selected = filteredCalls.filter(c => selectedCallIds.has(c.gongCallId))
+                                  runAnalysis(null, false, selected)
+                                  setSelectedCallIds(new Set())
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
+                              >
+                                <Zap className="w-3.5 h-3.5" /> Analyze Selected ({selectedCallIds.size})
+                              </button>
+                              <button onClick={() => setSelectedCallIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600">Clear</button>
+                            </>
+                          )}
+                          <button onClick={exportCSV} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+                            <Download className="w-4 h-4" /> Export CSV
+                          </button>
+                        </div>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b border-gray-100 bg-gray-50">
+                              <th className="pl-4 py-3 w-8">
+                                <input type="checkbox"
+                                  className="accent-green-600"
+                                  checked={filteredCalls.length > 0 && filteredCalls.every(c => selectedCallIds.has(c.gongCallId))}
+                                  onChange={e => {
+                                    if (e.target.checked) setSelectedCallIds(new Set(filteredCalls.map(c => c.gongCallId)))
+                                    else setSelectedCallIds(new Set())
+                                  }}
+                                />
+                              </th>
                               {[
                                 { label: 'Date', field: 'date' },
                                 { label: 'Title', field: null },
@@ -986,24 +1017,37 @@ export default function CallIntelligence() {
                           </thead>
                           <tbody>
                             {filteredCalls.map(call => (
-                              <tr key={call.gongCallId} onClick={() => !call.ignored && setSelectedCall(call)}
-                                className={`border-b border-gray-50 transition-colors ${call.ignored ? 'opacity-40 cursor-default bg-gray-50' : 'hover:bg-green-50 cursor-pointer'}`}>
-                                <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                              <tr key={call.gongCallId}
+                                className={`border-b border-gray-50 transition-colors ${call.ignored ? 'opacity-40 bg-gray-50' : selectedCallIds.has(call.gongCallId) ? 'bg-green-50' : 'hover:bg-green-50'}`}>
+                                <td className="pl-4 py-3 w-8" onClick={e => e.stopPropagation()}>
+                                  <input type="checkbox"
+                                    className="accent-green-600"
+                                    checked={selectedCallIds.has(call.gongCallId)}
+                                    onChange={e => {
+                                      setSelectedCallIds(prev => {
+                                        const next = new Set(prev)
+                                        if (e.target.checked) next.add(call.gongCallId); else next.delete(call.gongCallId)
+                                        return next
+                                      })
+                                    }}
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-gray-500 whitespace-nowrap" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
                                   {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
                                 </td>
-                                <td className="px-4 py-3 font-medium text-gray-800 max-w-[200px] truncate">{call.title}</td>
-                                <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{call.repName || '—'}</td>
-                                <td className="px-4 py-3"><TypeBadge type={call.callType} /></td>
-                                <td className="px-4 py-3"><ScoreBadge score={call.analysis?.icp_score} type="icp" /></td>
-                                <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                                <td className="px-4 py-3 font-medium text-gray-800 max-w-[200px] truncate" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>{call.title}</td>
+                                <td className="px-4 py-3 text-gray-600 whitespace-nowrap" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>{call.repName || '—'}</td>
+                                <td className="px-4 py-3" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}><TypeBadge type={call.callType} /></td>
+                                <td className="px-4 py-3" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}><ScoreBadge score={call.analysis?.icp_score} type="icp" /></td>
+                                <td className="px-4 py-3 text-gray-500 whitespace-nowrap" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
                                   {call.durationSeconds ? `${Math.round(call.durationSeconds / 60)}m` : '—'}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
+                                <td className="px-4 py-3 whitespace-nowrap" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
                                   {call.analysis?.rep_talk_ratio != null
                                     ? <span className={`font-medium ${call.analysis.rep_talk_ratio <= 55 ? 'text-green-600' : 'text-amber-600'}`}>{call.analysis.rep_talk_ratio}%</span>
                                     : <span className="text-gray-300">—</span>}
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-4 py-3" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
                                   {call.analysis?.sentiment ? <SentimentBadge sentiment={call.analysis.sentiment} /> : <span className="text-gray-300 text-xs">Unanalyzed</span>}
                                 </td>
                                 <td className="px-4 py-3 text-right">
