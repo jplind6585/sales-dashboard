@@ -44,11 +44,8 @@ export default async function handler(req, res) {
       pageCount++;
     } while (cursor && pageCount < 20);
 
-    // Filter to calls with "intro" or "demo" in title (case-insensitive)
-    const filtered = allCalls.filter(call => {
-      const title = (call.title || '').toLowerCase();
-      return title.includes('intro') || title.includes('demo');
-    });
+    // Include all calls — CS calls filtered later via HubSpot closed-won status
+    const filtered = allCalls;
 
     // Fetch rep names from Gong users
     let userMap = {};
@@ -90,9 +87,9 @@ export default async function handler(req, res) {
 
     const getCallType = (title) => {
       const t = (title || '').toLowerCase();
-      if (t.includes('intro')) return 'intro';
+      if (t.includes('intro') || t.includes('introduction')) return 'intro';
       if (t.includes('demo')) return 'demo';
-      return 'other';
+      return 'solution_validation';
     };
 
     const calls = filtered.map(call => {

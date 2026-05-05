@@ -26,8 +26,13 @@ function SentimentBadge({ sentiment }) {
 }
 
 function TypeBadge({ type }) {
-  const cfg = { intro: 'bg-teal-100 text-teal-700', demo: 'bg-indigo-100 text-indigo-700' }[type] || 'bg-gray-100 text-gray-600'
-  return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cfg}`}>{type || '—'}</span>
+  const TYPES = {
+    intro: { cls: 'bg-teal-100 text-teal-700', label: 'intro' },
+    demo: { cls: 'bg-indigo-100 text-indigo-700', label: 'demo' },
+    solution_validation: { cls: 'bg-orange-100 text-orange-700', label: 'follow-up' },
+  }
+  const cfg = TYPES[type] || { cls: 'bg-gray-100 text-gray-600', label: type || '—' }
+  return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
 }
 
 function ScoreBadge({ score, type = 'icp' }) {
@@ -487,7 +492,7 @@ export default function CallIntelligence() {
         </div>
       )}
       {/* Stale analysis — missing ICP/discovery scores */}
-      {!analyzing && !loadingCalls && unanalyzedCount === 0 && missingScoresCount > 0 && (
+      {!analyzing && !loadingCalls && missingScoresCount > 0 && (
         <div className="bg-violet-50 border-b border-violet-200 px-6 py-3 shrink-0">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-violet-800">
@@ -554,7 +559,7 @@ export default function CallIntelligence() {
             {aggregate && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                 <KPICard label="Calls Analyzed" value={analyzedCalls.length}
-                  sub={`${activeCalls.filter(c => c.callType === 'intro').length} intro · ${activeCalls.filter(c => c.callType === 'demo').length} demo`} />
+                  sub={`${activeCalls.filter(c => c.callType === 'intro').length} intro · ${activeCalls.filter(c => c.callType === 'demo').length} demo · ${activeCalls.filter(c => c.callType === 'solution_validation').length} follow-up`} />
                 <KPICard label="Positive Sentiment"
                   value={positivePct !== null ? `${positivePct}%` : '—'}
                   sub={`${sentBreakdown.neutral || 0} neutral · ${sentBreakdown.negative || 0} negative`}
@@ -583,8 +588,8 @@ export default function CallIntelligence() {
             {calls.length === 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center mb-6">
                 <Phone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">No Intro or Demo calls found</h3>
-                <p className="text-gray-500 text-sm">No calls with "Intro" or "Demo" in the title in the last 6 months.</p>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">No calls found</h3>
+                <p className="text-gray-500 text-sm">No calls found in the last 6 months.</p>
               </div>
             )}
 
@@ -844,10 +849,15 @@ export default function CallIntelligence() {
                     <div className="bg-white rounded-xl border border-gray-200">
                       <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-wrap gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {['all', 'intro', 'demo'].map(t => (
-                            <button key={t} onClick={() => setTypeFilter(t)}
-                              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${typeFilter === t ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                              {t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
+                          {[
+                            { id: 'all', label: 'All' },
+                            { id: 'intro', label: 'Intro' },
+                            { id: 'demo', label: 'Demo' },
+                            { id: 'solution_validation', label: 'Follow-up' },
+                          ].map(t => (
+                            <button key={t.id} onClick={() => setTypeFilter(t.id)}
+                              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${typeFilter === t.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                              {t.label}
                             </button>
                           ))}
                           {ignoredCount > 0 && (
