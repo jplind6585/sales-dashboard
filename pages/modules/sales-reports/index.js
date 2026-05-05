@@ -1,7 +1,7 @@
 import { useRouter } from 'next/router'
 import { ArrowLeft, PhoneCall, Rocket } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import { useAuthStore } from '../../stores/useAuthStore'
+import UserMenu from '../../../components/auth/UserMenu'
+import { useAuthStore } from '../../../stores/useAuthStore'
 
 const REPORTS = [
   {
@@ -11,8 +11,8 @@ const REPORTS = [
     icon: PhoneCall,
     href: '/modules/sales-reports/call-intelligence',
     color: 'from-green-500 to-emerald-600',
-    available: false,
-    status: 'in-progress',
+    available: true,
+    status: 'live',
     tags: ['Gong', '6 months', 'Intro & Demo'],
   },
 ]
@@ -97,7 +97,6 @@ export default function SalesReports() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50">
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
@@ -118,7 +117,6 @@ export default function SalesReports() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-1">Reports</h2>
