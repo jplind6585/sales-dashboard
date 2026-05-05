@@ -5,7 +5,7 @@ import {
   validateAnthropicKey,
   logRequest,
 } from '../../../lib/apiUtils';
-import { getSupabase } from '../../../lib/supabase';
+import { createServerSupabaseClient } from '../../../lib/supabase';
 
 export default async function handler(req, res) {
   logRequest(req, 'gong/intel-chat');
@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const { message, messages = [] } = req.body;
   if (!message?.trim()) return apiError(res, 400, 'Message is required');
 
-  const db = getSupabase();
+  const db = createServerSupabaseClient(req, res);
 
   const [{ data: analyses }, { data: aggregateRow }] = await Promise.all([
     db.from('gong_call_analyses').select('*').order('call_date', { ascending: false }),

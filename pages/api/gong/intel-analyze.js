@@ -10,7 +10,7 @@ import {
   parseClaudeJson,
   logRequest,
 } from '../../../lib/apiUtils';
-import { getSupabase } from '../../../lib/supabase';
+import { createServerSupabaseClient } from '../../../lib/supabase';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -119,7 +119,7 @@ Return ONLY valid JSON:
     });
 
     // Persist to Supabase — this is the source of truth across sessions
-    const db = getSupabase();
+    const db = createServerSupabaseClient(req, res);
     const { error: upsertError } = await db.from('gong_call_analyses').upsert(
       {
         gong_call_id: callId,

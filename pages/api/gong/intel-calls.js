@@ -6,7 +6,7 @@ import {
   createGongHeaders,
   logRequest,
 } from '../../../lib/apiUtils';
-import { getSupabase } from '../../../lib/supabase';
+import { createServerSupabaseClient } from '../../../lib/supabase';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
     } catch { /* continue without names */ }
 
     // Fetch ALL cached analyses from Supabase — avoid .in() with 200+ IDs (URL length limits)
-    const db = getSupabase();
+    const db = createServerSupabaseClient(req, res);
     let cachedMap = {};
 
     const { data: rows, error: dbError } = await db

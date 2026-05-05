@@ -7,11 +7,11 @@ import {
   parseClaudeJson,
   logRequest,
 } from '../../../lib/apiUtils';
-import { getSupabase } from '../../../lib/supabase';
+import { createServerSupabaseClient } from '../../../lib/supabase';
 
 export default async function handler(req, res) {
   logRequest(req, 'gong/intel-aggregate');
-  const db = getSupabase();
+  const db = createServerSupabaseClient(req, res);
 
   if (req.method === 'GET') {
     const { data, error } = await db
