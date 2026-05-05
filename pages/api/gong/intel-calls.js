@@ -62,14 +62,6 @@ export default async function handler(req, res) {
       pageCount++;
     } while (cursor && pageCount < 15);
 
-    // Exclude post-sale calls: calls that happened after their deal's close date
-    // (requires HubSpot enrichment to have run first; un-enriched calls are always included)
-    const filtered = allCalls.filter(call => {
-      const closeDate = cachedMap[call.id]?.dealCloseDate;
-      if (!closeDate) return true;
-      return new Date(call.started || 0) <= new Date(closeDate);
-    });
-
     // Fetch ALL cached analyses from Supabase — avoid .in() with 200+ IDs (URL length limits)
     const db = createServerSupabaseClient(req, res);
     let cachedMap = {};
@@ -93,6 +85,14 @@ export default async function handler(req, res) {
         dealCloseDate: row.deal_close_date || null,
         dealName: row.deal_name || null,
       };
+    });
+
+    // Exclude post-sale calls: calls that happened after their deal's close date
+    // (requires HubSpot enrichment to have run first; un-enriched calls are always included)
+    const filtered = allCalls.filter(call => {
+      const closeDate = cachedMap[call.id]?.dealCloseDate;
+      if (!closeDate) return true;
+      return new Date(call.started || 0) <= new Date(closeDate);
     });
 
     const getCallType = (title) => {
