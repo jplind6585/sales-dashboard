@@ -154,6 +154,17 @@ export default function CallIntelligence() {
   const [reengagementEmails, setReengagementEmails] = useState({})
 
   const chatEndRef = useRef(null)
+  const repFilterRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (repFilterRef.current && !repFilterRef.current.contains(e.target)) {
+        setShowRepFilter(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem('banner_intel_sales_reps')
@@ -429,24 +440,48 @@ export default function CallIntelligence() {
         </div>
       </div>
 
-      {/* Rep filter bar */}
+      {/* Rep filter — compact dropdown */}
       {allUsers.length > 0 && (
-        <div className="bg-white border-b border-gray-200 px-6 py-2 shrink-0">
-          <div className="max-w-[1400px] mx-auto flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-gray-400 font-semibold uppercase tracking-wide shrink-0">Sales Reps</span>
-            {allUsers.map(u => {
-              const active = salesReps == null || salesReps.has(u.name)
-              return (
-                <button key={u.id} onClick={() => toggleRep(u.name)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${active ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                  {u.name}
-                </button>
-              )
-            })}
+        <div ref={repFilterRef} className="bg-white border-b border-gray-200 px-6 py-2 shrink-0 relative z-20">
+          <div className="max-w-[1400px] mx-auto flex items-center gap-3">
+            <button
+              onClick={() => setShowRepFilter(s => !s)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${salesReps != null ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              {salesReps != null ? `${salesReps.size} rep${salesReps.size !== 1 ? 's' : ''} selected` : 'All reps'}
+              <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showRepFilter ? 'rotate-90' : ''}`} />
+            </button>
             {salesReps != null && (
-              <button onClick={selectAllReps} className="text-xs text-gray-400 hover:text-gray-600 underline">Show all</button>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[...salesReps].map(name => (
+                  <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">
+                    {name}
+                    <button onClick={() => toggleRep(name)} className="hover:text-green-600">×</button>
+                  </span>
+                ))}
+                <button onClick={selectAllReps} className="text-xs text-gray-400 hover:text-gray-600 underline">Clear</button>
+              </div>
             )}
           </div>
+          {showRepFilter && (
+            <div className="absolute left-6 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-72 max-h-72 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select sales reps</span>
+                <button onClick={selectAllReps} className="text-xs text-gray-400 hover:text-gray-600">Reset</button>
+              </div>
+              {allUsers.map(u => {
+                const active = salesReps == null || salesReps.has(u.name)
+                return (
+                  <label key={u.name} className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-gray-50 rounded px-1">
+                    <input type="checkbox" checked={active} onChange={() => toggleRep(u.name)} className="accent-green-600" />
+                    <span className="text-sm text-gray-700 flex-1">{u.name}</span>
+                    <span className="text-xs text-gray-400">{u.callCount}</span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

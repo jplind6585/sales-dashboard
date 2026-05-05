@@ -31,7 +31,6 @@ export default async function handler(req, res) {
 
     // Fetch rep names from Gong users first — needed for rep filtering
     let userMap = {};
-    let allUsers = [];
     try {
       const usersRes = await fetch(`${GONG_API_BASE}/v2/users`, { method: 'GET', headers });
       if (usersRes.ok) {
@@ -39,9 +38,7 @@ export default async function handler(req, res) {
         (usersData.users || []).forEach(u => {
           const name = `${u.firstName || ''} ${u.lastName || ''}`.trim();
           userMap[u.id] = { name, email: u.emailAddress };
-          if (name) allUsers.push({ id: u.id, name, email: u.emailAddress });
         });
-        allUsers.sort((a, b) => a.name.localeCompare(b.name));
       }
     } catch { /* continue without names */ }
 
@@ -121,6 +118,15 @@ export default async function handler(req, res) {
     });
 
     calls.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Build user list only from reps who actually have calls in the dataset
+    const repCounts = {};
+    calls.forEach(c => {
+      if (c.repName) repCounts[c.repName] = (repCounts[c.repName] || 0) + 1;
+    });
+    const allUsers = Object.entries(repCounts)
+      .map(([name, callCount]) => ({ name, callCount }))
+      .sort((a, b) => b.callCount - a.callCount);
 
     const closedWonCount = calls.filter(c => c.dealStage?.toLowerCase() === 'closedwon').length;
     const uncheckedCount = calls.filter(c => !c.hubspotCheckedAt).length;
