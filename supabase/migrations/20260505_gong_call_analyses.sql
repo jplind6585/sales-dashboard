@@ -28,3 +28,7 @@ CREATE TABLE IF NOT EXISTS public.gong_aggregate_analysis (
 CREATE INDEX IF NOT EXISTS gong_call_analyses_gong_call_id_idx ON public.gong_call_analyses(gong_call_id);
 CREATE INDEX IF NOT EXISTS gong_call_analyses_call_date_idx ON public.gong_call_analyses(call_date DESC);
 CREATE INDEX IF NOT EXISTS gong_aggregate_analysis_computed_at_idx ON public.gong_aggregate_analysis(computed_at DESC);
+
+-- Grant access so the API works even without the service role key
+GRANT ALL ON TABLE public.gong_call_analyses TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.gong_aggregate_analysis TO anon, authenticated, service_role;

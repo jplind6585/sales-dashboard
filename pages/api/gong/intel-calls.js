@@ -65,20 +65,20 @@ export default async function handler(req, res) {
       }
     } catch { /* continue without names */ }
 
-    // Fetch cached analyses from Supabase
+    // Fetch ALL cached analyses from Supabase — avoid .in() with 200+ IDs (URL length limits)
     const db = getSupabase();
-    const callIds = filtered.map(c => c.id);
     let cachedMap = {};
 
-    if (callIds.length > 0) {
-      const { data: rows } = await db
-        .from('gong_call_analyses')
-        .select('gong_call_id, analysis, analyzed_at')
-        .in('gong_call_id', callIds);
-      (rows || []).forEach(row => {
-        cachedMap[row.gong_call_id] = { analysis: row.analysis, analyzedAt: row.analyzed_at };
-      });
+    const { data: rows, error: dbError } = await db
+      .from('gong_call_analyses')
+      .select('gong_call_id, analysis, analyzed_at');
+
+    if (dbError) {
+      console.error('intel-calls: Supabase read error:', dbError);
     }
+    (rows || []).forEach(row => {
+      cachedMap[row.gong_call_id] = { analysis: row.analysis, analyzedAt: row.analyzed_at };
+    });
 
     const getCallType = (title) => {
       const t = (title || '').toLowerCase();

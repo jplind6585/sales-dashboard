@@ -118,9 +118,9 @@ Return ONLY valid JSON:
       next_steps_mentioned: [],
     });
 
-    // Cache in Supabase
+    // Persist to Supabase — this is the source of truth across sessions
     const db = getSupabase();
-    await db.from('gong_call_analyses').upsert(
+    const { error: upsertError } = await db.from('gong_call_analyses').upsert(
       {
         gong_call_id: callId,
         title: title || 'Untitled',
@@ -135,6 +135,11 @@ Return ONLY valid JSON:
       },
       { onConflict: 'gong_call_id' }
     );
+
+    if (upsertError) {
+      console.error('intel-analyze: Supabase write failed for', callId, upsertError);
+      return apiError(res, 500, `Analysis completed but failed to save: ${upsertError.message}. Check that the gong_call_analyses table exists and has correct permissions.`);
+    }
 
     return apiSuccess(res, { callId, analysis });
   } catch (error) {
