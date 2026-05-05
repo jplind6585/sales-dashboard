@@ -87,10 +87,10 @@ const MODULES = [
     name: 'Sales Reports',
     description: 'Performance metrics, forecasting, and pipeline health dashboards',
     icon: BarChart3,
-    href: '#',
+    href: '/modules/sales-reports',
     color: 'from-green-500 to-green-600',
-    available: false,
-    status: 'coming-soon'
+    available: true,
+    status: 'in-progress'
   },
   {
     id: 'pipeline-review',
