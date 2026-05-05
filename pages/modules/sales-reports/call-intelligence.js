@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import ReactMarkdown from 'react-markdown'
 import {
-  ArrowLeft, RefreshCw, Download, MessageCircle, X, ExternalLink,
+  ArrowLeft, RefreshCw, Download, X, ExternalLink,
   Sparkles, Send, Phone, TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertCircle, CheckCircle, Zap, Users,
+  EyeOff, Eye, Info,
 } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
@@ -103,6 +104,9 @@ export default function CallIntelligence() {
   const [analyzeProgress, setAnalyzeProgress] = useState({ done: 0, total: 0, currentTitle: '' })
   const [refreshingAggregate, setRefreshingAggregate] = useState(false)
 
+  const [enriching, setEnriching] = useState(false)
+  const [enrichStats, setEnrichStats] = useState(null)
+
   const [activeTab, setActiveTab] = useState('overview')
   const [selectedCall, setSelectedCall] = useState(null)
   const [showChat, setShowChat] = useState(false)
@@ -113,6 +117,8 @@ export default function CallIntelligence() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [sortField, setSortField] = useState('date')
   const [sortDir, setSortDir] = useState('desc')
+  const [showIgnored, setShowIgnored] = useState(false)
+  const [showClosedWon, setShowClosedWon] = useState(false)
 
   const chatEndRef = useRef(null)
 
@@ -145,11 +151,14 @@ export default function CallIntelligence() {
       const res = await fetch('/api/gong/intel-aggregate')
       const data = await res.json()
       if (data.success && data.aggregate) setAggregate(data.aggregate)
-    } catch { /* silent — aggregate is optional */ }
+    } catch { /* silent */ }
   }
 
   async function runAnalysis(limit = null) {
-    let unanalyzed = calls.filter(c => !c.analysis)
+    // Skip ignored and closed-won calls
+    let unanalyzed = calls.filter(c =>
+      !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon'
+    )
     if (limit) unanalyzed = unanalyzed.slice(0, limit)
     if (unanalyzed.length === 0 || analyzing) return
 
@@ -176,7 +185,6 @@ export default function CallIntelligence() {
           }),
         })
         const data = await res.json()
-        // Always update in-memory state if we got an analysis back
         if (data.analysis) {
           setCalls(prev => prev.map(c =>
             c.gongCallId === call.gongCallId
@@ -197,7 +205,6 @@ export default function CallIntelligence() {
       setPersistWarning(`Analysis results shown but not saved to database (${persistFailures.length} calls affected). Results will be lost on page refresh. DB error: ${persistFailures[0]}`)
     }
 
-    // Compute aggregate after all calls analyzed
     await refreshAggregate()
     setAnalyzing(false)
   }
@@ -212,6 +219,54 @@ export default function CallIntelligence() {
       console.error('Aggregate refresh failed:', e)
     } finally {
       setRefreshingAggregate(false)
+    }
+  }
+
+  async function runEnrichment() {
+    const callIds = calls.map(c => c.gongCallId)
+    if (!callIds.length || enriching) return
+    setEnriching(true)
+    setEnrichStats(null)
+    try {
+      const res = await fetch('/api/gong/intel-enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callIds }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setEnrichStats(data)
+        await fetchCalls()
+      }
+    } catch (e) {
+      console.error('Enrichment failed:', e)
+    } finally {
+      setEnriching(false)
+    }
+  }
+
+  async function toggleIgnore(call, e) {
+    e?.stopPropagation()
+    const newIgnored = !call.ignored
+    // Optimistic update
+    setCalls(prev => prev.map(c =>
+      c.gongCallId === call.gongCallId ? { ...c, ignored: newIgnored } : c
+    ))
+    if (selectedCall?.gongCallId === call.gongCallId) {
+      setSelectedCall(prev => ({ ...prev, ignored: newIgnored }))
+    }
+    try {
+      await fetch('/api/gong/intel-ignore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId: call.gongCallId, ignored: newIgnored }),
+      })
+    } catch (e) {
+      // Revert on failure
+      console.error('Toggle ignore failed:', e)
+      setCalls(prev => prev.map(c =>
+        c.gongCallId === call.gongCallId ? { ...c, ignored: call.ignored } : c
+      ))
     }
   }
 
@@ -269,10 +324,16 @@ export default function CallIntelligence() {
   }
 
   // ── Computed values ──────────────────────────────────────────────────────────
-  const analyzedCalls = calls.filter(c => c.analysis)
-  const unanalyzedCount = calls.filter(c => !c.analysis).length
+  const ignoredCount = calls.filter(c => c.ignored).length
+  const closedWonCount = calls.filter(c => c.dealStage?.toLowerCase() === 'closedwon').length
+  const uncheckedCount = calls.filter(c => !c.hubspotCheckedAt).length
+  const activeCalls = calls.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
+  const analyzedCalls = activeCalls.filter(c => c.analysis)
+  const unanalyzedCount = activeCalls.filter(c => !c.analysis).length
 
   const filteredCalls = calls
+    .filter(c => showIgnored || !c.ignored)
+    .filter(c => showClosedWon || c.dealStage?.toLowerCase() !== 'closedwon')
     .filter(c => typeFilter === 'all' || c.callType === typeFilter)
     .sort((a, b) => {
       let av, bv
@@ -298,6 +359,17 @@ export default function CallIntelligence() {
     </span>
   )
 
+  // Header subtitle
+  const headerSubtitle = loadingCalls
+    ? 'Loading…'
+    : [
+        `${activeCalls.length} active calls`,
+        `${analyzedCalls.length} analyzed`,
+        closedWonCount > 0 ? `${closedWonCount} closed won hidden` : null,
+        ignoredCount > 0 ? `${ignoredCount} ignored` : null,
+        'Last 6 months',
+      ].filter(Boolean).join(' · ')
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50 flex flex-col">
@@ -316,9 +388,7 @@ export default function CallIntelligence() {
                   <ChevronRight className="w-3 h-3 text-gray-300" />
                   <h1 className="text-xl font-bold text-gray-900">Call Intelligence</h1>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {loadingCalls ? 'Loading…' : `${calls.length} calls · ${analyzedCalls.length} analyzed · Intro & Demo · Last 6 months`}
-                </p>
+                <p className="text-xs text-gray-400 mt-0.5">{headerSubtitle}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -358,6 +428,50 @@ export default function CallIntelligence() {
         </div>
       </div>
 
+      {/* HubSpot enrichment prompt */}
+      {!enriching && !loadingCalls && uncheckedCount > 0 && (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-blue-800">
+              <Info className="w-4 h-4 shrink-0" />
+              <span>Deal status not checked for {uncheckedCount} calls — Closed Won deals are auto-hidden once checked</span>
+            </div>
+            <button
+              onClick={runEnrichment}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Check HubSpot Status
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Enrichment in progress */}
+      {enriching && (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-center gap-2 text-sm text-blue-800">
+            <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+            <span>Checking HubSpot deal stages for {calls.length} calls… this may take 15–30 seconds</span>
+          </div>
+        </div>
+      )}
+
+      {/* Enrichment complete */}
+      {enrichStats && !enriching && (
+        <div className="bg-green-50 border-b border-green-200 px-6 py-3 shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-green-800">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              <span>
+                HubSpot check complete — {enrichStats.withDeals} calls linked to deals
+                {enrichStats.closedWon > 0 ? `, ${enrichStats.closedWon} Closed Won hidden` : ''}
+              </span>
+            </div>
+            <button onClick={() => setEnrichStats(null)} className="text-green-600 hover:text-green-800 text-sm">✕</button>
+          </div>
+        </div>
+      )}
+
       {/* Analysis progress banner */}
       {analyzing && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 shrink-0">
@@ -388,7 +502,7 @@ export default function CallIntelligence() {
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-amber-800">
               <AlertCircle className="w-4 h-4" />
-              <span>{unanalyzedCount} call{unanalyzedCount > 1 ? 's' : ''} haven't been analyzed yet</span>
+              <span>{unanalyzedCount} active call{unanalyzedCount > 1 ? 's' : ''} haven't been analyzed yet</span>
             </div>
             <div className="flex items-center gap-2">
               {unanalyzedCount > 20 && (
@@ -455,7 +569,7 @@ export default function CallIntelligence() {
                 <KPICard
                   label="Calls Analyzed"
                   value={analyzedCalls.length}
-                  sub={`${calls.filter(c => c.callType === 'intro').length} intro · ${calls.filter(c => c.callType === 'demo').length} demo`}
+                  sub={`${activeCalls.filter(c => c.callType === 'intro').length} intro · ${activeCalls.filter(c => c.callType === 'demo').length} demo`}
                 />
                 <KPICard
                   label="Positive Sentiment"
@@ -485,16 +599,15 @@ export default function CallIntelligence() {
               </div>
             )}
 
-            {/* Empty state — no aggregate yet */}
-            {!aggregate && analyzedCalls.length === 0 && calls.length > 0 && (
+            {/* Empty state */}
+            {!aggregate && analyzedCalls.length === 0 && activeCalls.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center mb-6">
                 <Phone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                  {calls.length} calls found, none analyzed yet
+                  {activeCalls.length} active calls found, none analyzed yet
                 </h3>
                 <p className="text-gray-500 text-sm mb-6">
-                  Click "Analyze {unanalyzedCount} Calls" above to run AI analysis on each call.
-                  This takes 1–3 minutes depending on call count.
+                  Click "Analyze All" above to run AI analysis on each call.
                 </p>
               </div>
             )}
@@ -520,7 +633,7 @@ export default function CallIntelligence() {
                   <div className="flex gap-0 border-b border-gray-200 mb-6">
                     {[
                       { id: 'overview', label: 'Overview', disabled: !aggregate },
-                      { id: 'calls', label: `All Calls (${calls.length})`, disabled: false },
+                      { id: 'calls', label: `All Calls (${filteredCalls.length})`, disabled: false },
                     ].map(tab => (
                       <button
                         key={tab.id}
@@ -544,7 +657,6 @@ export default function CallIntelligence() {
                   {activeTab === 'overview' && aggregate && (
                     <div className="space-y-6">
 
-                      {/* Investor narrative */}
                       {aggregate.investor_narrative && (
                         <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
                           <h3 className="text-sm font-semibold text-green-800 uppercase tracking-wide mb-3 flex items-center gap-2">
@@ -554,7 +666,6 @@ export default function CallIntelligence() {
                         </div>
                       )}
 
-                      {/* Key insights */}
                       {aggregate.key_insights?.length > 0 && (
                         <div className="bg-white rounded-xl border border-gray-200 p-6">
                           <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Key Insights</h3>
@@ -569,10 +680,7 @@ export default function CallIntelligence() {
                         </div>
                       )}
 
-                      {/* Objections + Themes side by side */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                        {/* Top Objections */}
                         {aggregate.top_objections?.length > 0 && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Top Objections</h3>
@@ -591,7 +699,6 @@ export default function CallIntelligence() {
                           </div>
                         )}
 
-                        {/* Top Themes */}
                         {aggregate.top_themes?.length > 0 && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Top Themes</h3>
@@ -610,10 +717,7 @@ export default function CallIntelligence() {
                         )}
                       </div>
 
-                      {/* Win / Loss patterns + Competitors */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                        {/* Win / Loss */}
                         {(aggregate.win_patterns?.length > 0 || aggregate.loss_patterns?.length > 0) && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Win / Loss Patterns</h3>
@@ -648,7 +752,6 @@ export default function CallIntelligence() {
                           </div>
                         )}
 
-                        {/* Competitors */}
                         {aggregate.competitor_mentions?.length > 0 && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Competitor Mentions</h3>
@@ -667,7 +770,6 @@ export default function CallIntelligence() {
                         )}
                       </div>
 
-                      {/* Rep performance */}
                       {aggregate.rep_stats?.length > 0 && (
                         <div className="bg-white rounded-xl border border-gray-200 p-6">
                           <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4 flex items-center gap-2">
@@ -709,9 +811,9 @@ export default function CallIntelligence() {
                   {/* Calls tab */}
                   {activeTab === 'calls' && (
                     <div className="bg-white rounded-xl border border-gray-200">
-                      {/* Filter + export bar */}
-                      <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                        <div className="flex items-center gap-2">
+                      {/* Filter bar */}
+                      <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-wrap gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {['all', 'intro', 'demo'].map(t => (
                             <button
                               key={t}
@@ -722,9 +824,31 @@ export default function CallIntelligence() {
                                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                               }`}
                             >
-                              {t === 'all' ? 'All Calls' : t.charAt(0).toUpperCase() + t.slice(1)}
+                              {t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
                             </button>
                           ))}
+                          {ignoredCount > 0 && (
+                            <button
+                              onClick={() => setShowIgnored(s => !s)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                                showIgnored ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              {showIgnored ? 'Hide Ignored' : `Ignored (${ignoredCount})`}
+                            </button>
+                          )}
+                          {closedWonCount > 0 && (
+                            <button
+                              onClick={() => setShowClosedWon(s => !s)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                                showClosedWon ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              }`}
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              {showClosedWon ? 'Hide Closed Won' : `Closed Won (${closedWonCount})`}
+                            </button>
+                          )}
                         </div>
                         <button onClick={exportCSV} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
                           <Download className="w-4 h-4" /> Export CSV
@@ -754,15 +878,19 @@ export default function CallIntelligence() {
                                   {col.label}{col.field && <SortArrow field={col.field} />}
                                 </th>
                               ))}
-                              <th className="px-4 py-3 text-xs text-gray-400 font-semibold uppercase tracking-wide text-right">Gong</th>
+                              <th className="px-4 py-3 text-xs text-gray-400 font-semibold uppercase tracking-wide text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             {filteredCalls.map(call => (
                               <tr
                                 key={call.gongCallId}
-                                onClick={() => setSelectedCall(call)}
-                                className="border-b border-gray-50 hover:bg-green-50 cursor-pointer transition-colors"
+                                onClick={() => !call.ignored && setSelectedCall(call)}
+                                className={`border-b border-gray-50 transition-colors ${
+                                  call.ignored
+                                    ? 'opacity-40 cursor-default bg-gray-50'
+                                    : 'hover:bg-green-50 cursor-pointer'
+                                }`}
                               >
                                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                                   {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
@@ -787,17 +915,26 @@ export default function CallIntelligence() {
                                   {call.analysis?.themes?.[0] || '—'}
                                 </td>
                                 <td className="px-4 py-3 text-right">
-                                  {call.gongUrl && (
-                                    <a
-                                      href={call.gongUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={e => e.stopPropagation()}
-                                      className="text-gray-400 hover:text-green-600 transition-colors"
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={e => toggleIgnore(call, e)}
+                                      title={call.ignored ? 'Unignore call' : 'Ignore call'}
+                                      className="text-gray-300 hover:text-gray-500 transition-colors"
                                     >
-                                      <ExternalLink className="w-4 h-4" />
-                                    </a>
-                                  )}
+                                      {call.ignored ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                    </button>
+                                    {call.gongUrl && (
+                                      <a
+                                        href={call.gongUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={e => e.stopPropagation()}
+                                        className="text-gray-400 hover:text-green-600 transition-colors"
+                                      >
+                                        <ExternalLink className="w-4 h-4" />
+                                      </a>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -932,6 +1069,14 @@ export default function CallIntelligence() {
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => toggleIgnore(selectedCall)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors text-gray-500 border-gray-200 hover:bg-gray-50"
+                  title={selectedCall.ignored ? 'Unignore this call' : 'Ignore this call'}
+                >
+                  {selectedCall.ignored ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  {selectedCall.ignored ? 'Unignore' : 'Ignore'}
+                </button>
                 {selectedCall.gongUrl && (
                   <a href={selectedCall.gongUrl} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 border border-green-200 rounded-lg hover:bg-green-50 transition-colors">
@@ -956,7 +1101,6 @@ export default function CallIntelligence() {
             {selectedCall.analysis && (
               <div className="px-6 py-6 space-y-6">
 
-                {/* Summary */}
                 {selectedCall.analysis.summary && (
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Summary</h3>
@@ -964,13 +1108,11 @@ export default function CallIntelligence() {
                   </div>
                 )}
 
-                {/* Talk ratio */}
                 <div>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Talk Ratio</h3>
                   <TalkRatioBar ratio={selectedCall.analysis.rep_talk_ratio} />
                 </div>
 
-                {/* Themes */}
                 {selectedCall.analysis.themes?.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Themes</h3>
@@ -982,7 +1124,6 @@ export default function CallIntelligence() {
                   </div>
                 )}
 
-                {/* Objections */}
                 {selectedCall.analysis.objections?.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Objections</h3>
@@ -1004,7 +1145,6 @@ export default function CallIntelligence() {
                   </div>
                 )}
 
-                {/* Buying signals + Red flags */}
                 {(selectedCall.analysis.buying_signals?.length > 0 || selectedCall.analysis.red_flags?.length > 0) && (
                   <div className="grid grid-cols-2 gap-4">
                     {selectedCall.analysis.buying_signals?.length > 0 && (
@@ -1038,7 +1178,6 @@ export default function CallIntelligence() {
                   </div>
                 )}
 
-                {/* Next steps */}
                 {selectedCall.analysis.next_steps_mentioned?.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Next Steps Mentioned</h3>
@@ -1052,7 +1191,6 @@ export default function CallIntelligence() {
                   </div>
                 )}
 
-                {/* Competitor mentions */}
                 {selectedCall.analysis.competitor_mentions?.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Competitor Mentions</h3>

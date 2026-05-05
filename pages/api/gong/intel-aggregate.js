@@ -37,6 +37,7 @@ export default async function handler(req, res) {
     const { data: rows, error } = await db
       .from('gong_call_analyses')
       .select('*')
+      .or('ignored.is.null,ignored.eq.false')
       .order('call_date', { ascending: false });
 
     if (error || !rows || rows.length === 0) {

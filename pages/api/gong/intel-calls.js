@@ -71,13 +71,21 @@ export default async function handler(req, res) {
 
     const { data: rows, error: dbError } = await db
       .from('gong_call_analyses')
-      .select('gong_call_id, analysis, analyzed_at');
+      .select('gong_call_id, analysis, analyzed_at, ignored, ignore_reason, hubspot_deal_id, hubspot_deal_stage, hubspot_checked_at');
 
     if (dbError) {
       console.error('intel-calls: Supabase read error:', dbError);
     }
     (rows || []).forEach(row => {
-      cachedMap[row.gong_call_id] = { analysis: row.analysis, analyzedAt: row.analyzed_at };
+      cachedMap[row.gong_call_id] = {
+        analysis: row.analysis,
+        analyzedAt: row.analyzed_at,
+        ignored: row.ignored || false,
+        ignoreReason: row.ignore_reason || null,
+        hubspotDealId: row.hubspot_deal_id || null,
+        dealStage: row.hubspot_deal_stage || null,
+        hubspotCheckedAt: row.hubspot_checked_at || null,
+      };
     });
 
     const getCallType = (title) => {
@@ -101,15 +109,25 @@ export default async function handler(req, res) {
         gongUrl: call.url || null,
         analysis: cached?.analysis || null,
         analyzedAt: cached?.analyzedAt || null,
+        ignored: cached?.ignored || false,
+        ignoreReason: cached?.ignoreReason || null,
+        hubspotDealId: cached?.hubspotDealId || null,
+        dealStage: cached?.dealStage || null,
+        hubspotCheckedAt: cached?.hubspotCheckedAt || null,
       };
     });
 
     calls.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    const closedWonCount = calls.filter(c => c.dealStage?.toLowerCase() === 'closedwon').length;
+    const uncheckedCount = calls.filter(c => !c.hubspotCheckedAt).length;
+
     return apiSuccess(res, {
       calls,
       totalCount: calls.length,
       analyzedCount: calls.filter(c => c.analysis).length,
+      closedWonCount,
+      uncheckedCount,
       dateRange: { from: fromDate.toISOString(), to: toDate.toISOString() },
     });
   } catch (error) {

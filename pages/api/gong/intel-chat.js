@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   const db = createServerSupabaseClient(req, res);
 
   const [{ data: analyses }, { data: aggregateRow }] = await Promise.all([
-    db.from('gong_call_analyses').select('*').order('call_date', { ascending: false }),
+    db.from('gong_call_analyses').select('*').or('ignored.is.null,ignored.eq.false').order('call_date', { ascending: false }),
     db.from('gong_aggregate_analysis').select('*').order('computed_at', { ascending: false }).limit(1).single(),
   ]);
 
