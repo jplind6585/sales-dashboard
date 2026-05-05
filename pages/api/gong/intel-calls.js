@@ -29,38 +29,44 @@ export default async function handler(req, res) {
     let cursor = null;
     let pageCount = 0;
 
+    // Fetch rep names from Gong users first — needed for rep filtering
+    let userMap = {};
+    let allUsers = [];
+    try {
+      const usersRes = await fetch(`${GONG_API_BASE}/v2/users`, { method: 'GET', headers });
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        (usersData.users || []).forEach(u => {
+          const name = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+          userMap[u.id] = { name, email: u.emailAddress };
+          if (name) allUsers.push({ id: u.id, name, email: u.emailAddress });
+        });
+        allUsers.sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch { /* continue without names */ }
+
     do {
       let url = `${GONG_API_BASE}/v2/calls?fromDateTime=${fromDate.toISOString()}&toDateTime=${toDate.toISOString()}`;
       if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
 
+      // Small delay between pages to avoid Gong rate limiting
+      if (pageCount > 0) await new Promise(r => setTimeout(r, 150));
+
       const response = await fetch(url, { method: 'GET', headers });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
+        // If we already have some calls, return them with a warning rather than failing entirely
+        if (allCalls.length > 0) break;
         return apiError(res, response.status, err.errors?.[0]?.message || 'Gong API error');
       }
       const data = await response.json();
       allCalls = allCalls.concat(data.calls || []);
       cursor = data.records?.cursor || null;
       pageCount++;
-    } while (cursor && pageCount < 20);
+    } while (cursor && pageCount < 15);
 
-    // Include all calls — CS calls filtered later via HubSpot closed-won status
+    // Include all calls — CS calls filtered client-side by rep selection
     const filtered = allCalls;
-
-    // Fetch rep names from Gong users
-    let userMap = {};
-    try {
-      const usersRes = await fetch(`${GONG_API_BASE}/v2/users`, { method: 'GET', headers });
-      if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        (usersData.users || []).forEach(u => {
-          userMap[u.id] = {
-            name: `${u.firstName || ''} ${u.lastName || ''}`.trim(),
-            email: u.emailAddress,
-          };
-        });
-      }
-    } catch { /* continue without names */ }
 
     // Fetch ALL cached analyses from Supabase — avoid .in() with 200+ IDs (URL length limits)
     const db = createServerSupabaseClient(req, res);
@@ -121,6 +127,7 @@ export default async function handler(req, res) {
 
     return apiSuccess(res, {
       calls,
+      allUsers,
       totalCount: calls.length,
       analyzedCount: calls.filter(c => c.analysis).length,
       closedWonCount,

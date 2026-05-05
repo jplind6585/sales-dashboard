@@ -122,6 +122,9 @@ export default function CallIntelligence() {
   const { user } = useAuthStore()
 
   const [calls, setCalls] = useState([])
+  const [allUsers, setAllUsers] = useState([])
+  const [salesReps, setSalesReps] = useState(null) // null = all; Set of names = filtered
+  const [showRepFilter, setShowRepFilter] = useState(false)
   const [aggregate, setAggregate] = useState(null)
   const [loadingCalls, setLoadingCalls] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -152,7 +155,13 @@ export default function CallIntelligence() {
 
   const chatEndRef = useRef(null)
 
-  useEffect(() => { fetchCalls(); fetchAggregate() }, [])
+  useEffect(() => {
+    const saved = localStorage.getItem('banner_intel_sales_reps')
+    if (saved) {
+      try { setSalesReps(new Set(JSON.parse(saved))) } catch { /* ignore */ }
+    }
+    fetchCalls(); fetchAggregate()
+  }, [])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
 
   async function fetchCalls() {
@@ -162,8 +171,24 @@ export default function CallIntelligence() {
       const data = await res.json()
       if (!data.success) throw new Error(data.error || 'Failed to load calls')
       setCalls(data.calls || [])
+      if (data.allUsers?.length) setAllUsers(data.allUsers)
     } catch (e) { setLoadError(e.message) }
     finally { setLoadingCalls(false) }
+  }
+
+  function toggleRep(name) {
+    setSalesReps(prev => {
+      const current = prev ?? new Set(allUsers.map(u => u.name))
+      const next = new Set(current)
+      if (next.has(name)) next.delete(name); else next.add(name)
+      localStorage.setItem('banner_intel_sales_reps', JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  function selectAllReps() {
+    setSalesReps(null)
+    localStorage.removeItem('banner_intel_sales_reps')
   }
 
   async function fetchAggregate() {
@@ -298,7 +323,11 @@ export default function CallIntelligence() {
   const ignoredCount = calls.filter(c => c.ignored).length
   const closedWonCount = calls.filter(c => c.dealStage?.toLowerCase() === 'closedwon').length
   const uncheckedCount = calls.filter(c => !c.hubspotCheckedAt).length
-  const activeCalls = calls.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
+  const activeCalls = calls.filter(c =>
+    !c.ignored &&
+    c.dealStage?.toLowerCase() !== 'closedwon' &&
+    (salesReps == null || (c.repName && salesReps.has(c.repName)))
+  )
   const analyzedCalls = activeCalls.filter(c => c.analysis)
   const unanalyzedCount = activeCalls.filter(c => !c.analysis).length
   const missingScoresCount = analyzedCalls.filter(c => c.analysis?.icp_score == null).length
@@ -399,6 +428,27 @@ export default function CallIntelligence() {
           </div>
         </div>
       </div>
+
+      {/* Rep filter bar */}
+      {allUsers.length > 0 && (
+        <div className="bg-white border-b border-gray-200 px-6 py-2 shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-gray-400 font-semibold uppercase tracking-wide shrink-0">Sales Reps</span>
+            {allUsers.map(u => {
+              const active = salesReps == null || salesReps.has(u.name)
+              return (
+                <button key={u.id} onClick={() => toggleRep(u.name)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${active ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+                  {u.name}
+                </button>
+              )
+            })}
+            {salesReps != null && (
+              <button onClick={selectAllReps} className="text-xs text-gray-400 hover:text-gray-600 underline">Show all</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Banners */}
       {!enriching && !loadingCalls && uncheckedCount > 0 && (
