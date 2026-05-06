@@ -421,6 +421,8 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 
 ## Recently Shipped (reverse chronological)
 
+- **2026-05-06** — Deal Pulse cron (`pages/api/cron/deal-pulse.js`): scores James's active accounts for attention needed (overdue tasks +40 each, days since last call up to +80, stage weight, open next steps, red flags), picks top 3, calls Claude Haiku per account for urgency_reason + specific action + draft opener, sends Slack blocks to SLACK_MANAGER_CHANNEL (D02PGNHTR53). Cron: Mon–Fri 11am UTC (7am EST). Manual trigger: POST /api/cron/deal-pulse with Authorization: Bearer {CRON_SECRET}.
+
 - **2026-05-06** — Chat tab added to Account Pipeline:
   - `pages/api/accounts/chat.js` — POST endpoint; loads account, calls, tasks, stakeholders, open gaps, notes, and sales process config in parallel; builds a comprehensive system prompt with aggregated MEDDIC across all calls; trims to last 14 messages before sending; uses Sonnet 4.6, maxTokens 2000
   - `components/tabs/ChatTab.jsx` — persistent per-account chat UI; localStorage-backed (key: `account_chat_{id}`, trim to 30); auto-generates opening deal briefing on first open; 4 suggested prompt chips that auto-send; simple bold/newline markdown rendering; animated typing indicator; "New conversation" button clears and regenerates; error messages shown inline as system messages
