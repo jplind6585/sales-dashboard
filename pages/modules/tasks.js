@@ -64,45 +64,109 @@ function ModulesNav({ router }) {
 
 // ─── Work in Claude (per-task AI chat side panel) ────────────────────────────
 
-const DEMO_PREP_TITLES = ['prepare deck', 'prep demo deck', 'prep deck', 'demo prep']
-const isDemoPrepTask = (task) =>
-  DEMO_PREP_TITLES.some(t => task.title?.toLowerCase().includes(t))
-
-function buildIntroMessage(task, calls = []) {
-  if (isDemoPrepTask(task) && task.accountId) {
-    if (calls.length === 0) {
-      return `Loading account call history to help you prepare the deck...`
-    }
-    const lines = [`I've pulled in **${calls.length} analyzed call${calls.length !== 1 ? 's' : ''}** for ${task.account?.name || 'this account'}. Here's what I know going into the demo:\n`]
-
-    const painPoints = []
-    const nextSteps = []
-    const buyingSignals = []
-    const redFlags = []
-    const meddiccGaps = []
-
-    calls.forEach(c => {
-      const a = c.analysis || {}
-      if (a.pain_points_identified) painPoints.push(...(Array.isArray(a.pain_points_identified) ? a.pain_points_identified : [a.pain_points_identified]))
-      if (a.next_steps_mentioned?.length) nextSteps.push(...a.next_steps_mentioned)
-      if (a.buying_signals?.length) buyingSignals.push(...a.buying_signals)
-      if (a.red_flags?.length) redFlags.push(...a.red_flags)
-      const meddicc = a.meddicc || {}
-      Object.entries(meddicc).forEach(([k, v]) => {
-        if (!v || v === 'unknown' || v === 'not identified' || v === 'not mentioned') meddiccGaps.push(k)
+const TASK_PLAYBOOKS = [
+  {
+    id: 'prepare-deck',
+    match: task => /prepare deck|prep.*deck|demo prep/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 2000,
+    buildIntro(task, calls) {
+      if (!calls?.length) return `Loading account call history to help you prepare the deck...`
+      const lines = [`I've pulled in **${calls.length} analyzed call${calls.length !== 1 ? 's' : ''}** for ${task.account?.name || 'this account'}. Here's what I know going into the demo:\n`]
+      const painPoints = [], buyingSignals = [], redFlags = [], meddiccGaps = []
+      calls.forEach(c => {
+        const a = c.analysis || {}
+        if (a.pain_points_identified) painPoints.push(...(Array.isArray(a.pain_points_identified) ? a.pain_points_identified : [a.pain_points_identified]))
+        if (a.buying_signals?.length) buyingSignals.push(...a.buying_signals)
+        if (a.red_flags?.length) redFlags.push(...a.red_flags)
+        const meddicc = a.meddicc || {}
+        Object.entries(meddicc).forEach(([k, v]) => {
+          if (!v || /unknown|not identified|not mentioned/i.test(v)) meddiccGaps.push(k)
+        })
       })
-    })
+      if (painPoints.length) lines.push(`**Pain points:**\n${[...new Set(painPoints)].slice(0, 5).map(p => `• ${p}`).join('\n')}`)
+      if (buyingSignals.length) lines.push(`\n**Buying signals:**\n${[...new Set(buyingSignals)].slice(0, 4).map(s => `• ${s}`).join('\n')}`)
+      if (redFlags.length) lines.push(`\n**Red flags to address:**\n${[...new Set(redFlags)].slice(0, 3).map(f => `• ${f}`).join('\n')}`)
+      if (meddiccGaps.length) lines.push(`\n**MEDDIC gaps:** ${[...new Set(meddiccGaps)].join(', ')}`)
+      lines.push(`\nAsk me to: draft "What We Have Heard" slides, build a MEDDIC capture plan, recommend the demo flow, or write objection handling.`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'review-notes',
+    match: task => /review.*notes|review.*pursuit|pursuit.*channel/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1200,
+    buildIntro(task, calls) {
+      if (!calls?.length) return `I'll help you review this deal before heading in. What do you need to know?`
+      const latest = calls[0]
+      const a = latest?.analysis || {}
+      const lines = [`Here's where **${task.account?.name || 'this account'}** stands:\n`]
+      if (a.summary) lines.push(`**Last call (${latest.analyzedAt?.slice(0,10)}):** ${a.summary.slice(0, 300)}`)
+      const commitments = (a.next_steps_mentioned || []).concat(a.commitments || [])
+      if (commitments.length) lines.push(`\n**Open commitments:** ${commitments.slice(0,4).join(' | ')}`)
+      const meddicc = a.meddicc || {}
+      const gaps = Object.entries(meddicc).filter(([, v]) => !v || /unknown|not identified|not mentioned/i.test(v)).map(([k]) => k)
+      if (gaps.length) lines.push(`\n**MEDDIC still missing:** ${gaps.join(', ')}`)
+      if (a.red_flags?.length) lines.push(`\n**Watch out for:** ${a.red_flags.slice(0,2).join(' | ')}`)
+      lines.push(`\nWant a full deal snapshot, a draft pursuit channel update, or talking points for a specific person?`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'plan-ask',
+    match: task => /plan.*ask|plan.*next step/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1000,
+    buildIntro(task, calls) {
+      const latest = calls?.[0]
+      const a = latest?.analysis || {}
+      const lines = []
+      if (task.account?.name) lines.push(`Planning the ask for **${task.account.name}**${task.account.stage ? ` — currently at ${task.account.stage} stage` : ''}.\n`)
+      const meddicc = a.meddicc || {}
+      const gaps = Object.entries(meddicc).filter(([, v]) => !v || /unknown|not identified|not mentioned/i.test(v)).map(([k]) => k)
+      if (gaps.length) lines.push(`**MEDDIC gaps:** ${gaps.join(', ')} — the next step should address at least one of these.`)
+      if (a.next_steps_mentioned?.length) lines.push(`\n**Last committed next steps:** ${a.next_steps_mentioned.slice(0,3).join(' | ')}`)
+      lines.push(`\nTell me what the ideal outcome of the next meeting is and I'll help you plan exactly how to ask for it and what to say if they push back.`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'follow-up-email',
+    match: task => /follow.?up|send recap|send.*email(?!.*urg)|recap.*email/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1000,
+    buildIntro(task, calls) {
+      const latest = calls?.[0]
+      const a = latest?.analysis || {}
+      const lines = []
+      if (task.account?.name) lines.push(`Drafting a follow-up for **${task.account.name}**.\n`)
+      if (a.next_steps_mentioned?.length) lines.push(`**Next steps from last call:** ${a.next_steps_mentioned.slice(0,4).join(' | ')}`)
+      if (a.commitments?.length) lines.push(`**Your commitments:** ${a.commitments.slice(0,3).join(' | ')}`)
+      lines.push(`\nReady to draft the email. Want a short "thanks + recap + next step" format, or something longer with a specific ask?`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'gong-task',
+    match: task => ['gong_next_step', 'gong_commitment'].includes(task.sourceType),
+    fetchContext: null,
+    maxTokens: 1000,
+    buildIntro(task) {
+      const lines = [`Ready to help you knock this out.`]
+      if (task.rationale) lines.push(`\n**Context from the call:** ${task.rationale}`)
+      if (task.primaryAction) lines.push(`\n**Suggested first move:** ${task.primaryAction}`)
+      lines.push(`\nWhat do you need — a draft email, a message to send, or a talking points doc?`)
+      return lines.join('\n')
+    },
+  },
+]
 
-    if (painPoints.length) lines.push(`**Pain points identified:**\n${[...new Set(painPoints)].slice(0, 5).map(p => `• ${p}`).join('\n')}`)
-    if (buyingSignals.length) lines.push(`\n**Buying signals:**\n${[...new Set(buyingSignals)].slice(0, 4).map(s => `• ${s}`).join('\n')}`)
-    if (redFlags.length) lines.push(`\n**Red flags to address:**\n${[...new Set(redFlags)].slice(0, 3).map(f => `• ${f}`).join('\n')}`)
-    if ([...new Set(meddiccGaps)].length) lines.push(`\n**MEDDIC gaps to fill:** ${[...new Set(meddiccGaps)].join(', ')}`)
-    if (nextSteps.length) lines.push(`\n**Outstanding next steps:** ${[...new Set(nextSteps)].slice(0, 3).join(' | ')}`)
+function getPlaybook(task) {
+  return TASK_PLAYBOOKS.find(p => p.match(task)) || null
+}
 
-    lines.push(`\nAsk me to: draft "What We Have Heard" slides, write a discovery summary, suggest what to demo based on their pain, or build a MEDDIC capture plan.`)
-    return lines.join('\n')
-  }
-
+function buildGenericIntro(task) {
   const lines = [`I'm ready to help you work through this task.`]
   if (task.rationale) lines.push(`\n**Why it matters:** ${task.rationale}`)
   if (task.primaryAction) lines.push(`\n**Suggested first move:** ${task.primaryAction}`)
@@ -119,24 +183,26 @@ function buildIntroMessage(task, calls = []) {
 
 function WorkInClaude({ task, onClose }) {
   const storageKey = `wic_${task.id}`
-  const isDemo = isDemoPrepTask(task) && task.accountId
+  const playbook = getPlaybook(task)
+  const needsFetch = playbook?.fetchContext === 'calls' && task.accountId
   const [accountCalls, setAccountCalls] = useState([])
-  const [callsLoading, setCallsLoading] = useState(isDemo)
+  const [callsLoading, setCallsLoading] = useState(!!needsFetch)
   const [messages, setMessages] = useState(() => {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) return JSON.parse(saved)
     } catch {}
-    return [{ role: 'assistant', content: buildIntroMessage(task, []), ts: Date.now() }]
+    const intro = playbook ? playbook.buildIntro(task, []) : buildGenericIntro(task)
+    return [{ role: 'assistant', content: intro, ts: Date.now() }]
   })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
-  // For demo prep tasks: fetch account calls once on open (skip if thread already has history)
+  // For playbooks that need call context: fetch account calls once on open (skip if thread already has history)
   useEffect(() => {
-    if (!isDemo) return
+    if (!needsFetch) return
     const hasHistory = (() => { try { return !!localStorage.getItem(storageKey) } catch { return false } })()
     if (hasHistory) { setCallsLoading(false); return }
     fetch(`/api/gong/account-calls?accountId=${task.accountId}`)
@@ -144,7 +210,7 @@ function WorkInClaude({ task, onClose }) {
       .then(d => {
         const calls = d.calls || []
         setAccountCalls(calls)
-        const intro = buildIntroMessage(task, calls)
+        const intro = playbook.buildIntro(task, calls)
         const fresh = [{ role: 'assistant', content: intro, ts: Date.now() }]
         setMessages(fresh)
         try { localStorage.setItem(storageKey, JSON.stringify(fresh)) } catch {}
@@ -184,6 +250,7 @@ function WorkInClaude({ task, onClose }) {
             dueDate: task.dueDate,
             source: task.source,
             sourceType: task.sourceType,
+            role: playbook?.id || 'generic',
             account: task.account ? { name: task.account.name, stage: task.account.stage } : null,
             calls: accountCalls.length ? accountCalls.slice(0, 10).map(c => ({
               title: c.callTitle || c.analysis?.call_title,
@@ -195,6 +262,7 @@ function WorkInClaude({ task, onClose }) {
               redFlags: c.analysis?.red_flags,
               objections: c.analysis?.objections,
               meddicc: c.analysis?.meddicc,
+              commitments: c.analysis?.commitments,
               discoveryScore: c.analysis?.discovery_score,
             })) : undefined,
           },
@@ -220,7 +288,8 @@ function WorkInClaude({ task, onClose }) {
   }
 
   const clearThread = () => {
-    const fresh = [{ role: 'assistant', content: buildIntroMessage(task, accountCalls), ts: Date.now() }]
+    const intro = playbook ? playbook.buildIntro(task, accountCalls) : buildGenericIntro(task)
+    const fresh = [{ role: 'assistant', content: intro, ts: Date.now() }]
     setMessages(fresh)
     persistMessages(fresh)
   }
