@@ -60,19 +60,21 @@ function CategoryBadge({ category }) {
 function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge, onClick }) {
   const numeric = typeof count === 'number' ? count : parseFloat(String(count))
   const pct = maxCount > 0 && !isNaN(numeric) ? Math.max(4, (numeric / maxCount) * 100) : 4
+  const dashIdx = label.indexOf(' — ')
+  const displayLabel = dashIdx !== -1 ? label.slice(0, dashIdx) : label
   return (
     <div
-      className={`flex items-start gap-3 py-1.5 rounded-lg px-2 -mx-2 ${onClick ? 'cursor-pointer hover:bg-gray-50 group' : ''}`}
+      className={`flex items-center gap-3 py-1.5 rounded-lg px-2 -mx-2 ${onClick ? 'cursor-pointer hover:bg-gray-50 group' : ''}`}
       onClick={onClick}
     >
-      <div className="w-52 shrink-0 pt-0.5">
-        <div className={`text-sm text-gray-700 leading-snug ${onClick ? 'group-hover:text-gray-900' : ''}`}>{label}</div>
+      <div className="w-52 shrink-0">
+        <div className={`text-sm text-gray-700 truncate ${onClick ? 'group-hover:text-gray-900' : ''}`} title={label}>{displayLabel}</div>
       </div>
-      <div className="flex-1 bg-gray-100 rounded-full h-2 mt-1.5">
+      <div className="flex-1 bg-gray-100 rounded-full h-2">
         <div className={`${colorClass} h-2 rounded-full`} style={{ width: `${pct}%` }} />
       </div>
       {badge && <div className="shrink-0">{badge}</div>}
-      <span className="text-sm text-gray-500 w-8 text-right shrink-0 pt-0.5">{count}</span>
+      <span className="text-sm text-gray-500 w-8 text-right shrink-0">{count}</span>
     </div>
   )
 }
@@ -1401,14 +1403,24 @@ export default function CallIntelligence() {
           <div className="absolute inset-0 bg-black/30" onClick={() => setInsightPanel(null)} />
           <div className="relative bg-white w-full max-w-lg h-full overflow-y-auto shadow-2xl flex flex-col">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-start justify-between z-10">
-              <div>
+              <div className="pr-4 flex-1">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">{insightPanel.title}</p>
-                <h2 className="font-bold text-gray-900 leading-snug pr-4">{insightPanel.text}</h2>
+                {(() => {
+                  const dashIdx = insightPanel.text.indexOf(' — ')
+                  const headline = dashIdx !== -1 ? insightPanel.text.slice(0, dashIdx) : insightPanel.text
+                  const detail = dashIdx !== -1 ? insightPanel.text.slice(dashIdx + 3) : null
+                  return (
+                    <>
+                      <h2 className="font-bold text-gray-900 leading-snug">{headline}</h2>
+                      {detail && <p className="text-sm text-gray-600 mt-1 leading-relaxed">{detail}</p>}
+                    </>
+                  )
+                })()}
                 {insightPanel.count != null && (
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-gray-400 mt-2">
                     {typeof insightPanel.count === 'number' && insightPanel.count <= 100
                       ? `${insightPanel.count}% of negative calls`
-                      : `${insightPanel.count} mentions across analyzed calls`}
+                      : `${insightPanel.count} mentions`}
                   </p>
                 )}
               </div>
@@ -1417,48 +1429,39 @@ export default function CallIntelligence() {
               </button>
             </div>
 
-            <div className="px-6 py-6 space-y-6 flex-1">
-              {insightPanel.example && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Example from calls</p>
-                  <p className="text-sm text-gray-700 italic leading-relaxed">"{insightPanel.example}"</p>
+            <div className="px-6 py-6 flex-1">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                <span>Related calls</span>
+                {insightPanel.calls.length > 0 && (
+                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs font-medium">{insightPanel.calls.length}</span>
+                )}
+              </h3>
+              {insightPanel.calls.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">No specific calls matched — this pattern was identified across many calls in aggregate.</p>
+              ) : (
+                <div className="space-y-2">
+                  {insightPanel.calls.map(call => (
+                    <button
+                      key={call.gongCallId}
+                      onClick={() => { setSelectedCall(call); setInsightPanel(null) }}
+                      className="w-full text-left bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg p-3 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <TypeBadge type={call.callType} />
+                        {call.analysis?.sentiment && <SentimentBadge sentiment={call.analysis.sentiment} />}
+                        {call.analysis?.icp_score != null && <ScoreBadge score={call.analysis.icp_score} type="icp" />}
+                      </div>
+                      <p className="text-sm font-medium text-gray-800 leading-tight">{call.title}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {call.repName} · {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      </p>
+                      {call.analysis?.summary && (
+                        <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">{call.analysis.summary}</p>
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
-
-              <div>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <span>Related calls</span>
-                  {insightPanel.calls.length > 0 && (
-                    <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs font-medium">{insightPanel.calls.length}</span>
-                  )}
-                </h3>
-                {insightPanel.calls.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">No specific calls matched — this pattern was identified across many calls in aggregate.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {insightPanel.calls.map(call => (
-                      <button
-                        key={call.gongCallId}
-                        onClick={() => { setSelectedCall(call); setInsightPanel(null) }}
-                        className="w-full text-left bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg p-3 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <TypeBadge type={call.callType} />
-                          {call.analysis?.sentiment && <SentimentBadge sentiment={call.analysis.sentiment} />}
-                          {call.analysis?.icp_score != null && <ScoreBadge score={call.analysis.icp_score} type="icp" />}
-                        </div>
-                        <p className="text-sm font-medium text-gray-800 leading-tight">{call.title}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {call.repName} · {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                        </p>
-                        {call.analysis?.summary && (
-                          <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">{call.analysis.summary}</p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
