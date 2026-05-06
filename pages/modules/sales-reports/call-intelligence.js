@@ -219,6 +219,13 @@ export default function CallIntelligence() {
   const [executedMap, setExecutedMap] = useState({}) // idx → { taskId, url }
   const [dealRisks, setDealRisks] = useState([])
   const [loadingRisks, setLoadingRisks] = useState(false)
+  const [queuedCallIds, setQueuedCallIds] = useState(() => {
+    // Restore queued set from sessionStorage on mount (survives same-tab navigation)
+    try { return new Set(JSON.parse(sessionStorage.getItem('banner_intel_queued') || '[]')) } catch { return new Set() }
+  })
+  const [callSearch, setCallSearch] = useState('')
+  const [disqualFilter, setDisqualFilter] = useState(false)
+  const pollRef = useRef(null)
 
   const chatEndRef = useRef(null)
   const repFilterRef = useRef(null)
@@ -245,6 +252,35 @@ export default function CallIntelligence() {
     fetchCalls(); fetchAggregate(); fetchSalesProcess(); fetchNarrativeHistory(); fetchRisks()
   }, [])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
+
+  // Restore polling if the user navigated away mid-analysis then came back
+  useEffect(() => {
+    if (queuedCallIds.size > 0 && !pollRef.current) {
+      setAnalyzing(true)
+      setAnalyzeProgress({ done: 0, total: queuedCallIds.size, currentTitle: 'Processing in background…' })
+      const ids = queuedCallIds
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await fetch('/api/gong/intel-calls')
+          const data = await res.json()
+          if (!data.success) return
+          const fresh = data.calls || []
+          setCalls(fresh)
+          const stillPending = fresh.filter(c => ids.has(c.gongCallId) && !c.analysis)
+          setAnalyzeProgress(p => ({ ...p, done: ids.size - stillPending.length }))
+          if (!stillPending.length) {
+            clearInterval(pollRef.current)
+            pollRef.current = null
+            setAnalyzing(false)
+            setQueuedCallIds(new Set())
+            try { sessionStorage.removeItem('banner_intel_queued') } catch { /* ignore */ }
+            await refreshAggregate()
+          }
+        } catch { /* silent */ }
+      }, 20000)
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+  }, [])
 
   async function fetchCalls() {
     setLoadingCalls(true); setLoadError(null)
@@ -323,32 +359,49 @@ export default function CallIntelligence() {
   }
 
   async function runAnalysis(limit = null, forceReanalyze = false, explicitCalls = null) {
-    // explicitCalls = specific call list (batch selection); otherwise use activeCalls filtered by rep
     const pool = explicitCalls ?? activeCalls
     let unanalyzed = forceReanalyze
       ? pool.filter(c => !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon' && c.analysis?.icp_score == null)
       : pool.filter(c => !c.analysis && !c.ignored && c.dealStage?.toLowerCase() !== 'closedwon')
     if (limit) unanalyzed = unanalyzed.slice(0, limit)
     if (!unanalyzed.length || analyzing) return
+
     setAnalyzing(true)
-    setAnalyzeProgress({ done: 0, total: unanalyzed.length, currentTitle: '' })
-    const persistFailures = []
-    for (const call of unanalyzed) {
-      setAnalyzeProgress(p => ({ ...p, currentTitle: call.title }))
+    setAnalyzeProgress({ done: 0, total: unanalyzed.length, currentTitle: 'Queued — processing in background' })
+
+    // Mark these calls as queued so the All Calls tab shows a badge
+    const ids = new Set(unanalyzed.map(c => c.gongCallId))
+    setQueuedCallIds(ids)
+    try { sessionStorage.setItem('banner_intel_queued', JSON.stringify([...ids])) } catch { /* ignore */ }
+
+    // Fire batch POST — returns 202 immediately; server continues processing even if we navigate away
+    fetch('/api/gong/intel-analyze-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calls: unanalyzed }),
+    }).catch(() => { /* client-side abort is fine — server is still running */ })
+
+    // Poll for progress every 20s while any queued calls are still unanalyzed
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch('/api/gong/intel-analyze', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ callId: call.gongCallId, title: call.title, date: call.date, callType: call.callType, repName: call.repName, repEmail: call.repEmail, durationSeconds: call.durationSeconds, gongUrl: call.gongUrl }),
-        })
+        const res = await fetch('/api/gong/intel-calls')
         const data = await res.json()
-        if (data.analysis) setCalls(prev => prev.map(c => c.gongCallId === call.gongCallId ? { ...c, analysis: data.analysis, analyzedAt: new Date().toISOString() } : c))
-        if (data.persisted === false) persistFailures.push(data.persistError || 'unknown')
-      } catch (e) { console.error('Analysis failed:', call.title, e) }
-      setAnalyzeProgress(p => ({ ...p, done: p.done + 1 }))
-    }
-    if (persistFailures.length) setPersistWarning(`Analysis shown but not saved for ${persistFailures.length} calls. DB error: ${persistFailures[0]}`)
-    await refreshAggregate()
-    setAnalyzing(false)
+        if (!data.success) return
+        const fresh = data.calls || []
+        setCalls(fresh)
+        const stillPending = fresh.filter(c => ids.has(c.gongCallId) && !c.analysis)
+        setAnalyzeProgress(p => ({ ...p, done: ids.size - stillPending.length, currentTitle: 'Processing in background…' }))
+        if (!stillPending.length) {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+          setAnalyzing(false)
+          setQueuedCallIds(new Set())
+          try { sessionStorage.removeItem('banner_intel_queued') } catch { /* ignore */ }
+          await refreshAggregate()
+        }
+      } catch { /* silent */ }
+    }, 20000)
   }
 
   async function refreshAggregate() {
@@ -547,6 +600,7 @@ export default function CallIntelligence() {
     }).sort((a, b) => b.count - a.count)
   }, [analyzedCalls, availableStages])
 
+  const callSearchLower = callSearch.toLowerCase()
   const filteredCalls = calls
     .filter(c => !periodCutoffDate || !c.date || new Date(c.date) >= periodCutoffDate)
     .filter(c => salesReps == null || (c.repName && salesReps.has(c.repName)))
@@ -554,6 +608,8 @@ export default function CallIntelligence() {
     .filter(c => showIgnored || !c.ignored)
     .filter(c => showClosedWon || c.dealStage?.toLowerCase() !== 'closedwon')
     .filter(c => typeFilter === 'all' || c.callType === typeFilter)
+    .filter(c => !disqualFilter || c.analysis?.disqualification_signal === true)
+    .filter(c => !callSearchLower || [c.title, c.repName, c.dealName].some(s => s?.toLowerCase().includes(callSearchLower)))
     .sort((a, b) => {
       let av, bv
       if (sortField === 'date') { av = new Date(a.date || 0); bv = new Date(b.date || 0) }
@@ -562,6 +618,7 @@ export default function CallIntelligence() {
       else if (sortField === 'ratio') { av = a.analysis?.rep_talk_ratio || 0; bv = b.analysis?.rep_talk_ratio || 0 }
       else if (sortField === 'sentiment') { av = a.analysis?.sentiment || ''; bv = b.analysis?.sentiment || '' }
       else if (sortField === 'icp') { av = a.analysis?.icp_score || 0; bv = b.analysis?.icp_score || 0 }
+      else if (sortField === 'disqual') { av = a.analysis?.disqualification_signal ? 1 : 0; bv = b.analysis?.disqualification_signal ? 1 : 0 }
       else { av = a[sortField] || ''; bv = b[sortField] || '' }
       return sortDir === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
     })
@@ -852,17 +909,17 @@ export default function CallIntelligence() {
       )}
       {analyzing && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 shrink-0">
-          <div className="max-w-[1400px] mx-auto">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-sm text-amber-800">
-                <Zap className="w-4 h-4 animate-pulse" />
-                <span>Analyzing… {analyzeProgress.done}/{analyzeProgress.total}</span>
-                {analyzeProgress.currentTitle && <span className="text-amber-600 truncate max-w-xs">— {analyzeProgress.currentTitle}</span>}
-              </div>
-              <span className="text-xs text-amber-600">{Math.round((analyzeProgress.done / analyzeProgress.total) * 100)}%</span>
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3 text-sm text-amber-800">
+              <Zap className="w-4 h-4 animate-pulse shrink-0" />
+              <span className="font-medium">Analysis running in background</span>
+              <span className="text-amber-600">{analyzeProgress.done} of {analyzeProgress.total} done — safe to navigate away</span>
             </div>
-            <div className="h-1.5 bg-amber-200 rounded-full">
-              <div className="h-1.5 bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${(analyzeProgress.done / analyzeProgress.total) * 100}%` }} />
+            <div className="flex items-center gap-3">
+              <div className="h-1.5 w-32 bg-amber-200 rounded-full">
+                <div className="h-1.5 bg-amber-500 rounded-full transition-all duration-500" style={{ width: analyzeProgress.total > 0 ? `${Math.round((analyzeProgress.done / analyzeProgress.total) * 100)}%` : '4%' }} />
+              </div>
+              <button onClick={fetchCalls} className="text-xs text-amber-700 underline hover:text-amber-900">Refresh now</button>
             </div>
           </div>
         </div>
@@ -1592,6 +1649,11 @@ export default function CallIntelligence() {
                               {t.label}
                             </button>
                           ))}
+                          <button onClick={() => setDisqualFilter(s => !s)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg ${disqualFilter ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                            title="Show only calls where the rep ended without a committed next step">
+                            <Flag className="w-3.5 h-3.5" /> Soft closes {disqualFilter ? '✕' : `(${analyzedCalls.filter(c => c.analysis?.disqualification_signal).length})`}
+                          </button>
                           {ignoredCount > 0 && (
                             <button onClick={() => setShowIgnored(s => !s)}
                               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg ${showIgnored ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
@@ -1604,6 +1666,17 @@ export default function CallIntelligence() {
                               <CheckCircle className="w-3.5 h-3.5" /> {showClosedWon ? 'Hide Closed Won' : `Closed Won (${closedWonCount})`}
                             </button>
                           )}
+                        </div>
+                        {/* Search */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={callSearch}
+                            onChange={e => setCallSearch(e.target.value)}
+                            placeholder="Search calls…"
+                            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-2 focus:ring-green-500"
+                          />
+                          {callSearch && <button onClick={() => setCallSearch('')} className="text-xs text-gray-400 hover:text-gray-600">✕</button>}
                         </div>
                         <div className="flex items-center gap-2">
                           {selectedCallIds.size > 0 && (
@@ -1650,7 +1723,7 @@ export default function CallIntelligence() {
                                 { label: 'Duration', field: 'duration' },
                                 { label: 'Talk Ratio', field: 'ratio' },
                                 { label: 'Sentiment', field: 'sentiment' },
-                                { label: 'Disqual.', field: null },
+                                { label: 'Soft Close', field: 'disqual' },
                               ].map(col => (
                                 <th key={col.label} onClick={() => col.field && toggleSort(col.field)}
                                   className={`text-left px-4 py-3 text-xs text-gray-400 font-semibold uppercase tracking-wide whitespace-nowrap ${col.field ? 'cursor-pointer hover:text-gray-600' : ''}`}>
@@ -1693,12 +1766,20 @@ export default function CallIntelligence() {
                                     : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-4 py-3" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
-                                  {call.analysis?.sentiment ? <SentimentBadge sentiment={call.analysis.sentiment} /> : <span className="text-gray-300 text-xs">Unanalyzed</span>}
+                                  {call.analysis?.sentiment
+                                    ? <SentimentBadge sentiment={call.analysis.sentiment} />
+                                    : queuedCallIds.has(call.gongCallId)
+                                      ? <span className="inline-flex items-center gap-1 text-xs text-amber-600"><Zap className="w-3 h-3 animate-pulse" />Queued</span>
+                                      : <span className="text-gray-300 text-xs">—</span>}
                                 </td>
                                 <td className="px-4 py-3" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
-                                  {call.analysis?.disqualification_signal
-                                    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-medium"><AlertCircle className="w-3 h-3" />Soft</span>
-                                    : null}
+                                  {call.analysis
+                                    ? call.analysis.disqualification_signal
+                                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-medium" title={call.analysis.disqualification_notes || 'Call ended without a committed next step'}><Flag className="w-3 h-3" />Soft close</span>
+                                      : <span className="text-green-500 text-xs">✓</span>
+                                    : queuedCallIds.has(call.gongCallId)
+                                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full"><Zap className="w-3 h-3 animate-pulse" />Queued</span>
+                                      : <span className="text-gray-300 text-xs">—</span>}
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-2">

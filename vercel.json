@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "pages/api/gong/intel-analyze-batch.js": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/send-daily-digest",
