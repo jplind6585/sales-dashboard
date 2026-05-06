@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 
 const TABS = [
   { id: 'unmatched', label: 'Unmatched Calls' },
+  { id: 'low_confidence', label: 'Low Confidence' },
   { id: 'duplicates', label: 'Potential Duplicates' },
   { id: 'hubspot', label: 'Missing HubSpot' },
   { id: 'aliases', label: 'Alias Suggestions' },
@@ -167,6 +168,8 @@ export default function DataQuality() {
   const [editingAlias, setEditingAlias] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [linkTarget, setLinkTarget] = useState({}) // callId → accountId select state
+  const [triageItems, setTriageItems] = useState(null)
+  const [triageLoading, setTriageLoading] = useState(false)
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
@@ -191,6 +194,36 @@ export default function DataQuality() {
   }
 
   useEffect(() => { load() }, [])
+
+  async function loadTriage() {
+    setTriageLoading(true)
+    try {
+      const r = await fetch('/api/admin/match-triage')
+      const d = await r.json()
+      if (d.success) setTriageItems(d.items)
+    } catch (e) { showToast(e.message, 'error') }
+    finally { setTriageLoading(false) }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'low_confidence' && triageItems === null) loadTriage()
+  }, [activeTab])
+
+  async function triageAction(gongCallId, action, overrideAccountId) {
+    setActionLoading(gongCallId)
+    try {
+      const r = await fetch('/api/admin/match-triage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gongCallId, action, overrideAccountId }),
+      })
+      const d = await r.json()
+      if (d.success) {
+        showToast(action === 'confirm' ? 'Match confirmed' : action === 'reject' ? 'Link removed' : 'Account overridden')
+        setTriageItems(prev => prev.filter(i => i.gongCallId !== gongCallId))
+      } else showToast(d.error, 'error')
+    } finally { setActionLoading(null) }
+  }
 
   async function linkCall(gongCallId, accountId) {
     if (!accountId) return
@@ -307,7 +340,7 @@ export default function DataQuality() {
       <div className="bg-white border-b border-gray-200 shrink-0">
         <div className="max-w-6xl mx-auto px-6 flex gap-0">
           {TABS.map(tab => {
-            const count = tab.id === 'unmatched' ? counts.unmatched : tab.id === 'duplicates' ? counts.duplicates : tab.id === 'hubspot' ? counts.missingHubspot : tab.id === 'aliases' ? counts.aliasSuggestions : (data?.mergeLog?.length || 0)
+            const count = tab.id === 'unmatched' ? counts.unmatched : tab.id === 'low_confidence' ? (triageItems?.length ?? null) : tab.id === 'duplicates' ? counts.duplicates : tab.id === 'hubspot' ? counts.missingHubspot : tab.id === 'aliases' ? counts.aliasSuggestions : (data?.mergeLog?.length || 0)
             return (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`px-5 py-3.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === tab.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -386,6 +419,80 @@ export default function DataQuality() {
                             >
                               <Link2 className="w-3 h-3" />
                               {actionLoading === call.gongCallId ? 'Linking…' : 'Link'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Low Confidence Matches ── */}
+            {activeTab === 'low_confidence' && (
+              <div>
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Low Confidence Matches</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      Calls auto-linked to accounts with &lt;85% confidence. Confirm correct links or remove bad ones.
+                    </p>
+                  </div>
+                  <button onClick={loadTriage} disabled={triageLoading}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
+                    <RefreshCw className={`w-4 h-4 ${triageLoading ? 'animate-spin' : ''}`} /> Refresh
+                  </button>
+                </div>
+
+                {triageLoading && (
+                  <div className="flex items-center justify-center py-16">
+                    <RefreshCw className="w-5 h-5 text-gray-400 animate-spin" />
+                  </div>
+                )}
+
+                {!triageLoading && triageItems?.length === 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+                    <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
+                    <p className="text-green-800 font-medium">All auto-links are high confidence — nothing to review</p>
+                  </div>
+                )}
+
+                {!triageLoading && triageItems?.length > 0 && (
+                  <div className="space-y-2">
+                    {triageItems.map(item => (
+                      <div key={item.gongCallId} className="bg-white border border-gray-200 rounded-xl p-4">
+                        <div className="flex items-start gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900">{item.callTitle}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {item.repName && `${item.repName} · `}
+                              {item.callDate ? new Date(item.callDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-xs text-gray-500">Linked to:</span>
+                              <span className="text-xs font-medium text-gray-800">{item.accountName}</span>
+                              <Badge color={item.matchConfidence >= 0.7 ? 'yellow' : 'red'}>
+                                {Math.round((item.matchConfidence || 0) * 100)}% · {item.matchMethod?.replace(/_/g, ' ')}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <button
+                              onClick={() => triageAction(item.gongCallId, 'confirm')}
+                              disabled={actionLoading === item.gongCallId}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
+                            >
+                              <CheckCircle className="w-3 h-3" />
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => triageAction(item.gongCallId, 'reject')}
+                              disabled={actionLoading === item.gongCallId}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 text-xs font-medium rounded-lg hover:bg-red-100 disabled:opacity-50"
+                            >
+                              <X className="w-3 h-3" />
+                              Remove Link
                             </button>
                           </div>
                         </div>

@@ -1,4 +1,4 @@
-import { getTask, updateTask, deleteTask } from '../../../lib/db/tasks'
+import { getTask, updateTask, deleteTask, dismissTask } from '../../../lib/db/tasks'
 import { createServerSupabaseClient } from '../../../lib/supabase'
 
 export default async function handler(req, res) {
@@ -65,6 +65,23 @@ export default async function handler(req, res) {
     if (error) {
       console.error('deleteTask error:', error)
       return res.status(500).json({ error: 'Failed to delete task' })
+    }
+
+    return res.status(200).json({ success: true })
+  }
+
+  // ── POST /api/tasks/[id] — dismiss a task ──────────────────────────────────
+  if (req.method === 'POST') {
+    const { action, reason } = req.body || {}
+    if (action !== 'dismiss') {
+      return res.status(400).json({ error: 'Unknown action. Use action: "dismiss".' })
+    }
+
+    const { error } = await dismissTask(id, currentUser.id, reason || null)
+
+    if (error) {
+      console.error('dismissTask error:', error)
+      return res.status(500).json({ error: 'Failed to dismiss task' })
     }
 
     return res.status(200).json({ success: true })

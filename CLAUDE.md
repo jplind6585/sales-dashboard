@@ -220,6 +220,11 @@ Core deal tracking. Accounts have 6 tabs.
 - Slack channel field — explicit override or auto-derived from account name
 - Auto-select account from URL query param `?account=id`
 - All account state managed in `stores/useAccountStore.js`
+- **Tier system** — accounts have hot/active/watching/archived tiers; tier selector in account header; sidebar filter by tier; archived accounts hidden by default with "Show archived" toggle
+- **Lazy detail loading** — `getAccounts()` returns lightweight list (no joins); selecting an account triggers `fetchAccountDetail()` which loads full data (transcripts, stakeholders, gaps, notes); loading spinner shown during fetch; detail cached in `accountDetails` map in store
+- **Sidebar search + filters** — search by name/owner/stage; dropdowns for stage, tier, owner; active account count badge; tier icons (🔥 hot, 👁 watching, — archived)
+- **HubSpot contacts import** — "Import from HubSpot" button in StakeholdersTab fetches contacts via `GET /api/hubspot/account-contacts`; checklist UI to select which contacts to import as stakeholders
+- **Reengagement brief** — "Reengage" button in account header calls `POST /api/accounts/reengagement`; Claude generates cold email + call script + talking points; shown in modal
 
 ---
 
@@ -296,7 +301,12 @@ Manager / CEO view. Read-only aggregate view.
 Defined in `vercel.json`:
 - `0 8 * * 1-5` → `/api/send-daily-digest` (Mon–Fri 8am)
 - `0 2 1 * *` → `/api/cron/cleanup-inactive-users` (1st of month, 2am)
-- Both secured with `CRON_SECRET` Bearer auth
+- `0 1 * * *` → `/api/cron/sync-hubspot` (nightly 1am, upserts HubSpot deals → accounts then re-matches calls)
+- `30 1 * * *` → `/api/cron/enrich-calls-bulk` (nightly 1:30am, enriches unchecked calls via contact-email HubSpot lookup)
+- `0 2 * * *` → `/api/cron/nightly-intel` (nightly, analyzes unanalyzed James calls)
+- `0 3 * * *` → `/api/cron/deal-risk-alerts` (nightly, sends high-risk deal Slack alert)
+- All secured with `CRON_SECRET` Bearer auth
+- `intel-analyze-batch.js` and `enrich-calls-bulk.js` have `maxDuration: 300` (5 min Vercel function override)
 
 ---
 
@@ -322,9 +332,11 @@ All vars are in Vercel. Do not hardcode any of these. Do not commit `.env` files
 
 ## SQL Migrations Run (Supabase — Sales AI Brain project)
 
-Both of these have already been applied. Do not run again:
+Do not run these again:
 - `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS slack_channel TEXT;`
 - `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slack_user_id TEXT;`
+- **name_cleanup** (2026-05-06): `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'active'`; stripped " - New Deal" suffix from all 551 account names
+- **stakeholders_hubspot** (2026-05-06): `ALTER TABLE stakeholders ADD COLUMN IF NOT EXISTS email TEXT` and `hubspot_contact_id TEXT`
 
 Migration files are in `supabase/migrations/` for reference.
 
@@ -409,6 +421,25 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 
 ## Recently Shipped (reverse chronological)
 
+- **2026-05-06** — Account management 6-feature build:
+  - **DB migrations**: `tier` column on accounts (default 'active'); `email` + `hubspot_contact_id` on stakeholders; " - New Deal" suffix stripped from all 551 account names
+  - **sync-deals.js**: `cleanDealName()` helper strips " - New Deal" on every import going forward
+  - **lib/db/accounts.js**: `getAccounts()` now lightweight (no joins, sorted by name, no user_id filter); new `getAccountDetail()` does full join select; `tier` added to both transform functions
+  - **useAccountStore**: `accountDetails` cache map; `fetchAccountDetail` action; `getSelectedAccount` uses cache; all mutation actions mirror updates into `accountDetails`; `reset` clears cache
+  - **useAccounts hook**: `setSelectedAccount` triggers `fetchAccountDetail`; `fetchAccountDetail` exposed in hook return
+  - **account-pipeline.js**: Full sidebar rewrite — search, stage/tier/owner filters, tier icons, active count badge, show-archived toggle; tier selector in account header; owner/deal value in header; lazy detail loading with spinner; Reengage button + modal (email + call script); `handleBulkAddStakeholders` wired to StakeholdersTab
+  - **pages/api/hubspot/account-contacts.js**: new endpoint — GET ?accountId=X, fetches HubSpot contacts for a deal, batch-reads contact properties
+  - **pages/api/accounts/reengagement.js**: new endpoint — POST {accountId}, Claude generates reengagement brief (why_reengage, cold_email, cold_call_script, talking_points)
+  - **StakeholdersTab.jsx**: "Import from HubSpot" button (when hubspotDealId set), contact checklist, `onBulkAddStakeholders` prop; shows email field on stakeholder cards
+
+- **2026-05-06** — Three-feature build: auto-surfaced Gong calls, weekly brief, rep coaching dashboard:
+  - **Auto-surfaced calls in Account Pipeline**: TranscriptsTab now fetches `/api/gong/account-calls?accountId=X` on mount; shows AI-analyzed calls auto-linked to account alongside manually imported transcripts; attention score surfaces calls needing follow-up (unresolved next steps +40, recent +30, risk flags +20, commitments +15, MEDDICC gaps +10); default shows top 5 by score with "show all" expand; GongCallCard component shows summary, next steps, commitments, MEDDICC grid, buying signals, objections with expandable detail; header shows call count, auto-linked count, needs-attention badge
+  - **Pipeline Weekly Brief**: `GET /api/manager/weekly-brief` aggregates last 7 days accounts + calls + tasks → Sonnet 4.6 generates structured brief (headline, pipeline_pulse, watch_list, rep_coaching signals, wins, 3 priorities); `?send=slack` DMs James via existing Slack bot; `api/cron/weekly-brief.js` runs Monday 7:30am UTC; "Weekly Brief" button in Pipeline Overview header renders brief inline as collapsible panel; coaching signals per rep include call-evidence-backed observation + 1:1 opener script
+  - **Rep Coaching Dashboard** (`/modules/coaching`): new module, manager-only; rep selector + time window (14/30/60/90d); metric cards (call count, avg discovery score, talk ratio, next-step rate, red flag rate) with trend arrows vs prior period; `GET /api/gong/rep-coaching?repName=X&days=N` computes metrics + calls Claude for coaching card (strengths, observations with expand, 30-day focus area, 1:1 opener, leading indicators); evidence calls list with discovery score + talk ratio + next-step chips; "Rep Coaching" link added to tasks quick-nav and pipeline-overview header; vercel.json: weekly-brief cron at 30 7 * * 1
+- **2026-05-06** — Call enrichment + triage infrastructure: intel-enrich.js updated (CRON_SECRET bypass, affiliation case bug fixed 'external'→'External', account_id linking after HubSpot deal upsert via hubspot_deal_id→accounts JOIN); cron/enrich-calls-bulk.js (nightly 1:30am UTC, batches all unchecked calls through intel-enrich, maxDuration 300s); api/admin/match-triage.js (GET low-confidence links <85%, POST confirm/reject/override); Data Quality page: new "Low Confidence" tab shows auto-links needing review with Confirm/Remove Link buttons; vercel.json: enrich-calls-bulk cron added at 30 1 * * *, function timeout added
+- **2026-05-06** — HubSpot → accounts sync: accounts table populated with 551 active HubSpot deals (Sales Opportunities pipeline); sync-deals.js rewritten to create accounts from HubSpot (was match-only); match-calls.js new endpoint for bulk Gong call→account fuzzy matching; intel-analyze.js updated with inline account matching on every new call analysis; cron/sync-hubspot.js runs nightly at 1am UTC (before nightly-intel); accounts table schema: user_id now nullable, hubspot_owner_id + owner_name columns added, unique constraint on hubspot_deal_id; James's profile inserted as 'manager' role (enables viewing all accounts via is_manager_or_admin()); manager UPDATE policy added to accounts RLS; 100 of 1243 Gong calls matched to accounts (title/sig-word fuzzy SQL); remaining calls need intel-enrich.js (contact-email matching) post-deployment
+- **2026-05-06** — Tasks v2 (session 2): Work in Claude side panel (fixed right panel, localStorage conversation persistence per task, /api/work-in-claude.js using Sonnet 4.6); NL task creation bar above filter row (/api/tasks-nl.js Haiku-parses text → structured fields, editable preview card before create); AI priority score (computeTaskPriority() client-side 0-100 urgency score, sorts within each type group); commitment extraction added to intel-analyze.js (new 'commitments' field in JSON schema, separate gong_commitment source_type with priority 1 vs gong_next_step priority 2)
+- **2026-05-06** — Tasks v2 (session 1): 23 tasks seeded (4 named + 19 Gong-extracted from James's last 4 weeks); schema: primary_action/rationale/source_type/dismissed_at added to tasks, task_dismissals table, account_insights table; auto-task creation from intel-analyze.js (next steps → tasks for James on each new analysis); Rep Morning Brief (/api/rep/morning-brief, Haiku-generated daily brief cached in localStorage, TodaysFocus card in tasks.js); dismissal flow (POST /api/tasks/[id] action=dismiss, DismissModal with reason picker, logs to task_dismissals); rationale shown in task expansion; lib/db/tasks.js updated for all new fields; getTasks() excludes dismissed by default
 - **2026-05-05** — Call Intelligence v2 (session 2): Feature 9 stage filter + Stage Breakdown tab; Feature 1 action cards (coaching_task_create + outreach_batch_create executors, confirmation modal, executed_actions log); intel-execute-action.js (new); Feature 3 Deals at Risk widget (intel-risk.js, accounts + transcripts tables); Feature 4 Pre-call AI brief (generate-pre-call-brief.js, PreCallBrief component in OverviewTab.jsx); nightly cron infrastructure (nightly-intel.js, deal-risk-alerts.js); CRON_SECRET bypass added to intel-analyze.js; vercel.json updated with 2 new crons (2am, 3am UTC daily)
 - **2026-05-05** — Call Intelligence v2 (session 1): PeriodDelta component, stage filter, stage breakdown tab, action cards, intel-execute-action.js, intel-aggregate weekly_actions, HubSpot enrichment fixes (intel-enrich.js now populates deal_stage_at_call)
 - **2026-04-15** — Cross-assign tasks: "Assign to" dropdown in New Task modal; `GET /api/users` endpoint

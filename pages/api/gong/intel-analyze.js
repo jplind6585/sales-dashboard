@@ -15,6 +15,133 @@ import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/sa
 
 const GONG_API_BASE = 'https://api.gong.io';
 
+function normalizeName(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/banner[\s\-–—]*/gi, '')
+    .replace(/[\-–—:|]/g, ' ')
+    .replace(/\b(intro|demo|discovery|presentation|follow\s*up|meeting|call|new deal|year \d+)\b/gi, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchScore(accountName, callTitle) {
+  const a = normalizeName(accountName);
+  const d = normalizeName(callTitle);
+  if (!a || !d) return 0;
+  if (a === d) return 10;
+  if (d.startsWith(a) || a.startsWith(d)) return 8;
+  if (d.includes(a) || a.includes(d)) return 6;
+  const aWords = new Set(a.split(' ').filter(w => w.length > 2));
+  const dWords = d.split(' ').filter(w => w.length > 2);
+  const overlap = dWords.filter(w => aWords.has(w)).length;
+  if (overlap >= 3) return 5;
+  if (overlap >= 2) return 3;
+  if (overlap === 1 && aWords.size === 1) return 2;
+  return 0;
+}
+
+async function tryMatchCallToAccount(callId, callTitle, db) {
+  if (!callTitle?.trim()) return;
+  try {
+    const { data: accounts } = await db.from('accounts').select('id, name').limit(500);
+    if (!accounts?.length) return;
+    let best = null, bestScore = 0;
+    for (const account of accounts) {
+      const score = matchScore(account.name, callTitle);
+      if (score > bestScore) { bestScore = score; best = account; }
+    }
+    if (best && bestScore >= 6) {
+      await db.from('gong_call_analyses').update({
+        account_id: best.id,
+        match_confidence: bestScore / 10,
+        match_method: 'title_fuzzy_inline',
+      }).eq('gong_call_id', callId);
+      console.log(`[intel-analyze] matched "${callTitle}" → "${best.name}" (score ${bestScore})`);
+    }
+  } catch (e) {
+    console.error('[intel-analyze] tryMatchCallToAccount error:', e.message);
+  }
+}
+
+// Rep email → user UUID mapping. Only auto-analyze reps get tasks created.
+const AUTO_TASK_REP_USER_IDS = {
+  'james@withbanner.com': '8c969178-4d4e-494f-a8d7-752276fb683c',
+};
+
+const REP_STEP_PREFIXES = [
+  'rep to ', 'rep will ', 'schedule ', 'follow up', 'send ', 'demo ',
+  'obtain ', 'collect ', 'loop ', 'contact ', 'book ', 'prepare ', 'reach out',
+];
+
+function isRepOwnedStep(step) {
+  const lower = step.toLowerCase().trim();
+  return REP_STEP_PREFIXES.some(p => lower.startsWith(p));
+}
+
+async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, db }) {
+  if (!repEmail) return;
+  const userId = AUTO_TASK_REP_USER_IDS[repEmail.toLowerCase()];
+  if (!userId) return;
+
+  const repSteps = (analysis.next_steps_mentioned || []).filter(isRepOwnedStep);
+  if (!repSteps.length) return;
+
+  // Dedup: skip if tasks already exist for this gong call id
+  const { count } = await db
+    .from('tasks')
+    .select('id', { count: 'exact', head: true })
+    .eq('source', 'gong')
+    .ilike('description', `%${callId}%`);
+  if (count > 0) return;
+
+  const callDateStr = date
+    ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : 'unknown date';
+
+  // Rep-owned next steps (priority 2)
+  const nextStepRows = repSteps.slice(0, 4).map(step => ({
+    owner_id:          userId,
+    created_by:        userId,
+    type:              'triggered',
+    priority:          2,
+    title:             step.length > 120 ? step.slice(0, 117) + '...' : step,
+    description:       `Auto-extracted from Gong call: "${title || 'Untitled'}" on ${callDateStr} (call ID: ${callId})`,
+    status:            'open',
+    source:            'gong',
+    source_type:       'gong_next_step',
+    rationale:         analysis.summary ? analysis.summary.slice(0, 200) : null,
+    visible_to_manager: true,
+  }));
+
+  // Commitments — explicit first-person promises (priority 1, higher urgency)
+  const commitments = (analysis.commitments || []).filter(c => c && c.length > 5);
+  const commitmentRows = commitments.slice(0, 2).map(c => ({
+    owner_id:          userId,
+    created_by:        userId,
+    type:              'triggered',
+    priority:          1,
+    title:             c.length > 120 ? c.slice(0, 117) + '...' : c,
+    description:       `Rep commitment from Gong call: "${title || 'Untitled'}" on ${callDateStr} (call ID: ${callId})`,
+    status:            'open',
+    source:            'gong',
+    source_type:       'gong_commitment',
+    rationale:         `Explicit promise made on the call — highest urgency to follow through.`,
+    visible_to_manager: true,
+  }));
+
+  const rows = [...commitmentRows, ...nextStepRows];
+  if (!rows.length) return;
+
+  const { error } = await db.from('tasks').insert(rows);
+  if (error) {
+    console.error('[intel-analyze] Auto-task creation failed:', error.message);
+  } else {
+    console.log(`[intel-analyze] Created ${rows.length} tasks (${commitmentRows.length} commitments, ${nextStepRows.length} next steps) from "${title}"`);
+  }
+}
+
 export default async function handler(req, res) {
   logRequest(req, 'gong/intel-analyze');
   if (!validateMethod(req, res, 'POST')) return;
@@ -123,7 +250,8 @@ Return ONLY valid JSON:
   "discovery_score": 6,
   "discovery_gaps": ["economic buyer not identified", "no timeline established"],
   "disqualification_signal": false,
-  "disqualification_notes": "null if no signal, otherwise brief explanation — e.g. 'Call ended with prospect saying they'd think about it and rep agreed to follow up later with no date set'"
+  "disqualification_notes": "null if no signal, otherwise brief explanation — e.g. 'Call ended with prospect saying they'd think about it and rep agreed to follow up later with no date set'",
+  "commitments": ["Verbatim or near-verbatim rep statement where they promised to do something. Only include first-person promises starting with I'll, I will, I can, I'm going to, etc. Example: 'I'll send the deck over today'"]
 }`;
 
     const rawAnalysis = await callAnthropic(apiKey, {
@@ -148,6 +276,7 @@ Return ONLY valid JSON:
       discovery_gaps: [],
       disqualification_signal: false,
       disqualification_notes: null,
+      commitments: [],
     });
 
     // Persist to Supabase — this is the source of truth across sessions
@@ -172,6 +301,14 @@ Return ONLY valid JSON:
 
     if (upsertError) {
       console.error('intel-analyze: Supabase write failed for', callId, upsertError.message, upsertError.code, upsertError.details);
+    } else {
+      // Auto-create tasks and match to account — both non-blocking
+      autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, db }).catch(e =>
+        console.error('[intel-analyze] autoCreateTasksFromAnalysis error:', e.message)
+      );
+      tryMatchCallToAccount(callId, title, db).catch(e =>
+        console.error('[intel-analyze] tryMatchCallToAccount error:', e.message)
+      );
     }
 
     // Always return the analysis even if the DB write failed —

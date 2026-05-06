@@ -10,6 +10,7 @@ export const useAccountStore = create((set, get) => ({
   // State
   accounts: [],
   selectedAccountId: null,
+  accountDetails: {}, // id → full account detail (loaded on select)
   userId: null,
   isLoading: false,
   isSaving: false,
@@ -18,8 +19,9 @@ export const useAccountStore = create((set, get) => ({
 
   // Computed
   getSelectedAccount: () => {
-    const { accounts, selectedAccountId } = get()
-    return accounts.find(a => a.id === selectedAccountId) || null
+    const { accounts, selectedAccountId, accountDetails } = get()
+    if (!selectedAccountId) return null
+    return accountDetails[selectedAccountId] || accounts.find(a => a.id === selectedAccountId) || null
   },
 
   // Account Actions
@@ -32,6 +34,19 @@ export const useAccountStore = create((set, get) => ({
       return { accounts }
     } catch (error) {
       set({ error: error.message, isLoading: false })
+      return { error }
+    }
+  },
+
+  fetchAccountDetail: async (accountId) => {
+    const { accountDetails } = get()
+    if (accountDetails[accountId]) return { account: accountDetails[accountId] }
+    try {
+      const { account, error } = await accountsDb.getAccountDetail(accountId)
+      if (error) throw error
+      set(state => ({ accountDetails: { ...state.accountDetails, [accountId]: account } }))
+      return { account }
+    } catch (error) {
       return { error }
     }
   },
@@ -66,6 +81,9 @@ export const useAccountStore = create((set, get) => ({
 
       set(state => ({
         accounts: state.accounts.map(a => a.id === accountId ? { ...a, ...account } : a),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], ...account } }
+          : state.accountDetails,
         isSaving: false
       }))
 
@@ -132,11 +150,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            transcripts: [...(a.transcripts || []), transcript]
-          }
+          return { ...a, transcripts: [...(a.transcripts || []), transcript] }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], transcripts: [...(state.accountDetails[accountId].transcripts || []), transcript] } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { transcript }
@@ -155,11 +173,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            transcripts: (a.transcripts || []).filter(t => t.id !== transcriptId)
-          }
+          return { ...a, transcripts: (a.transcripts || []).filter(t => t.id !== transcriptId) }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], transcripts: (state.accountDetails[accountId].transcripts || []).filter(t => t.id !== transcriptId) } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { success: true }
@@ -179,11 +197,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            stakeholders: [...(a.stakeholders || []), stakeholder]
-          }
+          return { ...a, stakeholders: [...(a.stakeholders || []), stakeholder] }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], stakeholders: [...(state.accountDetails[accountId].stakeholders || []), stakeholder] } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { stakeholder }
@@ -227,11 +245,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            stakeholders: (a.stakeholders || []).filter(s => s.id !== stakeholderId)
-          }
+          return { ...a, stakeholders: (a.stakeholders || []).filter(s => s.id !== stakeholderId) }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], stakeholders: (state.accountDetails[accountId].stakeholders || []).filter(s => s.id !== stakeholderId) } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { success: true }
@@ -251,11 +269,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            informationGaps: [...(a.informationGaps || []), gap]
-          }
+          return { ...a, informationGaps: [...(a.informationGaps || []), gap] }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], informationGaps: [...(state.accountDetails[accountId].informationGaps || []), gap] } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { gap }
@@ -274,13 +292,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            informationGaps: (a.informationGaps || []).map(g =>
-              g.id === gapId ? { ...g, ...gap } : g
-            )
-          }
+          return { ...a, informationGaps: (a.informationGaps || []).map(g => g.id === gapId ? { ...g, ...gap } : g) }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], informationGaps: (state.accountDetails[accountId].informationGaps || []).map(g => g.id === gapId ? { ...g, ...gap } : g) } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { gap }
@@ -300,11 +316,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            notes: [...(a.notes || []), note]
-          }
+          return { ...a, notes: [...(a.notes || []), note] }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], notes: [...(state.accountDetails[accountId].notes || []), note] } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { note }
@@ -323,11 +339,11 @@ export const useAccountStore = create((set, get) => ({
       set(state => ({
         accounts: state.accounts.map(a => {
           if (a.id !== accountId) return a
-          return {
-            ...a,
-            notes: (a.notes || []).filter(n => n.id !== noteId)
-          }
+          return { ...a, notes: (a.notes || []).filter(n => n.id !== noteId) }
         }),
+        accountDetails: state.accountDetails[accountId]
+          ? { ...state.accountDetails, [accountId]: { ...state.accountDetails[accountId], notes: (state.accountDetails[accountId].notes || []).filter(n => n.id !== noteId) } }
+          : state.accountDetails,
         isSaving: false
       }))
       return { success: true }
@@ -397,6 +413,7 @@ export const useAccountStore = create((set, get) => ({
   reset: () => set({
     accounts: [],
     selectedAccountId: null,
+    accountDetails: {},
     userId: null,
     isLoading: false,
     isSaving: false,

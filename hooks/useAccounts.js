@@ -89,7 +89,10 @@ function useAccountsSupabase() {
 
   // Set selected account
   const setSelectedAccount = useCallback((account) => {
-    store.selectAccount(account?.id || null);
+    store.selectAccount(account?.id || null)
+    if (account?.id) {
+      store.fetchAccountDetail(account.id)
+    }
   }, [store]);
 
   // Add a transcript and merge extracted insights
@@ -566,7 +569,8 @@ function useAccountsSupabase() {
     handleManualNote,
     applyAssistantActions,
     updateAccountField,
-    deleteAccount
+    deleteAccount,
+    fetchAccountDetail: store.fetchAccountDetail,
   };
 }
 

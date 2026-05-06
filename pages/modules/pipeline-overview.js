@@ -13,6 +13,8 @@ import {
   ExternalLink,
   RefreshCw,
   DollarSign,
+  Zap,
+  BookOpen,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import { STAGES } from '../../lib/constants'
@@ -74,6 +76,8 @@ export default function PipelineOverview() {
   const [expandedReps, setExpandedReps] = useState({})
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
+  const [briefLoading, setBriefLoading] = useState(false)
+  const [brief, setBrief] = useState(null)
 
   function loadData() {
     fetch('/api/pipeline-overview')
@@ -87,6 +91,18 @@ export default function PipelineOverview() {
   }
 
   useEffect(() => { loadData() }, [])
+
+  async function generateBrief() {
+    setBriefLoading(true)
+    setBrief(null)
+    try {
+      const r = await fetch('/api/manager/weekly-brief')
+      const d = await r.json()
+      if (d.success) setBrief(d.brief)
+      else alert(`Brief failed: ${d.error}`)
+    } catch (e) { alert(e.message) }
+    finally { setBriefLoading(false) }
+  }
 
   async function syncHubSpot() {
     setSyncing(true); setSyncResult(null)
@@ -174,6 +190,20 @@ export default function PipelineOverview() {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={() => router.push('/modules/coaching')}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
+            >
+              <Users className="w-4 h-4" />Rep Coaching
+            </button>
+            <button
+              onClick={generateBrief}
+              disabled={briefLoading}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+            >
+              <Zap className={`w-4 h-4 ${briefLoading ? 'animate-pulse' : ''}`} />
+              {briefLoading ? 'Generating…' : 'Weekly Brief'}
+            </button>
+            <button
               onClick={syncHubSpot}
               disabled={syncing}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
@@ -193,6 +223,78 @@ export default function PipelineOverview() {
           <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center justify-between">
             <span>{syncResult}</span>
             <button onClick={() => setSyncResult(null)} className="text-blue-400 hover:text-blue-600 ml-4">✕</button>
+          </div>
+        )}
+
+        {/* Weekly brief panel */}
+        {brief && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-indigo-500" />
+                <h2 className="font-semibold text-gray-900">Weekly Pipeline Brief</h2>
+                <span className="text-xs text-gray-400 italic ml-1">"{brief.headline}"</span>
+              </div>
+              <button onClick={() => setBrief(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-6">
+              {/* Pipeline pulse */}
+              {brief.pipeline_pulse?.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pipeline Pulse</h3>
+                  <ul className="space-y-1">
+                    {brief.pipeline_pulse.map((b, i) => <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5"><span className="text-gray-400 shrink-0 mt-1">•</span>{b}</li>)}
+                  </ul>
+                </div>
+              )}
+              {/* Your priorities */}
+              {brief.your_3_priorities?.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Your 3 Priorities This Week</h3>
+                  <ol className="space-y-1">
+                    {brief.your_3_priorities.map((p, i) => <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5"><span className="font-bold text-indigo-400 shrink-0">{i + 1}.</span>{p}</li>)}
+                  </ol>
+                </div>
+              )}
+              {/* Watch list */}
+              {brief.watch_list?.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">Watch List</h3>
+                  <div className="space-y-2">
+                    {brief.watch_list.map((w, i) => (
+                      <div key={i} className="bg-amber-50 rounded-lg p-3">
+                        <p className="text-sm font-medium text-gray-800">{w.account} <span className="text-xs text-gray-500 font-normal">({w.owner})</span></p>
+                        <p className="text-xs text-gray-600 mt-0.5">{w.reason}</p>
+                        <p className="text-xs text-amber-700 mt-1 font-medium">→ {w.suggested_action}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Rep coaching signals */}
+              {brief.rep_coaching?.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Rep Coaching Signals</h3>
+                  <div className="space-y-2">
+                    {brief.rep_coaching.map((r, i) => (
+                      <div key={i} className="bg-indigo-50 rounded-lg p-3">
+                        <p className="text-sm font-medium text-gray-800">{r.rep} <span className="text-xs text-gray-400 font-normal">({r.calls_reviewed} calls)</span></p>
+                        <p className="text-xs text-gray-600 mt-0.5">{r.observation}</p>
+                        <p className="text-xs text-indigo-700 mt-1 italic">1:1: "{r.one_on_one_script}"</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {brief.wins?.length > 0 && (
+              <div className="px-6 pb-5">
+                <h3 className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">Wins</h3>
+                <ul className="flex flex-wrap gap-2">
+                  {brief.wins.map((w, i) => <li key={i} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-full">{w}</li>)}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 

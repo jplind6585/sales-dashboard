@@ -4,7 +4,9 @@ import {
   CheckCircle2, Circle, Clock, AlertCircle, ChevronDown,
   Plus, Users, Filter, RefreshCw, Zap,
   Calendar, Building2, BarChart3, X, ChevronRight,
-  LayoutGrid, TrendingUp, Send, ChevronUp
+  LayoutGrid, TrendingUp, Send, ChevronUp, Sparkles,
+  Target, BanIcon, Info, Star, MessageSquare, ArrowRight,
+  Loader2, CornerDownLeft
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
@@ -18,6 +20,7 @@ const QUICK_MODULES = [
   { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-600' },
   { label: 'Outbound Engine', href: '/modules/outbound-engine', icon: Send, color: 'text-purple-600' },
   { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
+  { label: 'Rep Coaching', href: '/modules/coaching', icon: Users, color: 'text-indigo-600' },
   { label: 'All Modules', href: '/modules', icon: LayoutGrid, color: 'text-gray-600' },
 ]
 
@@ -59,6 +62,535 @@ function ModulesNav({ router }) {
   )
 }
 
+// ─── Work in Claude (per-task AI chat side panel) ────────────────────────────
+
+function buildIntroMessage(task) {
+  const lines = [`I'm ready to help you work through this task.`]
+  if (task.rationale) lines.push(`\n**Why it matters:** ${task.rationale}`)
+  if (task.primaryAction) lines.push(`\n**Suggested first move:** ${task.primaryAction}`)
+  if (task.dueDate) {
+    const d = new Date(task.dueDate)
+    const today = new Date(); today.setHours(0,0,0,0)
+    const diff = Math.floor((d - today) / 86400000)
+    const label = diff < 0 ? `${Math.abs(diff)}d overdue` : diff === 0 ? 'due today' : diff === 1 ? 'due tomorrow' : `due ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`
+    lines.push(`\n**Deadline:** ${label}`)
+  }
+  lines.push(`\nWhat do you need — a draft email, talking points, a call prep outline? Just ask.`)
+  return lines.join('')
+}
+
+function WorkInClaude({ task, onClose }) {
+  const storageKey = `wic_${task.id}`
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return [{ role: 'assistant', content: buildIntroMessage(task), ts: Date.now() }]
+  })
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const bottomRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const persistMessages = (msgs) => {
+    try { localStorage.setItem(storageKey, JSON.stringify(msgs.slice(-20))) } catch {}
+  }
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || loading) return
+    const userMsg = { role: 'user', content: text, ts: Date.now() }
+    const withUser = [...messages, userMsg]
+    setMessages(withUser)
+    persistMessages(withUser)
+    setInput('')
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/work-in-claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: withUser.map(m => ({ role: m.role, content: m.content })),
+          taskContext: {
+            title: task.title,
+            description: task.description,
+            rationale: task.rationale,
+            primaryAction: task.primaryAction,
+            dueDate: task.dueDate,
+            source: task.source,
+            sourceType: task.sourceType,
+            account: task.account ? { name: task.account.name, stage: task.account.stage } : null,
+          },
+        }),
+      })
+      const data = await res.json()
+      if (data.message) {
+        const assistantMsg = { role: 'assistant', content: data.message, ts: Date.now() }
+        const withReply = [...withUser, assistantMsg]
+        setMessages(withReply)
+        persistMessages(withReply)
+      }
+    } catch (e) {
+      console.error('Work in Claude error:', e)
+    } finally {
+      setLoading(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  const clearThread = () => {
+    const fresh = [{ role: 'assistant', content: buildIntroMessage(task), ts: Date.now() }]
+    setMessages(fresh)
+    persistMessages(fresh)
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-gray-200 flex flex-col shadow-2xl z-50">
+        {/* Header */}
+        <div className="flex items-start justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
+          <div className="flex-1 min-w-0 mr-3">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+              <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Work in Claude</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{task.title}</p>
+            {task.account?.name && (
+              <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                <Building2 className="w-3 h-3" />{task.account.name}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={clearThread} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+              Clear
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-white/80 rounded-lg text-gray-400 hover:text-gray-700 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                msg.role === 'user'
+                  ? 'bg-indigo-600 text-white rounded-br-sm'
+                  : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+              }`}>
+                {msg.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
+                <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div className="px-4 pb-4 pt-2 border-t border-gray-200">
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask Claude to draft an email, prep talking points, handle objections…"
+              rows={2}
+              className="flex-1 resize-none border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-400"
+              style={{ minHeight: '60px', maxHeight: '120px' }}
+            />
+            <button
+              onClick={send}
+              disabled={!input.trim() || loading}
+              className="flex-shrink-0 w-10 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-colors"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+            <CornerDownLeft className="w-3 h-3" />Enter to send · Shift+Enter for new line
+          </p>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── NL Task Bar ──────────────────────────────────────────────────────────────
+
+function NLTaskBar({ onCreate }) {
+  const [text, setText] = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [preview, setPreview] = useState(null) // parsed task fields
+  const [creating, setCreating] = useState(false)
+
+  const handleParse = async () => {
+    if (!text.trim() || parsing) return
+    setParsing(true)
+    try {
+      const res = await fetch('/api/tasks-nl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim() }),
+      })
+      const data = await res.json()
+      if (data.task) setPreview(data.task)
+    } catch {}
+    finally { setParsing(false) }
+  }
+
+  const handleConfirm = async () => {
+    if (!preview || creating) return
+    setCreating(true)
+    await onCreate({
+      title: preview.title,
+      description: preview.description || null,
+      priority: preview.priority || 2,
+      dueDate: preview.dueDate || null,
+      type: preview.type || 'triggered',
+      source: 'manual',
+    })
+    setText('')
+    setPreview(null)
+    setCreating(false)
+  }
+
+  const PRIORITY_OPTS = [
+    { value: 1, label: 'High', cls: 'text-red-600 bg-red-50 border-red-200' },
+    { value: 2, label: 'Medium', cls: 'text-amber-600 bg-amber-50 border-amber-200' },
+    { value: 3, label: 'Low', cls: 'text-gray-500 bg-gray-50 border-gray-200' },
+  ]
+
+  return (
+    <div className="mb-4">
+      {/* Input row */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-indigo-400 focus-within:ring-1 focus-within:ring-indigo-300 transition-all">
+          <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+          <input
+            type="text"
+            value={text}
+            onChange={e => { setText(e.target.value); setPreview(null) }}
+            onKeyDown={e => { if (e.key === 'Enter') handleParse() }}
+            placeholder='Quick add — "Send deck to Coastal Ridge tomorrow" or "Call John at Preiss"'
+            className="flex-1 text-sm bg-transparent outline-none text-gray-800 placeholder-gray-400"
+          />
+          {text && (
+            <button onClick={() => { setText(''); setPreview(null) }} className="text-gray-300 hover:text-gray-500">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleParse}
+          disabled={!text.trim() || parsing}
+          className="flex items-center gap-1.5 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors"
+        >
+          {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CornerDownLeft className="w-3.5 h-3.5" />}
+          {parsing ? 'Parsing…' : 'Add'}
+        </button>
+      </div>
+
+      {/* Preview card */}
+      {preview && (
+        <div className="mt-2 bg-white border border-indigo-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="flex-1">
+              <input
+                className="w-full text-sm font-semibold text-gray-900 border-none outline-none focus:ring-0 bg-transparent"
+                value={preview.title}
+                onChange={e => setPreview(p => ({ ...p, title: e.target.value }))}
+              />
+              {preview.rationale && (
+                <p className="text-xs text-gray-500 mt-0.5 italic">{preview.rationale}</p>
+              )}
+            </div>
+            <button onClick={() => setPreview(null)} className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {/* Priority picker */}
+            {PRIORITY_OPTS.map(o => (
+              <button
+                key={o.value}
+                onClick={() => setPreview(p => ({ ...p, priority: o.value }))}
+                className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+                  preview.priority === o.value ? o.cls : 'text-gray-400 bg-gray-50 border-gray-200 opacity-50'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+
+            {/* Due date */}
+            <input
+              type="date"
+              value={preview.dueDate || ''}
+              onChange={e => setPreview(p => ({ ...p, dueDate: e.target.value || null }))}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-0.5 text-gray-600 outline-none focus:ring-1 focus:ring-indigo-400"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => setPreview(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg">
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={creating || !preview.title?.trim()}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {creating ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+              {creating ? 'Creating…' : 'Create task'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Today's Focus (Morning Brief) ───────────────────────────────────────────
+
+function TodaysFocus() {
+  const [brief, setBrief] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+
+  useEffect(() => {
+    const today = new Date().toDateString()
+    const dismissedDate = localStorage.getItem('brief_dismissed_date')
+    if (dismissedDate === today) { setDismissed(true); return }
+
+    const cachedDate = localStorage.getItem('brief_cached_date')
+    if (cachedDate === today) {
+      const cached = localStorage.getItem('brief_cached_data')
+      if (cached) { try { setBrief(JSON.parse(cached)); return } catch {} }
+    }
+
+    setLoading(true)
+    fetch('/api/rep/morning-brief')
+      .then(r => r.json())
+      .then(d => {
+        if (d.brief) {
+          setBrief(d.brief)
+          localStorage.setItem('brief_cached_date', today)
+          localStorage.setItem('brief_cached_data', JSON.stringify(d.brief))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleDismiss = () => {
+    localStorage.setItem('brief_dismissed_date', new Date().toDateString())
+    setDismissed(true)
+  }
+
+  if (dismissed) return null
+
+  if (loading) {
+    return (
+      <div className="mb-6 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 p-5">
+        <div className="flex items-center gap-2 text-indigo-700 text-sm">
+          <Sparkles className="w-4 h-4 animate-pulse" />
+          Generating your morning brief…
+        </div>
+      </div>
+    )
+  }
+
+  if (!brief) return null
+
+  const { headline, top_priority, deals_to_watch, quick_wins, insight, task_count } = brief
+
+  return (
+    <div className="mb-6 rounded-2xl bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-indigo-100">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-indigo-600" />
+          <span className="text-sm font-semibold text-indigo-900">Today's Focus</span>
+          {task_count && (
+            <span className="text-xs text-indigo-500 font-normal">
+              {task_count.total} open{task_count.overdue > 0 ? ` · ${task_count.overdue} overdue` : ''}{task_count.today > 0 ? ` · ${task_count.today} due today` : ''}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setCollapsed(c => !c)} className="p-1 hover:bg-indigo-100 rounded-lg text-indigo-400 hover:text-indigo-700 transition-colors">
+            <ChevronDown className={`w-4 h-4 transition-transform ${collapsed ? 'rotate-180' : ''}`} />
+          </button>
+          <button onClick={handleDismiss} className="p-1 hover:bg-indigo-100 rounded-lg text-indigo-400 hover:text-indigo-700 transition-colors" title="Dismiss for today">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div className="p-5 space-y-4">
+          {/* Headline */}
+          {headline && <p className="text-sm font-medium text-indigo-900 leading-snug">{headline}</p>}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Top priority */}
+            {top_priority && (
+              <div className="bg-white/70 rounded-xl p-4 border border-indigo-100">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Target className="w-3.5 h-3.5 text-indigo-600" />
+                  <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Do First</span>
+                </div>
+                <p className="text-sm text-gray-800 leading-snug">{top_priority}</p>
+              </div>
+            )}
+
+            {/* Insight */}
+            {insight && (
+              <div className="bg-white/70 rounded-xl p-4 border border-purple-100">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Info className="w-3.5 h-3.5 text-purple-600" />
+                  <span className="text-xs font-semibold text-purple-700 uppercase tracking-wide">Insight</span>
+                </div>
+                <p className="text-sm text-gray-800 leading-snug italic">{insight}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Deals to watch */}
+            {deals_to_watch?.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Star className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Deals to Watch</span>
+                </div>
+                <ul className="space-y-1">
+                  {deals_to_watch.slice(0, 3).map((d, i) => (
+                    <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5">
+                      <span className="text-amber-400 mt-0.5">•</span>{d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Quick wins */}
+            {quick_wins?.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Zap className="w-3.5 h-3.5 text-green-500" />
+                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Quick Wins</span>
+                </div>
+                <ul className="space-y-1">
+                  {quick_wins.slice(0, 3).map((q, i) => (
+                    <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5">
+                      <span className="text-green-400 mt-0.5">✓</span>{q}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Dismiss Modal ────────────────────────────────────────────────────────────
+
+const DISMISS_REASONS = [
+  'Already done',
+  'No longer relevant',
+  'Prospect went cold',
+  'Duplicate task',
+  'Deprioritized',
+  'Other',
+]
+
+function DismissModal({ task, onClose, onDismiss }) {
+  const [reason, setReason] = useState('')
+  const [dismissing, setDismissing] = useState(false)
+
+  const handleDismiss = async () => {
+    setDismissing(true)
+    await onDismiss(task.id, reason || null)
+    setDismissing(false)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between p-5 border-b">
+          <div className="flex items-center gap-2">
+            <BanIcon className="w-4 h-4 text-gray-500" />
+            <h2 className="text-base font-semibold text-gray-900">Dismiss task</h2>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+            <X className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-gray-600 mb-4 line-clamp-2">"{task.title}"</p>
+          <p className="text-xs font-medium text-gray-700 mb-2">Reason (optional)</p>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {DISMISS_REASONS.map(r => (
+              <button
+                key={r}
+                onClick={() => setReason(reason === r ? '' : r)}
+                className={`px-3 py-2 rounded-lg text-xs text-left transition-colors border ${
+                  reason === r
+                    ? 'bg-red-50 border-red-300 text-red-700 font-medium'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-3 px-5 pb-5">
+          <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleDismiss}
+            disabled={dismissing}
+            className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 disabled:opacity-50"
+          >
+            {dismissing ? 'Dismissing…' : 'Dismiss'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRIORITY_LABEL = { 1: 'High', 2: 'Medium', 3: 'Low' }
@@ -81,6 +613,42 @@ const TYPE_COLOR = {
 }
 const STATUS_OPTIONS = ['open', 'in_progress', 'complete', 'blocked']
 const TYPE_ORDER = ['triggered', 'assigned', 'recurring', 'project']
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// ─── AI Priority Score ────────────────────────────────────────────────────────
+// Client-side urgency score 0–100. Used to rank within each task type group.
+
+function computeTaskPriority(task) {
+  let score = 0
+  const today = new Date(); today.setHours(0,0,0,0)
+
+  // Due date proximity
+  if (task.dueDate) {
+    const d = new Date(task.dueDate)
+    const diff = Math.floor((d - today) / 86400000)
+    if (diff < 0)   score += 60   // overdue
+    else if (diff === 0) score += 50 // due today
+    else if (diff === 1) score += 35 // tomorrow
+    else if (diff <= 3)  score += 20 // this week
+    else if (diff <= 7)  score += 10
+  }
+
+  // Explicit priority field
+  if (task.priority === 1) score += 20
+  else if (task.priority === 2) score += 8
+
+  // Source type — commitments and gong next steps have extra urgency
+  if (task.sourceType === 'gong_commitment') score += 15
+  else if (task.sourceType === 'gong_next_step') score += 8
+
+  // Rationale keywords
+  const rationale = (task.rationale || '').toLowerCase()
+  if (/near.close|final|contract|overdue|blocking|close step/.test(rationale)) score += 12
+  if (/demo|follow.up|schedule/.test(rationale)) score += 5
+
+  return Math.min(score, 100)
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -212,11 +780,12 @@ function NewTaskModal({ onClose, onCreate, currentUserId, users }) {
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, onStatusChange, onDelete }) {
+function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude }) {
   const [expanded, setExpanded] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const overdue = isOverdue(task)
   const dateLabel = formatDate(task.dueDate)
+  const isGong = task.source === 'gong'
 
   return (
     <div className={`border rounded-xl transition-all ${overdue ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'} hover:shadow-sm`}>
@@ -271,6 +840,18 @@ function TaskRow({ task, onStatusChange, onDelete }) {
               </span>
             )}
 
+            {/* Work in Claude */}
+            {onWorkInClaude && task.status !== 'complete' && (
+              <button
+                onClick={() => onWorkInClaude(task)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                title="Work in Claude"
+              >
+                <Sparkles className="w-3 h-3" />
+                Work
+              </button>
+            )}
+
             {/* Status selector */}
             <div className="relative ml-auto">
               <button
@@ -301,17 +882,31 @@ function TaskRow({ task, onStatusChange, onDelete }) {
             </div>
           </div>
 
-          {/* Expanded description */}
-          {expanded && task.description && (
-            <p className="mt-3 text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-3">
-              {task.description}
-            </p>
-          )}
+          {/* Expanded details */}
           {expanded && (
-            <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
-              <button onClick={() => onDelete(task.id)} className="text-xs text-red-500 hover:text-red-700">
-                Delete task
-              </button>
+            <div className="mt-3 border-t border-gray-100 pt-3 space-y-2">
+              {task.rationale && (
+                <div className="flex items-start gap-1.5 bg-blue-50 rounded-lg px-3 py-2">
+                  <Info className="w-3.5 h-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-blue-700 leading-relaxed">{task.rationale}</p>
+                </div>
+              )}
+              {task.description && !task.rationale && (
+                <p className="text-sm text-gray-600 leading-relaxed">{task.description}</p>
+              )}
+              {task.description && task.rationale && (
+                <p className="text-xs text-gray-500 leading-relaxed">{task.description}</p>
+              )}
+              <div className="flex justify-end gap-3 pt-1">
+                {onDismiss && (
+                  <button onClick={() => onDismiss(task)} className="text-xs text-orange-500 hover:text-orange-700">
+                    Dismiss
+                  </button>
+                )}
+                <button onClick={() => onDelete(task.id)} className="text-xs text-red-400 hover:text-red-700">
+                  Delete
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -322,9 +917,11 @@ function TaskRow({ task, onStatusChange, onDelete }) {
 
 // ─── Rep View ─────────────────────────────────────────────────────────────────
 
-function RepView({ tasks, onStatusChange, onDelete, onNewTask }) {
+function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onNewTask }) {
   const grouped = TYPE_ORDER.reduce((acc, type) => {
-    const items = tasks.filter(t => t.type === type)
+    const items = tasks
+      .filter(t => t.type === type)
+      .sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a))
     if (items.length) acc[type] = items
     return acc
   }, {})
@@ -372,7 +969,7 @@ function RepView({ tasks, onStatusChange, onDelete, onNewTask }) {
             </div>
             <div className="space-y-2">
               {grouped[type].map(task => (
-                <TaskRow key={task.id} task={task} onStatusChange={onStatusChange} onDelete={onDelete} />
+                <TaskRow key={task.id} task={task} onStatusChange={onStatusChange} onDelete={onDelete} onDismiss={onDismiss} onWorkInClaude={onWorkInClaude} />
               ))}
             </div>
           </div>
@@ -491,6 +1088,8 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
   const [providerToken, setProviderToken] = useState(null)
   const [completeTask, setCompleteTask] = useState(null) // task being completed via AI modal
+  const [dismissTask, setDismissTask] = useState(null) // task being dismissed
+  const [workTask, setWorkTask] = useState(null) // task open in Work in Claude panel
   const [users, setUsers] = useState([])
   const demoSeeded = useRef(false)
 
@@ -622,6 +1221,20 @@ export default function TasksPage() {
     }
   }
 
+  const handleDismiss = async (taskId, reason) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dismiss', reason }),
+      })
+    } catch (err) {
+      console.error('Failed to dismiss task:', err)
+      fetchTasks()
+    }
+  }
+
   const handleCreate = async (data) => {
     try {
       const res = await fetch('/api/tasks', {
@@ -740,6 +1353,12 @@ export default function TasksPage() {
               <span className="ml-auto text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
             </div>
 
+            {/* NL Quick-Add bar */}
+            <NLTaskBar onCreate={handleCreate} />
+
+            {/* Today's Focus morning brief */}
+            <TodaysFocus />
+
             {/* Smart Suggestions from Gmail + Calendar */}
             <div className="mb-6">
               <SmartSuggestionsPanel
@@ -752,6 +1371,8 @@ export default function TasksPage() {
               tasks={filteredTasks}
               onStatusChange={handleStatusChange}
               onDelete={handleDelete}
+              onDismiss={task => setDismissTask(task)}
+              onWorkInClaude={task => setWorkTask(task)}
               onNewTask={() => setShowNewTask(true)}
             />
           </>
@@ -774,6 +1395,23 @@ export default function TasksPage() {
           task={completeTask}
           onComplete={handleConfirmComplete}
           onClose={() => setCompleteTask(null)}
+        />
+      )}
+
+      {/* Dismiss Modal */}
+      {dismissTask && (
+        <DismissModal
+          task={dismissTask}
+          onClose={() => setDismissTask(null)}
+          onDismiss={handleDismiss}
+        />
+      )}
+
+      {/* Work in Claude side panel */}
+      {workTask && (
+        <WorkInClaude
+          task={workTask}
+          onClose={() => setWorkTask(null)}
         />
       )}
     </div>

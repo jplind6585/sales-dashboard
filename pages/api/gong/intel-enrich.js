@@ -12,7 +12,7 @@ import {
   createGongHeaders,
   logRequest,
 } from '../../../lib/apiUtils';
-import { createServerSupabaseClient } from '../../../lib/supabase';
+import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 
 const GONG_API_BASE = 'https://api.gong.io';
 const HS_API_BASE = 'https://api.hubapi.com';
@@ -104,7 +104,7 @@ async function fetchGongParticipants(callIds, headers) {
         const result = {};
         for (const call of (d.calls || [])) {
           const externalEmails = (call.parties || [])
-            .filter(p => p.affiliation === 'external' && p.emailAddress)
+            .filter(p => p.affiliation === 'External' && p.emailAddress)
             .map(p => p.emailAddress.toLowerCase());
           if (externalEmails.length) result[call.id] = externalEmails;
         }
@@ -120,6 +120,13 @@ export default async function handler(req, res) {
   logRequest(req, 'gong/intel-enrich');
   if (!validateMethod(req, res, 'POST')) return;
 
+  const isCron = process.env.CRON_SECRET && req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+  if (!isCron) {
+    const db = createServerSupabaseClient(req, res);
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return apiError(res, 401, 'Unauthorized');
+  }
+
   const { callIds } = req.body || {};
   if (!callIds?.length) return apiError(res, 400, 'callIds array required');
 
@@ -131,7 +138,7 @@ export default async function handler(req, res) {
   const { accessKey, secretKey } = credentials;
   const gongHeaders = createGongHeaders(accessKey, secretKey);
 
-  const db = createServerSupabaseClient(req, res);
+  const db = isCron ? getSupabase() : createServerSupabaseClient(req, res);
 
   // Fetch HubSpot email→deal map and Gong participants in parallel
   const [emailDealMap, participantMap] = await Promise.all([
@@ -175,6 +182,40 @@ export default async function handler(req, res) {
       .upsert(upserts.slice(i, i + 100), { onConflict: 'gong_call_id' });
   }
 
-  console.log(`[intel-enrich] matched ${matched} of ${callIds.length} calls to HubSpot deals`);
-  return apiSuccess(res, { enriched: callIds.length, withDeals: matched, hsContactsIndexed: emailCount });
+  // Link account_id for any calls we just matched to a HubSpot deal
+  const matchedDealIds = upserts.filter(u => u.hubspot_deal_id).map(u => u.gong_call_id);
+  let accountsLinked = 0;
+  if (matchedDealIds.length) {
+    const serviceDb = getSupabase();
+    const { data: linked } = await serviceDb.rpc('link_accounts_by_deal', { call_ids: matchedDealIds }).catch(() => ({ data: null }));
+    if (!linked) {
+      // Fallback: manual UPDATE via raw SQL equivalent using JS loop
+      const { data: accountRows } = await serviceDb
+        .from('accounts')
+        .select('id, hubspot_deal_id')
+        .not('hubspot_deal_id', 'is', null);
+      if (accountRows?.length) {
+        const dealToAccount = Object.fromEntries(accountRows.map(a => [a.hubspot_deal_id, a.id]));
+        for (const u of upserts) {
+          if (u.hubspot_deal_id && dealToAccount[u.hubspot_deal_id]) {
+            await serviceDb
+              .from('gong_call_analyses')
+              .update({
+                account_id: dealToAccount[u.hubspot_deal_id],
+                match_method: 'hubspot_contact_email',
+                match_confidence: 0.95,
+              })
+              .eq('gong_call_id', u.gong_call_id)
+              .is('account_id', null);
+            accountsLinked++;
+          }
+        }
+      }
+    } else {
+      accountsLinked = linked;
+    }
+  }
+
+  console.log(`[intel-enrich] matched ${matched} of ${callIds.length} calls to HubSpot deals; linked ${accountsLinked} account_ids`);
+  return apiSuccess(res, { enriched: callIds.length, withDeals: matched, accountsLinked, hsContactsIndexed: emailCount });
 }

@@ -2,6 +2,9 @@
   "functions": {
     "pages/api/gong/intel-analyze-batch.js": {
       "maxDuration": 300
+    },
+    "pages/api/cron/enrich-calls-bulk.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -10,8 +13,20 @@
       "schedule": "0 8 * * 1-5"
     },
     {
+      "path": "/api/cron/weekly-brief",
+      "schedule": "30 7 * * 1"
+    },
+    {
       "path": "/api/cron/cleanup-inactive-users",
       "schedule": "0 2 1 * *"
+    },
+    {
+      "path": "/api/cron/sync-hubspot",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/enrich-calls-bulk",
+      "schedule": "30 1 * * *"
     },
     {
       "path": "/api/cron/nightly-intel",
