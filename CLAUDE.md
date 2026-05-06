@@ -421,6 +421,12 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 
 ## Recently Shipped (reverse chronological)
 
+- **2026-05-06** — Chat tab added to Account Pipeline:
+  - `pages/api/accounts/chat.js` — POST endpoint; loads account, calls, tasks, stakeholders, open gaps, notes, and sales process config in parallel; builds a comprehensive system prompt with aggregated MEDDIC across all calls; trims to last 14 messages before sending; uses Sonnet 4.6, maxTokens 2000
+  - `components/tabs/ChatTab.jsx` — persistent per-account chat UI; localStorage-backed (key: `account_chat_{id}`, trim to 30); auto-generates opening deal briefing on first open; 4 suggested prompt chips that auto-send; simple bold/newline markdown rendering; animated typing indicator; "New conversation" button clears and regenerates; error messages shown inline as system messages
+  - `lib/constants.js` — Chat tab added as 7th tab in TABS array
+  - `pages/modules/account-pipeline.js` — ChatTab imported and rendered in tab switch; no icons needed (TABS are label-only)
+
 - **2026-05-06** — Account management 6-feature build:
   - **DB migrations**: `tier` column on accounts (default 'active'); `email` + `hubspot_contact_id` on stakeholders; " - New Deal" suffix stripped from all 551 account names
   - **sync-deals.js**: `cleanDealName()` helper strips " - New Deal" on every import going forward
