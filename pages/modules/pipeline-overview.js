@@ -11,9 +11,18 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  RefreshCw,
+  DollarSign,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import { STAGES } from '../../lib/constants'
+
+function fmt$(n) {
+  if (!n) return '—'
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+  return `$${n.toLocaleString()}`
+}
 
 const STAGE_COLORS = {
   qualifying: 'bg-gray-100 text-gray-700 border-gray-300',
@@ -63,8 +72,10 @@ export default function PipelineOverview() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedReps, setExpandedReps] = useState({})
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState(null)
 
-  useEffect(() => {
+  function loadData() {
     fetch('/api/pipeline-overview')
       .then(r => r.json())
       .then(d => {
@@ -73,7 +84,24 @@ export default function PipelineOverview() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  async function syncHubSpot() {
+    setSyncing(true); setSyncResult(null)
+    try {
+      const r = await fetch('/api/hubspot/sync-deals', { method: 'POST' })
+      const d = await r.json()
+      if (d.success) {
+        setSyncResult(`Synced: ${d.matched} of ${d.total} accounts matched to HubSpot deals`)
+        loadData()
+      } else {
+        setSyncResult(`Sync failed: ${d.error}`)
+      }
+    } catch (e) { setSyncResult(`Error: ${e.message}`) }
+    finally { setSyncing(false) }
+  }
 
   const toggleRep = (repId) => {
     setExpandedReps(prev => ({ ...prev, [repId]: !prev[repId] }))
@@ -102,7 +130,7 @@ export default function PipelineOverview() {
     )
   }
 
-  const { repSummaries = [], stageCounts = {}, totalAccounts, totalOpenTasks, totalOverdue, pipelineConfidence, activeAccounts } = data || {}
+  const { repSummaries = [], stageCounts = {}, totalAccounts, totalOpenTasks, totalOverdue, pipelineConfidence, activeAccounts, totalPipeline, weightedPipeline, accountsWithValue, hubspotSynced } = data || {}
 
   // Pipeline funnel — ordered by stage
   const orderedStages = [
@@ -144,25 +172,54 @@ export default function PipelineOverview() {
               <p className="text-sm text-gray-500">{totalAccounts} accounts · {totalOpenTasks} open tasks · {totalOverdue} overdue</p>
             </div>
           </div>
-          <UserMenu />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={syncHubSpot}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+              title="Pull deal value, stage, and close date from HubSpot"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing…' : 'Sync HubSpot'}
+            </button>
+            <UserMenu />
+          </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        {/* Sync result banner */}
+        {syncResult && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center justify-between">
+            <span>{syncResult}</span>
+            <button onClick={() => setSyncResult(null)} className="text-blue-400 hover:text-blue-600 ml-4">✕</button>
+          </div>
+        )}
+
         {/* Top stat cards */}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-7 gap-4">
           {/* Pipeline Confidence — hero card */}
           <div className="col-span-1 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg shadow p-4 text-white">
-            <div className="text-sm text-blue-200 mb-1">Pipeline Confidence</div>
+            <div className="text-xs text-blue-200 mb-1 uppercase tracking-wide font-semibold">Confidence</div>
             <div className="text-4xl font-bold">
               {pipelineConfidence != null ? `${pipelineConfidence}%` : '—'}
             </div>
             <div className="text-xs text-blue-200 mt-1">{activeAccounts ?? 0} active accounts</div>
-            <div className="mt-3 h-2 bg-blue-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white rounded-full transition-all"
-                style={{ width: `${pipelineConfidence ?? 0}%` }}
-              />
+            <div className="mt-3 h-1.5 bg-blue-800 rounded-full overflow-hidden">
+              <div className="h-full bg-white rounded-full transition-all" style={{ width: `${pipelineConfidence ?? 0}%` }} />
+            </div>
+          </div>
+          {/* Total Pipeline */}
+          <div className="col-span-2 bg-gradient-to-br from-emerald-600 to-green-700 rounded-lg shadow p-4 text-white">
+            <div className="text-xs text-emerald-200 mb-1 uppercase tracking-wide font-semibold flex items-center gap-1">
+              <DollarSign className="w-3 h-3" /> Total Pipeline
+            </div>
+            <div className="text-4xl font-bold">{fmt$(totalPipeline)}</div>
+            <div className="text-xs text-emerald-200 mt-1">
+              {accountsWithValue ? `${accountsWithValue} of ${activeAccounts} accounts have deal value` : 'Sync HubSpot to populate'}
+            </div>
+            <div className="mt-2 text-xs text-emerald-100">
+              <span className="font-semibold">{fmt$(weightedPipeline)}</span> weighted by confidence
             </div>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
@@ -282,7 +339,15 @@ export default function PipelineOverview() {
                         {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </div>
                       <div className="flex-1 font-medium text-gray-800">{rep.name}</div>
-                      <div className="grid grid-cols-5 gap-8 text-sm text-center">
+                      <div className="grid grid-cols-7 gap-6 text-sm text-center">
+                        <div>
+                          <div className="text-xs text-gray-400 mb-0.5">Pipeline</div>
+                          <div className="font-semibold text-emerald-700">{fmt$(rep.totalPipeline)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-400 mb-0.5">Weighted</div>
+                          <div className="font-semibold text-emerald-600">{fmt$(rep.weightedPipeline)}</div>
+                        </div>
                         <div>
                           <div className="text-xs text-gray-400 mb-0.5">Confidence</div>
                           <div className={`font-semibold ${rep.pipelineConfidence >= 50 ? 'text-green-600' : rep.pipelineConfidence >= 25 ? 'text-yellow-600' : 'text-gray-700'}`}>

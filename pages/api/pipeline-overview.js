@@ -47,6 +47,7 @@ export default async function handler(req, res) {
       .from('accounts')
       .select(`
         id, name, stage, vertical, user_id, updated_at,
+        deal_value, close_date, hubspot_stage, hubspot_synced_at,
         stakeholders ( id, role ),
         transcripts ( id, date, added_at )
       `)
@@ -122,6 +123,12 @@ export default async function handler(req, res) {
         ? Math.round(activeAccounts.reduce((sum, a) => sum + accountConfidence(a), 0) / activeAccounts.length)
         : null
 
+      // Pipeline value (raw) and weighted value
+      const totalPipeline = activeAccounts.reduce((sum, a) => sum + (a.deal_value || 0), 0)
+      const weightedPipeline = activeAccounts.reduce((sum, a) => {
+        return sum + ((a.deal_value || 0) * accountConfidence(a) / 100)
+      }, 0)
+
       return {
         id: rep.id,
         name: rep.full_name || rep.email || 'Rep',
@@ -133,6 +140,9 @@ export default async function handler(req, res) {
         stageCounts,
         staleAccounts,
         pipelineConfidence: repConfidence,
+        totalPipeline: Math.round(totalPipeline),
+        weightedPipeline: Math.round(weightedPipeline),
+        accountsWithValue: activeAccounts.filter(a => a.deal_value).length,
       }
     })
 
@@ -142,11 +152,17 @@ export default async function handler(req, res) {
       stageCounts[acct.stage] = (stageCounts[acct.stage] || 0) + 1
     }
 
-    // Overall pipeline confidence
+    // Overall pipeline confidence + dollar values
     const activeAccounts = accounts.filter(a => a.stage !== 'closed_won' && a.stage !== 'closed_lost')
     const overallConfidence = activeAccounts.length > 0
       ? Math.round(activeAccounts.reduce((sum, a) => sum + accountConfidence(a), 0) / activeAccounts.length)
       : null
+    const totalPipeline = activeAccounts.reduce((sum, a) => sum + (a.deal_value || 0), 0)
+    const weightedPipeline = activeAccounts.reduce((sum, a) => {
+      return sum + ((a.deal_value || 0) * accountConfidence(a) / 100)
+    }, 0)
+    const accountsWithValue = activeAccounts.filter(a => a.deal_value).length
+    const hubspotSynced = accounts.some(a => a.hubspot_synced_at)
 
     return res.status(200).json({
       repSummaries,
@@ -156,6 +172,10 @@ export default async function handler(req, res) {
       totalOverdue: (openTasks || []).filter(t => t.due_date && t.due_date < today).length,
       pipelineConfidence: overallConfidence,
       activeAccounts: activeAccounts.length,
+      totalPipeline: Math.round(totalPipeline),
+      weightedPipeline: Math.round(weightedPipeline),
+      accountsWithValue,
+      hubspotSynced,
     })
   } catch (err) {
     console.error('Pipeline overview error:', err)
