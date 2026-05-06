@@ -12,6 +12,7 @@ import {
 } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess';
+import { sendSlackMessage } from '../../../lib/slack';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -80,7 +81,7 @@ function isRepOwnedStep(step) {
   return REP_STEP_PREFIXES.some(p => lower.startsWith(p));
 }
 
-async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, db }) {
+async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, durationSeconds, db }) {
   if (!repEmail) return;
   const userId = AUTO_TASK_REP_USER_IDS[repEmail.toLowerCase()];
   if (!userId) return;
@@ -137,8 +138,45 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, anal
   const { error } = await db.from('tasks').insert(rows);
   if (error) {
     console.error('[intel-analyze] Auto-task creation failed:', error.message);
-  } else {
-    console.log(`[intel-analyze] Created ${rows.length} tasks (${commitmentRows.length} commitments, ${nextStepRows.length} next steps) from "${title}"`);
+    return;
+  }
+
+  console.log(`[intel-analyze] Created ${rows.length} tasks (${commitmentRows.length} commitments, ${nextStepRows.length} next steps) from "${title}"`);
+
+  // Send Slack DM if call is fresh (within last 8 hours)
+  const isFresh = date && (Date.now() - new Date(date).getTime()) < 8 * 60 * 60 * 1000;
+  if (!isFresh) return;
+
+  try {
+    const durationMin = durationSeconds ? Math.round(durationSeconds / 60) : null;
+    const callLabel = [title || 'Untitled call', durationMin ? `${durationMin} min` : null].filter(Boolean).join(' — ');
+
+    const taskLines = [
+      ...commitmentRows.map(r => `🔴 ${r.title}  _(commitment)_`),
+      ...nextStepRows.map(r => `• ${r.title}  _(next step)_`),
+    ];
+
+    const blocks = [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `🎙️ *Call analyzed: ${callLabel}*\n\n*Added to your task list:*\n${taskLines.join('\n')}`,
+        },
+      },
+      {
+        type: 'context',
+        elements: [{
+          type: 'mrkdwn',
+          text: `<https://sales-dashboard-james-projects-87ec0089.vercel.app/modules/tasks|Open Tasks →>`,
+        }],
+      },
+    ];
+
+    const channel = process.env.SLACK_MANAGER_CHANNEL;
+    await sendSlackMessage({ blocks }, channel);
+  } catch (e) {
+    console.error('[intel-analyze] Slack notification failed:', e.message);
   }
 }
 
@@ -303,7 +341,7 @@ Return ONLY valid JSON:
       console.error('intel-analyze: Supabase write failed for', callId, upsertError.message, upsertError.code, upsertError.details);
     } else {
       // Auto-create tasks and match to account — both non-blocking
-      autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, db }).catch(e =>
+      autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, durationSeconds, db }).catch(e =>
         console.error('[intel-analyze] autoCreateTasksFromAnalysis error:', e.message)
       );
       tryMatchCallToAccount(callId, title, db).catch(e =>

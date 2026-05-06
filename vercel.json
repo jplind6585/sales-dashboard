@@ -33,6 +33,10 @@
       "schedule": "0 2 * * *"
     },
     {
+      "path": "/api/cron/nightly-intel?quick=1",
+      "schedule": "0 */2 * * 1-5"
+    },
+    {
       "path": "/api/cron/deal-risk-alerts",
       "schedule": "0 3 * * *"
     },

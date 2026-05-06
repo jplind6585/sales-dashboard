@@ -39,9 +39,14 @@ export default async function handler(req, res) {
 
   const gongHeaders = createGongHeaders(gongAccessKey, gongSecretKey);
 
-  // 1. Fetch last 30 days of calls from Gong
+  // Quick mode (?quick=1): short lookback for frequent intraday runs
+  const isQuick = req.query.quick === '1';
+  const lookbackHours = isQuick ? 8 : 30 * 24;
+  const callCap = isQuick ? 5 : 10;
+
+  // 1. Fetch recent calls from Gong
   const toDate = new Date();
-  const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const fromDate = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
   let allCalls = [];
   let cursor = null;
@@ -106,7 +111,7 @@ export default async function handler(req, res) {
       const user = userMap[call.primaryUserId];
       return user && AUTO_ANALYZE_REPS.includes(user.name);
     })
-    .slice(0, 10); // cap at 10 per nightly run to stay within Vercel function timeout
+    .slice(0, callCap);
 
   if (!toAnalyze.length) {
     console.log(`[nightly-intel] All ${AUTO_ANALYZE_REPS.join(', ')} calls already analyzed`);
