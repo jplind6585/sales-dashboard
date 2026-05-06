@@ -1,12 +1,9 @@
 // Generates a reengagement brief + outreach scripts for a stale account.
 // POST { accountId }
 
-import Anthropic from '@anthropic-ai/sdk'
 import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils'
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase'
 import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess'
-
-const client = new Anthropic()
 
 export default async function handler(req, res) {
   logRequest(req, 'accounts/reengagement')
@@ -79,12 +76,21 @@ Respond with valid JSON only:
 
   let brief
   try {
-    const completion = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }]
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
     })
-    const text = completion.content[0]?.text || ''
+    const data = await claudeRes.json()
+    const text = data.content?.[0]?.text || ''
     const match = text.match(/\{[\s\S]*\}/)
     brief = match ? JSON.parse(match[0]) : null
   } catch (e) {

@@ -2,13 +2,10 @@
 // GET  — generates and returns the brief JSON
 // GET ?send=slack — also DMs it to James on Slack
 
-import Anthropic from '@anthropic-ai/sdk';
 import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess';
 import { sendSlackMessage } from '../../../lib/slack';
-
-const client = new Anthropic();
 
 const JAMES_SLACK_DM = process.env.SLACK_MANAGER_CHANNEL || 'D02PGNHTR53';
 
@@ -155,12 +152,21 @@ Respond with ONLY valid JSON in this exact shape:
 
   let brief;
   try {
-    const completion = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }],
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
-    const text = completion.content[0]?.text || '';
+    const data = await claudeRes.json();
+    const text = data.content?.[0]?.text || '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     brief = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
   } catch (e) {
