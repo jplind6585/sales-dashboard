@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Save, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Save, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
 
 export default function SettingsPage() {
@@ -178,6 +178,25 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Data Quality */}
+        <div className="bg-white rounded-xl shadow-sm border p-6 mt-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-semibold mb-1">Data Quality</h2>
+              <p className="text-sm text-gray-600">
+                Review unmatched calls, potential duplicate accounts, missing HubSpot links, and alias suggestions. Admin use.
+              </p>
+            </div>
+            <button
+              onClick={() => router.push('/modules/data-quality')}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors shrink-0 ml-6"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Open Queue
+            </button>
+          </div>
         </div>
 
         {/* Slack Settings */}
