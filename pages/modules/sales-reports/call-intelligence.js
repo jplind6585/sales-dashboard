@@ -156,6 +156,10 @@ export default function CallIntelligence() {
   const [reengagementEmails, setReengagementEmails] = useState({})
   const [selectedCallIds, setSelectedCallIds] = useState(new Set())
 
+  const [timePeriod, setTimePeriod] = useState('6mo')
+  const [coachingMap, setCoachingMap] = useState({})
+  const [loadingCoaching, setLoadingCoaching] = useState(false)
+
   const chatEndRef = useRef(null)
   const repFilterRef = useRef(null)
 
@@ -318,6 +322,26 @@ export default function CallIntelligence() {
     } catch { setCalls(prev => prev.map(c => c.gongCallId === call.gongCallId ? { ...c, ignored: call.ignored } : c)) }
   }
 
+  async function generateCoaching(call) {
+    if (!call.analysis || loadingCoaching) return
+    setLoadingCoaching(true)
+    try {
+      const res = await fetch('/api/gong/intel-coaching', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysis: call.analysis,
+          callTitle: call.title,
+          callType: call.callType,
+          repName: call.repName,
+          durationSeconds: call.durationSeconds,
+        }),
+      })
+      const data = await res.json()
+      if (data.coaching) setCoachingMap(prev => ({ ...prev, [call.gongCallId]: data.coaching }))
+    } catch (e) { console.error('Coaching failed:', e) }
+    finally { setLoadingCoaching(false) }
+  }
+
   async function sendChat() {
     const msg = chatInput.trim()
     if (!msg || chatLoading) return
@@ -387,7 +411,11 @@ export default function CallIntelligence() {
       .sort((a, b) => new Date(a.date) - new Date(b.date))
   }, [calls])
 
+  const periodCutoff = { '7d': 7, '30d': 30, '6mo': 180 }[timePeriod]
+  const periodCutoffDate = periodCutoff ? new Date(Date.now() - periodCutoff * 24 * 60 * 60 * 1000) : null
+
   const filteredCalls = calls
+    .filter(c => !periodCutoffDate || !c.date || new Date(c.date) >= periodCutoffDate)
     .filter(c => salesReps == null || (c.repName && salesReps.has(c.repName)))
     .filter(c => showIgnored || !c.ignored)
     .filter(c => showClosedWon || c.dealStage?.toLowerCase() !== 'closedwon')
@@ -524,6 +552,24 @@ export default function CallIntelligence() {
           )}
         </div>
       )}
+
+      {/* Time period filter */}
+      <div className="bg-white border-b border-gray-200 px-6 py-2 shrink-0">
+        <div className="max-w-[1400px] mx-auto flex items-center gap-2">
+          <span className="text-xs text-gray-400 font-medium mr-1">Period:</span>
+          {[
+            { id: '7d', label: 'Last 7 days' },
+            { id: '30d', label: 'Last 30 days' },
+            { id: '6mo', label: 'Last 6 months' },
+            { id: 'all', label: 'All time' },
+          ].map(p => (
+            <button key={p.id} onClick={() => setTimePeriod(p.id)}
+              className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${timePeriod === p.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Banners */}
       {enriching && (
@@ -1010,6 +1056,7 @@ export default function CallIntelligence() {
                                 { label: 'Duration', field: 'duration' },
                                 { label: 'Talk Ratio', field: 'ratio' },
                                 { label: 'Sentiment', field: 'sentiment' },
+                                { label: 'Disqual.', field: null },
                               ].map(col => (
                                 <th key={col.label} onClick={() => col.field && toggleSort(col.field)}
                                   className={`text-left px-4 py-3 text-xs text-gray-400 font-semibold uppercase tracking-wide whitespace-nowrap ${col.field ? 'cursor-pointer hover:text-gray-600' : ''}`}>
@@ -1053,6 +1100,11 @@ export default function CallIntelligence() {
                                 </td>
                                 <td className="px-4 py-3" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
                                   {call.analysis?.sentiment ? <SentimentBadge sentiment={call.analysis.sentiment} /> : <span className="text-gray-300 text-xs">Unanalyzed</span>}
+                                </td>
+                                <td className="px-4 py-3" onClick={() => !call.ignored && setSelectedCall(call)} style={{cursor: call.ignored ? 'default' : 'pointer'}}>
+                                  {call.analysis?.disqualification_signal
+                                    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-medium"><AlertCircle className="w-3 h-3" />Soft</span>
+                                    : null}
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                   <div className="flex items-center justify-end gap-2">
@@ -1264,6 +1316,50 @@ export default function CallIntelligence() {
                     </div>
                   </div>
                 )}
+
+                {/* Disqualification signal */}
+                {selectedCall.analysis.disqualification_signal && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <h3 className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5" /> Disqualification Signal
+                    </h3>
+                    <p className="text-sm text-orange-800">{selectedCall.analysis.disqualification_notes || 'Call ended without a clear mutual next step — this deal may be limping along.'}</p>
+                  </div>
+                )}
+
+                {/* Coaching card */}
+                <div className="border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> Coaching
+                    </h3>
+                    {!coachingMap[selectedCall.gongCallId] && (
+                      <button
+                        onClick={() => generateCoaching(selectedCall)}
+                        disabled={loadingCoaching}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {loadingCoaching ? 'Generating…' : 'Get Coaching'}
+                      </button>
+                    )}
+                    {coachingMap[selectedCall.gongCallId] && (
+                      <button
+                        onClick={() => generateCoaching(selectedCall)}
+                        disabled={loadingCoaching}
+                        className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                      >
+                        {loadingCoaching ? 'Generating…' : 'Regenerate'}
+                      </button>
+                    )}
+                  </div>
+                  {coachingMap[selectedCall.gongCallId] ? (
+                    <div className="prose prose-sm max-w-none text-gray-700 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-gray-900">
+                      <ReactMarkdown>{coachingMap[selectedCall.gongCallId]}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">Click "Get Coaching" to generate specific feedback for this call.</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

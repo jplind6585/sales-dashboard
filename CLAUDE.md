@@ -382,6 +382,31 @@ Migration files are in `supabase/migrations/` for reference.
 
 ---
 
+## Sales Process Config (the AI's source of truth)
+
+The `sales_process_config` table is a single row that drives all AI analysis. Every call analysis, ICP score, discovery score, coaching card, and disqualification flag reads from it.
+
+**Sections:**
+- `icp_definition` — who we sell to, who we don't, how to score fit (1-10)
+- `discovery_framework` — what must be uncovered (MEDDICC-based), drives discovery scoring
+- `stage_exit_criteria` — what must be true before advancing each stage
+- `disqualification_signals` — hard stops, soft stops, language patterns to recognize
+- `coaching_priorities` — ranked coaching areas, drives all coaching output
+- `qualification_framework` — ICP and discovery score rubrics
+- `winning_tactics` — proven plays from the field
+- `competitor_playbook` — how to handle Smartsheet, Procore, Northspyre, etc.
+
+**How it flows:**
+- `lib/salesProcess.js` — `getSalesProcessConfig()` fetches with 5-min cache; `buildSalesProcessContext()` formats it for prompt injection
+- `pages/api/gong/intel-analyze.js` — injects full config into every call analysis prompt
+- `pages/api/gong/intel-coaching.js` — injects coaching priorities + discovery framework into every coaching card
+- `pages/api/sales-process.js` — GET to fetch, PATCH to update (saves version history to `sales_process_config_history`)
+- `pages/modules/sales-processes.js` — editor UI, one section at a time
+
+**Version history:** Every save creates a snapshot in `sales_process_config_history`. Version number increments on each save.
+
+---
+
 ## Recently Shipped (reverse chronological)
 
 - **2026-04-15** — Cross-assign tasks: "Assign to" dropdown in New Task modal; `GET /api/users` endpoint

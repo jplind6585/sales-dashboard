@@ -4,6 +4,39 @@ _Last updated: 2026-05-05_
 
 ---
 
+## 🎯 Current Build Priority
+
+This is the active sequence. Don't start the next item until the current one is done.
+
+### 1. Sales Reports + Call Intelligence ← TONIGHT
+- Per-call coaching card for reps (specific, actionable — not a generic summary)
+- Auto-ingest Gong calls → analyze → produce coaching + to-dos
+- Filterable dashboard: by rep, call type, time period (week / month / 6mo / year)
+- Coaching triggers: weak discovery, vague next steps, disqualification signals ("we'll send info")
+- Goal: reps improve call-by-call automatically, no waiting for manual review
+
+### 2. Account Management
+- Deepen the AI side — surface insights to reps rather than requiring them to dig
+- AI sidebar upgrades, smarter deal health, context-aware suggestions
+
+### 3. Tasks
+- Most important module long-term — this is the rep's daily driver
+- "Work in Claude" button per task
+- Smart Suggestions from Gong (alongside Gmail + Calendar)
+- Stage-triggered checklists customized to Banner's actual process
+
+---
+
+## 🧠 Platform Design Principle
+
+**AI-first, not button-first.** This is not a CRM. The design rule:
+- Things get surfaced TO reps — they don't go looking for them
+- The AI assistant is persistent across every module (not just the homepage)
+- The assistant is action-capable: reps say "update these 6 accounts" and it happens
+- New features are designed as "what does the AI surface?" before "what button triggers this?"
+
+---
+
 ## ✅ Shipped
 
 ### Auth & Access

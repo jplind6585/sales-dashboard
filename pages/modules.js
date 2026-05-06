@@ -11,7 +11,6 @@ import {
   Rocket,
   Send,
   Zap,
-  LineChart,
   MessageCircle,
   Settings,
   Sparkles,
@@ -73,16 +72,6 @@ const MODULES = [
     status: 'live'
   },
   {
-    id: 'rfp',
-    name: 'RFP',
-    description: 'RFP response management, answer library, and AI-powered proposal generation',
-    icon: FileText,
-    href: '#',
-    color: 'from-teal-500 to-teal-600',
-    available: false,
-    status: 'coming-soon'
-  },
-  {
     id: 'sales-reports',
     name: 'Sales Reports',
     description: 'Performance metrics, forecasting, and pipeline health dashboards',
@@ -91,16 +80,6 @@ const MODULES = [
     color: 'from-green-500 to-green-600',
     available: true,
     status: 'in-progress'
-  },
-  {
-    id: 'pipeline-review',
-    name: 'Pipeline Review',
-    description: 'Weekly pipeline inspection, deal health scoring, and forecast accuracy',
-    icon: LineChart,
-    href: '#',
-    color: 'from-amber-500 to-amber-600',
-    available: false,
-    status: 'coming-soon'
   },
   {
     id: 'rep-coaching',
@@ -115,12 +94,12 @@ const MODULES = [
   {
     id: 'sales-processes',
     name: 'Sales Processes',
-    description: 'Playbooks, methodologies, deal stages, and workflow automation',
+    description: 'ICP definition, discovery framework, stage criteria, and coaching priorities — the config that drives all AI analysis.',
     icon: Zap,
-    href: '#',
+    href: '/modules/sales-processes',
     color: 'from-cyan-500 to-cyan-600',
-    available: false,
-    status: 'coming-soon'
+    available: true,
+    status: 'live'
   },
   {
     id: 'settings',
@@ -131,6 +110,16 @@ const MODULES = [
     color: 'from-gray-500 to-gray-600',
     available: true,
     status: 'live'
+  },
+  {
+    id: 'rfp',
+    name: 'RFP',
+    description: 'RFP response management, answer library, and AI-powered proposal generation',
+    icon: FileText,
+    href: '#',
+    color: 'from-teal-500 to-teal-600',
+    available: false,
+    status: 'coming-soon'
   },
 ];
 

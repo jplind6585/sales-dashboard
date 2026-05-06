@@ -11,6 +11,7 @@ import {
   logRequest,
 } from '../../../lib/apiUtils';
 import { createServerSupabaseClient } from '../../../lib/supabase';
+import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -80,7 +81,14 @@ export default async function handler(req, res) {
 
     const durationMin = Math.round((durationSeconds || 0) / 60);
 
+    const salesProcessConfig = await getSalesProcessConfig();
+    const salesProcessContext = buildSalesProcessContext(salesProcessConfig);
+
     const analysisPrompt = `Analyze this sales call transcript for Banner (CapEx management software for commercial real estate). Extract structured insights.
+
+${salesProcessContext}
+
+
 
 Call: "${title || 'Untitled'}" | Type: ${callType || 'unknown'} | Duration: ${durationMin} min | Rep: ${repName || 'Unknown'}
 
@@ -97,6 +105,8 @@ ICP scoring guide (Banner's ideal customer):
 Discovery score guide (MEDDICC coverage):
   Score based on how well rep uncovered: economic buyer (who controls budget), decision process (how they evaluate and decide), timeline, quantified pain (specific $ or operational impact), champion (internal advocate identified). 10 = all five uncovered.
 
+Disqualification signal: Set to true if the call ended with a soft, non-committal close — phrases like "we'll send over some info", "let's circle back", "I'll think about it", "reach back out in a few weeks", or "let's keep in touch" — WITHOUT a specific next step (date, meeting, or clear action committed to by both sides). This is a flag for "we're limping along rather than qualifying or disqualifying." Set to false if a clear mutual next step was established.
+
 Return ONLY valid JSON:
 {
   "summary": "2-3 sentence summary of what happened and the outcome signal",
@@ -111,7 +121,9 @@ Return ONLY valid JSON:
   "icp_score": 7,
   "icp_rationale": "one sentence on why this score — what fit or mismatch was present",
   "discovery_score": 6,
-  "discovery_gaps": ["economic buyer not identified", "no timeline established"]
+  "discovery_gaps": ["economic buyer not identified", "no timeline established"],
+  "disqualification_signal": false,
+  "disqualification_notes": "null if no signal, otherwise brief explanation — e.g. 'Call ended with prospect saying they'd think about it and rep agreed to follow up later with no date set'"
 }`;
 
     const rawAnalysis = await callAnthropic(apiKey, {
@@ -134,6 +146,8 @@ Return ONLY valid JSON:
       icp_rationale: null,
       discovery_score: null,
       discovery_gaps: [],
+      disqualification_signal: false,
+      disqualification_notes: null,
     });
 
     // Persist to Supabase — this is the source of truth across sessions
