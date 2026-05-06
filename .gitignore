@@ -35,3 +35,5 @@ next-env.d.ts
 # user data and learning
 /data
 localStorage.json
+generate-report.mjs
+*.html

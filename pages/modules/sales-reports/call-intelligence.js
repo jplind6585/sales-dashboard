@@ -57,13 +57,13 @@ function CategoryBadge({ category }) {
   return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[category] || CATEGORY_COLORS.other}`}>{category}</span>
 }
 
-function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge, sub }) {
-  const pct = maxCount > 0 ? Math.max(4, (count / maxCount) * 100) : 4
+function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge }) {
+  const numeric = typeof count === 'number' ? count : parseFloat(String(count))
+  const pct = maxCount > 0 && !isNaN(numeric) ? Math.max(4, (numeric / maxCount) * 100) : 4
   return (
-    <div className="flex items-center gap-3 py-1.5">
+    <div className="flex items-center gap-3 py-1">
       <div className="w-44 shrink-0">
         <div className="text-sm text-gray-700 truncate">{label}</div>
-        {sub && <div className="text-xs text-gray-400">{sub}</div>}
       </div>
       <div className="flex-1 bg-gray-100 rounded-full h-2">
         <div className={`${colorClass} h-2 rounded-full`} style={{ width: `${pct}%` }} />
@@ -758,10 +758,9 @@ export default function CallIntelligence() {
                           <div className="space-y-1">
                             {aggregate.loss_reasons.map((lr, i) => (
                               <BarRow key={i} label={lr.reason}
-                                count={`${lr.pct_of_negative_calls}%`}
+                                count={lr.pct_of_negative_calls}
                                 maxCount={aggregate.loss_reasons[0].pct_of_negative_calls}
-                                colorClass="bg-red-400"
-                                sub={lr.example || null} />
+                                colorClass="bg-red-400" />
                             ))}
                           </div>
                         </div>
@@ -777,8 +776,7 @@ export default function CallIntelligence() {
                                 label={typeof item === 'string' ? item : (item.priority || item.theme)}
                                 count={item.count || 0}
                                 maxCount={(aggregate.buyer_priorities || aggregate.top_themes)[0]?.count || 1}
-                                colorClass="bg-blue-500"
-                                sub={item.example || null} />
+                                colorClass="bg-blue-500" />
                             ))}
                           </div>
                         </div>
