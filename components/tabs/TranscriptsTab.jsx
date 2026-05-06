@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Upload, Calendar, Users, ArrowRight, ExternalLink, Mail, FileText, Loader2, ChevronDown, ChevronUp, MessageSquare, Tag } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Upload, Calendar, Users, ArrowRight, ExternalLink, Mail, FileText, Loader2, ChevronDown, ChevronUp, MessageSquare, Tag, AlertCircle, CheckCircle, ChevronRight } from 'lucide-react';
 import { getUserSettings } from '../../lib/userSettings';
 
 const CALL_TYPES = [
@@ -11,6 +11,95 @@ const CALL_TYPES = [
   { id: 'follow_up', label: 'Follow-up', color: 'bg-gray-100 text-gray-700' },
   { id: 'other', label: 'Other', color: 'bg-gray-100 text-gray-700' }
 ];
+
+// Annotation types with their visual treatment
+const ANNOTATION_TYPES = {
+  objection: { label: 'Objection', bg: 'bg-red-50', border: 'border-l-2 border-red-400', text: 'text-red-700', chip: 'bg-red-100 text-red-700' },
+  buying_signal: { label: 'Buying Signal', bg: 'bg-green-50', border: 'border-l-2 border-green-400', text: 'text-green-700', chip: 'bg-green-100 text-green-700' },
+  next_step: { label: 'Next Step', bg: 'bg-blue-50', border: 'border-l-2 border-blue-400', text: 'text-blue-700', chip: 'bg-blue-100 text-blue-700' },
+  red_flag: { label: 'Red Flag', bg: 'bg-orange-50', border: 'border-l-2 border-orange-400', text: 'text-orange-700', chip: 'bg-orange-100 text-orange-700' },
+}
+
+function extractKeywords(strings) {
+  if (!strings?.length) return []
+  const stopWords = new Set(['the', 'and', 'for', 'that', 'this', 'with', 'have', 'will', 'they', 'from', 'been', 'their', 'about', 'would', 'could', 'should'])
+  return strings.flatMap(s =>
+    (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 4 && !stopWords.has(w))
+  )
+}
+
+function classifyLine(line, keywordSets) {
+  const lower = line.toLowerCase()
+  for (const [type, keywords] of Object.entries(keywordSets)) {
+    if (keywords.some(kw => lower.includes(kw))) return type
+  }
+  return null
+}
+
+function AnnotatedTranscript({ transcript }) {
+  const analysis = transcript.rawAnalysis || transcript.analysis || {}
+  const text = transcript.text || ''
+
+  const keywordSets = useMemo(() => ({
+    objection: extractKeywords((analysis.objections || []).map(o => typeof o === 'string' ? o : o.text)),
+    buying_signal: extractKeywords(analysis.buyingSignals || analysis.buying_signals || []),
+    next_step: extractKeywords(analysis.nextSteps || analysis.next_steps_mentioned || []),
+    red_flag: extractKeywords(analysis.redFlags || analysis.red_flags || []),
+  }), [analysis])
+
+  const hasAnnotations = Object.values(keywordSets).some(kws => kws.length > 0)
+
+  const lines = useMemo(() => {
+    return text.split('\n').map(line => {
+      const isRep = line.startsWith('[REP]') || /^[A-Z][^:]+\s\(Banner\):/i.test(line)
+      const isProspect = line.startsWith('[PROSPECT]') || (!isRep && /^[A-Z][^:]+:/i.test(line) && !line.startsWith('['))
+      const annotation = hasAnnotations ? classifyLine(line, keywordSets) : null
+      return { line, isRep, isProspect, annotation }
+    })
+  }, [text, keywordSets, hasAnnotations])
+
+  const annotatedCount = lines.filter(l => l.annotation).length
+
+  if (!text) return <p className="text-sm text-gray-400 italic">No transcript text available.</p>
+
+  return (
+    <div>
+      {hasAnnotations && annotatedCount > 0 && (
+        <div className="flex items-center gap-2 flex-wrap mb-3 pb-3 border-b">
+          <span className="text-xs text-gray-400">{annotatedCount} annotated moment{annotatedCount > 1 ? 's' : ''} ·</span>
+          {Object.entries(ANNOTATION_TYPES).map(([type, meta]) => {
+            const count = lines.filter(l => l.annotation === type).length
+            if (!count) return null
+            return (
+              <span key={type} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${meta.chip}`}>
+                {meta.label} ({count})
+              </span>
+            )
+          })}
+        </div>
+      )}
+      <div className="space-y-0.5 font-mono text-xs overflow-y-auto max-h-96">
+        {lines.map((entry, i) => {
+          if (!entry.line.trim()) return <div key={i} className="h-2" />
+          const annotMeta = entry.annotation ? ANNOTATION_TYPES[entry.annotation] : null
+          return (
+            <div
+              key={i}
+              className={`px-2 py-0.5 rounded-sm leading-relaxed transition-colors ${
+                annotMeta ? `${annotMeta.bg} ${annotMeta.border} pl-3` : ''
+              } ${entry.isRep ? 'text-blue-900' : entry.isProspect ? 'text-gray-800' : 'text-gray-600'}`}
+            >
+              {annotMeta && (
+                <span className={`text-xs font-semibold mr-1 ${annotMeta.text}`}>[{annotMeta.label}]</span>
+              )}
+              {entry.line}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 const TranscriptCard = ({ transcript, account, onUpdate }) => {
   const [expanded, setExpanded] = useState(false);
@@ -439,9 +528,15 @@ const TranscriptCard = ({ transcript, account, onUpdate }) => {
       {/* Expanded Details */}
       {expanded && (
         <div className="p-4 border-t bg-gray-50">
-          <div className="text-xs font-medium text-gray-500 mb-2">Full Transcript</div>
-          <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-64 overflow-y-auto bg-white p-3 rounded border">
-            {transcript.text}
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-medium text-gray-500">Full Transcript</div>
+            <div className="flex items-center gap-3 text-xs text-gray-400">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> Rep</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400 inline-block" /> Prospect</span>
+            </div>
+          </div>
+          <div className="bg-white p-3 rounded border">
+            <AnnotatedTranscript transcript={transcript} />
           </div>
         </div>
       )}

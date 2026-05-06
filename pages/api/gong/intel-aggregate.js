@@ -14,20 +14,23 @@ export default async function handler(req, res) {
   const db = createServerSupabaseClient(req, res);
 
   if (req.method === 'GET') {
-    const { data, error } = await db
+    const { data: rows, error } = await db
       .from('gong_aggregate_analysis')
       .select('*')
       .order('computed_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(2);
 
-    if (error || !data) {
+    if (error || !rows?.length) {
       return apiSuccess(res, { aggregate: null });
     }
+    const current = rows[0];
+    const prior = rows[1] || null;
     return apiSuccess(res, {
-      aggregate: data.analysis,
-      computedAt: data.computed_at,
-      callCount: data.call_count,
+      aggregate: current.analysis,
+      computedAt: current.computed_at,
+      callCount: current.call_count,
+      priorAggregate: prior?.analysis || null,
+      priorComputedAt: prior?.computed_at || null,
     });
 
   } else if (req.method === 'POST') {
@@ -87,11 +90,20 @@ Return ONLY valid JSON with this aggregate analysis:
   "avg_icp_score": 6.8,
   "avg_discovery_score": 5.4,
   "sentiment_breakdown": {"positive": 12, "neutral": 8, "negative": 5},
-  "key_insights": ["specific data-backed insight 1", "insight 2", "insight 3", "insight 4", "insight 5"],
+  "key_insights": [
+    {
+      "signal": "one-line data-backed finding (e.g. 'Economic buyer absent in 78% of calls')",
+      "scope": "human-readable scope (e.g. '35 active deals · 4 reps' or '12 calls this period')",
+      "scope_reps": ["rep name if rep-specific, else omit"],
+      "recommended_action": "specific one-line action the team should take",
+      "action_type": "outreach_batch_create|coaching_task_create|flag_counter_for_review|process_doc_update|assign_review_task",
+      "urgency": "high|medium|low"
+    }
+  ],
   "win_patterns": ["pattern consistently seen in positive-sentiment calls"],
   "loss_patterns": ["pattern consistently seen in negative-sentiment calls"],
   "rep_stats": [{"rep": "name", "call_count": 5, "avg_talk_ratio": 45, "positive_pct": 60, "avg_icp_score": 7.2, "avg_discovery_score": 5.8, "top_objection": "pricing"}],
-  "investor_narrative": "3-4 sentences telling the story of Banner's sales process health and trajectory — suitable for an investor update"
+  "investor_narrative": "200-300 words covering: market validation signals (ICP fit scores, named segments closing), product-market fit indicators (positive sentiment trend, buyer themes), momentum metrics (period-over-period improvements), and any identified high-leverage interventions in progress. Frame around momentum and validation. Avoid hedging language. Always pair problem statements with interventions."
 }`;
 
     const rawAggregate = await callAnthropic(apiKey, {

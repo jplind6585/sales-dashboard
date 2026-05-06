@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import ReactMarkdown from 'react-markdown'
 import {
   ArrowLeft, RefreshCw, Download, X, ExternalLink,
   Sparkles, Send, Phone, TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertCircle, CheckCircle, Zap, Users,
-  EyeOff, Eye, Info, Clock, Mail, Copy,
+  EyeOff, Eye, Info, Clock, Mail, Copy, BookOpen,
+  PlayCircle, Flag, FileText, Building2,
 } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
+import PeriodDelta from '../../../components/common/PeriodDelta'
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
@@ -57,7 +59,7 @@ function CategoryBadge({ category }) {
   return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[category] || CATEGORY_COLORS.other}`}>{category}</span>
 }
 
-function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge, onClick }) {
+function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge, onClick, healthBadge }) {
   const numeric = typeof count === 'number' ? count : parseFloat(String(count))
   const pct = maxCount > 0 && !isNaN(numeric) ? Math.max(4, (numeric / maxCount) * 100) : 4
   const dashIdx = label.indexOf(' — ')
@@ -74,16 +76,42 @@ function BarRow({ label, count, maxCount, colorClass = 'bg-blue-500', badge, onC
         <div className={`${colorClass} h-2 rounded-full`} style={{ width: `${pct}%` }} />
       </div>
       {badge && <div className="shrink-0">{badge}</div>}
+      {healthBadge && <div className="shrink-0">{healthBadge}</div>}
       <span className="text-sm text-gray-500 w-8 text-right shrink-0">{count}</span>
     </div>
   )
 }
 
-function KPICard({ label, value, sub, valueColor = 'text-gray-900' }) {
+function sortDesc(arr, key) {
+  if (!arr?.length) return []
+  return [...arr].sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0))
+}
+
+const ACTION_TYPE_META = {
+  coaching_task_create: { label: 'Coaching', icon: <Users className="w-3 h-3" />, cls: 'bg-purple-100 text-purple-700' },
+  outreach_batch_create: { label: 'Outreach', icon: <Mail className="w-3 h-3" />, cls: 'bg-blue-100 text-blue-700' },
+  flag_counter_for_review: { label: 'Flag Counter', icon: <Flag className="w-3 h-3" />, cls: 'bg-red-100 text-red-700' },
+  process_doc_update: { label: 'Process', icon: <FileText className="w-3 h-3" />, cls: 'bg-amber-100 text-amber-700' },
+  assign_review_task: { label: 'Review Task', icon: <CheckCircle className="w-3 h-3" />, cls: 'bg-gray-100 text-gray-600' },
+}
+
+function ActionTypeChip({ type }) {
+  const meta = ACTION_TYPE_META[type] || { label: type || 'Action', icon: <Zap className="w-3 h-3" />, cls: 'bg-gray-100 text-gray-600' }
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${meta.cls}`}>
+      {meta.icon}{meta.label}
+    </span>
+  )
+}
+
+function KPICard({ label, value, sub, valueColor = 'text-gray-900', delta }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-1">
       <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">{label}</p>
-      <p className={`text-2xl font-bold leading-tight ${valueColor}`}>{value}</p>
+      <div className="flex items-baseline gap-2">
+        <p className={`text-2xl font-bold leading-tight ${valueColor}`}>{value}</p>
+        {delta}
+      </div>
       {sub && <p className="text-xs text-gray-400 leading-tight">{sub}</p>}
     </div>
   )
@@ -164,7 +192,13 @@ export default function CallIntelligence() {
   const [timePeriod, setTimePeriod] = useState('6mo')
   const [coachingMap, setCoachingMap] = useState({})
   const [loadingCoaching, setLoadingCoaching] = useState(false)
-  const [insightPanel, setInsightPanel] = useState(null) // { title, text, example, count, colorClass, calls }
+  const [insightPanel, setInsightPanel] = useState(null) // { title, text, count, colorClass, calls, linkedAccounts, counter }
+  const [priorAggregate, setPriorAggregate] = useState(null)
+  const [aggregateComputedAt, setAggregateComputedAt] = useState(null)
+  const [salesProcess, setSalesProcess] = useState(null)
+  const [narrativeCopied, setNarrativeCopied] = useState(false)
+  const [narrativeVersions, setNarrativeVersions] = useState([])
+  const [showNarrativeHistory, setShowNarrativeHistory] = useState(false)
 
   const chatEndRef = useRef(null)
   const repFilterRef = useRef(null)
@@ -188,7 +222,7 @@ export default function CallIntelligence() {
       setSalesReps(new Set(defaults))
       localStorage.setItem('banner_intel_sales_reps', JSON.stringify(defaults))
     }
-    fetchCalls(); fetchAggregate()
+    fetchCalls(); fetchAggregate(); fetchSalesProcess(); fetchNarrativeHistory()
   }, [])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
 
@@ -223,7 +257,38 @@ export default function CallIntelligence() {
     try {
       const res = await fetch('/api/gong/intel-aggregate')
       const data = await res.json()
-      if (data.success && data.aggregate) setAggregate(data.aggregate)
+      if (data.success && data.aggregate) {
+        setAggregate(data.aggregate)
+        setAggregateComputedAt(data.computedAt || null)
+        if (data.priorAggregate) setPriorAggregate(data.priorAggregate)
+      }
+    } catch { /* silent */ }
+  }
+
+  async function fetchSalesProcess() {
+    try {
+      const res = await fetch('/api/sales-process')
+      const data = await res.json()
+      if (data.success && data.config) setSalesProcess(data.config)
+    } catch { /* silent */ }
+  }
+
+  async function fetchNarrativeHistory() {
+    try {
+      const res = await fetch('/api/gong/intel-narrative-history')
+      const data = await res.json()
+      if (data.success) setNarrativeVersions(data.versions || [])
+    } catch { /* silent */ }
+  }
+
+  async function saveNarrativeVersion(narrative) {
+    try {
+      await fetch('/api/gong/intel-narrative-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ narrative, callCount: analyzedCalls.length }),
+      })
+      await fetchNarrativeHistory()
     } catch { /* silent */ }
   }
 
@@ -462,7 +527,7 @@ export default function CallIntelligence() {
     'Last 6 months',
   ].filter(Boolean).join(' · ')
 
-  function openInsight({ title, text, example, count, colorClass }) {
+  async function openInsight({ title, text, count, colorClass, counter, isObjection }) {
     const stopWords = new Set(['about', 'their', 'these', 'which', 'where', 'there', 'being', 'never', 'every', 'often', 'first', 'deals', 'calls', 'sales', 'that', 'this', 'with', 'from', 'they', 'have', 'been', 'when', 'into', 'more', 'some', 'will'])
     const keywords = text.toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
@@ -480,8 +545,41 @@ export default function CallIntelligence() {
         return keywords.filter(kw => blob.includes(kw)).length >= 2
       })
       .sort((a, b) => (b.analysis?.icp_score || 0) - (a.analysis?.icp_score || 0))
-      .slice(0, 6)
-    setInsightPanel({ title, text, example, count, colorClass, calls: relatedCalls })
+      .slice(0, 8)
+
+    setInsightPanel({ title, text, count, colorClass, counter, isObjection, calls: relatedCalls, linkedAccounts: null })
+
+    // Fetch active pipeline accounts linked to these calls
+    const accountIds = [...new Set(relatedCalls.map(c => c.accountId).filter(Boolean))]
+    if (accountIds.length) {
+      try {
+        const res = await fetch('/api/gong/intel-linked-accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountIds }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          setInsightPanel(prev => prev ? { ...prev, linkedAccounts: data.accounts || [] } : prev)
+        }
+      } catch { /* silent */ }
+    } else {
+      setInsightPanel(prev => prev ? { ...prev, linkedAccounts: [] } : prev)
+    }
+  }
+
+  function findCounterForObjection(objectionText) {
+    if (!salesProcess?.competitor_playbook) return null
+    const text = (objectionText || '').toLowerCase()
+    // Look for objection-handling sections in the competitor playbook or winning_tactics
+    const tactics = salesProcess.winning_tactics || []
+    const match = tactics.find(t => {
+      const tText = (typeof t === 'string' ? t : t.tactic || t.description || '').toLowerCase()
+      const tWords = tText.split(/\s+/).filter(w => w.length > 4)
+      const kw = text.split(/\s+/).filter(w => w.length > 4)
+      return kw.some(w => tText.includes(w)) || tWords.some(w => text.includes(w))
+    })
+    return match ? (typeof match === 'string' ? match : match.tactic || match.description) : null
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -638,49 +736,55 @@ export default function CallIntelligence() {
           </div>
         </div>
       )}
-      {!analyzing && !loadingCalls && unanalyzedCount > 0 && (
-        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 shrink-0">
+      {/* Single status line — shows data freshness. Banners only appear if action genuinely needed. */}
+      {!loadingCalls && (unanalyzedCount > 0 || missingScoresCount > 0) && !analyzing && (
+        <div className={`border-b px-6 py-2.5 shrink-0 ${unanalyzedCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-violet-50 border-violet-200'}`}>
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-amber-800">
-              <AlertCircle className="w-4 h-4" /><span>{unanalyzedCount} active call{unanalyzedCount > 1 ? 's' : ''} not yet analyzed</span>
-            </div>
-            <div className="flex gap-2">
-              {unanalyzedCount > 20 && (
-                <button onClick={() => runAnalysis(20)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-400 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50">
-                  <Zap className="w-3.5 h-3.5" /> Analyze 20 Most Recent
-                </button>
+            <div className="flex items-center gap-3 text-sm">
+              <AlertCircle className={`w-4 h-4 shrink-0 ${unanalyzedCount > 0 ? 'text-amber-600' : 'text-violet-600'}`} />
+              {unanalyzedCount > 0
+                ? <span className="text-amber-800">{unanalyzedCount} call{unanalyzedCount > 1 ? 's' : ''} unanalyzed</span>
+                : <span className="text-violet-800">{missingScoresCount} calls missing ICP/discovery scores</span>
+              }
+              {aggregateComputedAt && (
+                <span className="text-gray-400 text-xs">· Last updated {new Date(aggregateComputedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
               )}
-              <button onClick={() => runAnalysis()} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600">
-                <Zap className="w-3.5 h-3.5" /> Analyze All ({unanalyzedCount})
-              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {unanalyzedCount > 0 && (
+                <>
+                  {unanalyzedCount > 20 && (
+                    <button onClick={() => runAnalysis(20)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-400 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50">
+                      <Zap className="w-3.5 h-3.5" /> Analyze 20
+                    </button>
+                  )}
+                  <button onClick={() => runAnalysis()} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600">
+                    <Zap className="w-3.5 h-3.5" /> Analyze All ({unanalyzedCount})
+                  </button>
+                </>
+              )}
+              {unanalyzedCount === 0 && missingScoresCount > 0 && (
+                <>
+                  {missingScoresCount > 20 && (
+                    <button onClick={() => runAnalysis(20, true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-violet-400 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50">
+                      <Zap className="w-3.5 h-3.5" /> Update 20
+                    </button>
+                  )}
+                  <button onClick={() => runAnalysis(null, true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700">
+                    <Zap className="w-3.5 h-3.5" /> Update All ({missingScoresCount})
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
       )}
-      {/* Stale analysis — missing ICP/discovery scores */}
-      {!analyzing && !loadingCalls && missingScoresCount > 0 && (
-        <div className="bg-violet-50 border-b border-violet-200 px-6 py-3 shrink-0">
-          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-violet-800">
-              <RefreshCw className="w-4 h-4 shrink-0" />
-              <span>{missingScoresCount} calls need re-analysis to add ICP fit + discovery scores</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {missingScoresCount > 20 && (
-                <button
-                  onClick={() => runAnalysis(20, true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-violet-400 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50"
-                >
-                  <Zap className="w-3.5 h-3.5" /> Update 20
-                </button>
-              )}
-              <button
-                onClick={() => runAnalysis(null, true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700"
-              >
-                <Zap className="w-3.5 h-3.5" /> Update All ({missingScoresCount})
-              </button>
-            </div>
+      {!loadingCalls && unanalyzedCount === 0 && missingScoresCount === 0 && aggregateComputedAt && !analyzing && (
+        <div className="bg-white border-b border-gray-100 px-6 py-1.5 shrink-0">
+          <div className="max-w-[1400px] mx-auto">
+            <span className="text-xs text-gray-400">
+              {analyzedCalls.length} calls analyzed · Last updated {new Date(aggregateComputedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            </span>
           </div>
         </div>
       )}
@@ -725,21 +829,33 @@ export default function CallIntelligence() {
             {aggregate && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                 <KPICard label="Calls Analyzed" value={analyzedCalls.length}
-                  sub={`${activeCalls.filter(c => c.callType === 'intro').length} intro · ${activeCalls.filter(c => c.callType === 'demo').length} demo · ${activeCalls.filter(c => c.callType === 'solution_validation').length} follow-up`} />
+                  sub={`${activeCalls.filter(c => c.callType === 'intro').length} intro · ${activeCalls.filter(c => c.callType === 'demo').length} demo · ${activeCalls.filter(c => c.callType === 'solution_validation').length} follow-up`}
+                  delta={priorAggregate ? <PeriodDelta current={analyzedCalls.length} prior={priorAggregate._call_count_snapshot || null} direction="higher_better" /> : null} />
                 <KPICard label="Positive Sentiment"
                   value={positivePct !== null ? `${positivePct}%` : '—'}
                   sub={`${sentBreakdown.neutral || 0} neutral · ${sentBreakdown.negative || 0} negative`}
-                  valueColor={positivePct >= 60 ? 'text-green-600' : positivePct >= 40 ? 'text-amber-600' : 'text-red-600'} />
+                  valueColor={positivePct >= 60 ? 'text-green-600' : positivePct >= 40 ? 'text-amber-600' : 'text-red-600'}
+                  delta={priorAggregate ? (() => {
+                    const prior = priorAggregate.sentiment_breakdown || {}
+                    const tot = (prior.positive || 0) + (prior.neutral || 0) + (prior.negative || 0)
+                    const priorPct = tot > 0 ? Math.round((prior.positive || 0) / tot * 100) : null
+                    return <PeriodDelta current={positivePct} prior={priorPct} format="percent" direction="higher_better" />
+                  })() : null} />
                 <KPICard label="Avg ICP Fit"
                   value={aggregate.avg_icp_score ? `${aggregate.avg_icp_score}/10` : '—'}
                   sub={aggregate.avg_icp_score ? (aggregate.avg_icp_score >= 7 ? 'Strong pipeline fit' : aggregate.avg_icp_score >= 5 ? 'Mixed fit — review ICP' : 'Weak fit — off-ICP volume') : null}
-                  valueColor={aggregate.avg_icp_score >= 7 ? 'text-green-600' : aggregate.avg_icp_score >= 5 ? 'text-amber-600' : 'text-red-600'} />
+                  valueColor={aggregate.avg_icp_score >= 7 ? 'text-green-600' : aggregate.avg_icp_score >= 5 ? 'text-amber-600' : 'text-red-600'}
+                  delta={priorAggregate?.avg_icp_score ? <PeriodDelta current={aggregate.avg_icp_score} prior={priorAggregate.avg_icp_score} format="score" direction="higher_better" /> : null} />
                 <KPICard label="Avg Discovery"
                   value={aggregate.avg_discovery_score ? `${aggregate.avg_discovery_score}/10` : '—'}
                   sub={aggregate.avg_discovery_score ? (aggregate.avg_discovery_score >= 7 ? 'Solid MEDDICC coverage' : 'Discovery gaps present') : null}
-                  valueColor={aggregate.avg_discovery_score >= 7 ? 'text-green-600' : aggregate.avg_discovery_score >= 5 ? 'text-amber-600' : 'text-red-600'} />
-                <KPICard label="Top Competitor" value={topCompetitor?.name || 'None'}
-                  sub={topCompetitor ? `${topCompetitor.count} mention${topCompetitor.count > 1 ? 's' : ''}` : 'No competitors mentioned'} />
+                  valueColor={aggregate.avg_discovery_score >= 7 ? 'text-green-600' : aggregate.avg_discovery_score >= 5 ? 'text-amber-600' : 'text-red-600'}
+                  delta={priorAggregate?.avg_discovery_score ? <PeriodDelta current={aggregate.avg_discovery_score} prior={priorAggregate.avg_discovery_score} format="score" direction="higher_better" /> : null} />
+                <KPICard label="Avg Talk Ratio"
+                  value={aggregate.avg_rep_talk_ratio ? `${aggregate.avg_rep_talk_ratio}%` : '—'}
+                  sub="rep speaking time"
+                  valueColor={aggregate.avg_rep_talk_ratio <= 55 ? 'text-green-600' : aggregate.avg_rep_talk_ratio <= 65 ? 'text-amber-600' : 'text-red-600'}
+                  delta={priorAggregate?.avg_rep_talk_ratio ? <PeriodDelta current={aggregate.avg_rep_talk_ratio} prior={priorAggregate.avg_rep_talk_ratio} format="percent" direction="lower_better" /> : null} />
               </div>
             )}
 
@@ -784,12 +900,12 @@ export default function CallIntelligence() {
                             <TrendingDown className="w-4 h-4 text-red-500" /> Why Deals Go Cold
                           </h3>
                           <div className="space-y-0.5">
-                            {aggregate.loss_reasons.map((lr, i) => (
+                            {sortDesc(aggregate.loss_reasons, 'pct_of_negative_calls').map((lr, i) => (
                               <BarRow key={i} label={lr.reason}
                                 count={lr.pct_of_negative_calls}
-                                maxCount={aggregate.loss_reasons[0].pct_of_negative_calls}
+                                maxCount={sortDesc(aggregate.loss_reasons, 'pct_of_negative_calls')[0].pct_of_negative_calls}
                                 colorClass="bg-red-400"
-                                onClick={() => openInsight({ title: 'Why Deals Go Cold', text: lr.reason, example: lr.example, count: lr.pct_of_negative_calls, colorClass: 'bg-red-400' })} />
+                                onClick={() => openInsight({ title: 'Why Deals Go Cold', text: lr.reason, count: lr.pct_of_negative_calls, colorClass: 'bg-red-400' })} />
                             ))}
                           </div>
                         </div>
@@ -800,33 +916,81 @@ export default function CallIntelligence() {
                         <div className="bg-white rounded-xl border border-gray-200 p-6">
                           <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">What Buyers Care About</h3>
                           <div className="space-y-0.5">
-                            {(aggregate.buyer_priorities || aggregate.top_themes).slice(0, 8).map((item, i) => {
+                            {sortDesc(aggregate.buyer_priorities || aggregate.top_themes, 'count').slice(0, 8).map((item, i) => {
                               const label = typeof item === 'string' ? item : (item.priority || item.theme)
+                              const sorted = sortDesc(aggregate.buyer_priorities || aggregate.top_themes, 'count')
                               return (
                                 <BarRow key={i}
                                   label={label}
                                   count={item.count || 0}
-                                  maxCount={(aggregate.buyer_priorities || aggregate.top_themes)[0]?.count || 1}
+                                  maxCount={sorted[0]?.count || 1}
                                   colorClass="bg-blue-500"
-                                  onClick={() => openInsight({ title: 'What Buyers Care About', text: label, example: item.example, count: item.count, colorClass: 'bg-blue-500' })} />
+                                  onClick={() => openInsight({ title: 'What Buyers Care About', text: label, count: item.count, colorClass: 'bg-blue-500' })} />
                               )
                             })}
                           </div>
                         </div>
                       )}
 
-                      {/* Key insights */}
+                      {/* Key insights — structured action queue */}
                       {aggregate.key_insights?.length > 0 && (
                         <div className="bg-white rounded-xl border border-gray-200 p-6">
-                          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Key Insights</h3>
-                          <ul className="space-y-3">
-                            {aggregate.key_insights.map((insight, i) => (
-                              <li key={i} className="flex items-start gap-3">
-                                <span className="w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
-                                <span className="text-sm text-gray-700">{insight}</span>
-                              </li>
-                            ))}
-                          </ul>
+                          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4 flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-green-600" /> Key Insights
+                          </h3>
+                          {/* Structured table format (new AI output) */}
+                          {typeof aggregate.key_insights[0] === 'object' ? (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b border-gray-100">
+                                    <th className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pr-4 w-8"></th>
+                                    <th className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pr-4">Signal</th>
+                                    <th className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pr-4">Scope</th>
+                                    <th className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pr-4">Recommended Action</th>
+                                    <th className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[...aggregate.key_insights].sort((a, b) => {
+                                    const order = { high: 0, medium: 1, low: 2 }
+                                    return (order[a.urgency] ?? 1) - (order[b.urgency] ?? 1)
+                                  }).map((insight, i) => (
+                                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                                      <td className="py-3 pr-4">
+                                        <span className={`inline-flex w-5 h-5 rounded-full items-center justify-center text-xs font-bold ${
+                                          insight.urgency === 'high' ? 'bg-red-100 text-red-700' :
+                                          insight.urgency === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                          'bg-gray-100 text-gray-500'
+                                        }`}>{i + 1}</span>
+                                      </td>
+                                      <td className="py-3 pr-4 font-medium text-gray-800 max-w-[220px]">{insight.signal}</td>
+                                      <td className="py-3 pr-4 text-xs text-gray-500 max-w-[140px]">
+                                        {insight.scope}
+                                        {insight.scope_reps?.filter(Boolean).length > 0 && (
+                                          <div className="mt-0.5">{insight.scope_reps.join(', ')}</div>
+                                        )}
+                                      </td>
+                                      <td className="py-3 pr-4 text-sm text-gray-600 max-w-[200px]">{insight.recommended_action}</td>
+                                      <td className="py-3">
+                                        <ActionTypeChip type={insight.action_type} />
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            // Legacy string format fallback
+                            <ul className="space-y-3">
+                              {aggregate.key_insights.map((insight, i) => (
+                                <li key={i} className="flex items-start gap-3">
+                                  <span className="w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                                  <span className="text-sm text-gray-700">{insight}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
                       )}
 
@@ -834,14 +998,19 @@ export default function CallIntelligence() {
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {aggregate.top_objections?.length > 0 && (
                           <div className="bg-white rounded-xl border border-gray-200 p-6">
-                            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Top Objections</h3>
+                            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">Top Objections</h3>
+                            <p className="text-xs text-gray-400 mb-4">Click any row to see the counter-tactic and related deals</p>
                             <div className="space-y-1">
-                              {aggregate.top_objections.map((obj, i) => (
-                                <BarRow key={i} label={obj.text} count={obj.count}
-                                  maxCount={aggregate.top_objections[0].count}
-                                  colorClass={CATEGORY_COLORS[obj.category]?.split(' ')[0] || 'bg-red-400'}
-                                  badge={<CategoryBadge category={obj.category} />} />
-                              ))}
+                              {sortDesc(aggregate.top_objections, 'count').map((obj, i) => {
+                                const counter = findCounterForObjection(obj.text)
+                                return (
+                                  <BarRow key={i} label={obj.text} count={obj.count}
+                                    maxCount={sortDesc(aggregate.top_objections, 'count')[0].count}
+                                    colorClass={CATEGORY_COLORS[obj.category]?.split(' ')[0] || 'bg-red-400'}
+                                    badge={<CategoryBadge category={obj.category} />}
+                                    onClick={() => openInsight({ title: 'Objection', text: obj.text, count: obj.count, colorClass: CATEGORY_COLORS[obj.category]?.split(' ')[0] || 'bg-red-400', counter, isObjection: true })} />
+                                )
+                              })}
                             </div>
                           </div>
                         )}
@@ -886,23 +1055,50 @@ export default function CallIntelligence() {
                               <table className="w-full text-sm">
                                 <thead>
                                   <tr className="border-b border-gray-100">
-                                    {['Rep', 'Calls', 'ICP', 'Discovery', 'Positive %'].map(h => (
+                                    {['Rep', 'Calls', 'ICP', 'Discovery', 'Positive %', ''].map(h => (
                                       <th key={h} className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pr-3">{h}</th>
                                     ))}
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {aggregate.rep_stats.map((rep, i) => (
-                                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                                      <td className="py-3 font-medium text-gray-800 pr-3">{rep.rep}</td>
-                                      <td className="py-3 text-gray-600 pr-3">{rep.call_count}</td>
-                                      <td className="py-3 pr-3"><ScoreBadge score={rep.avg_icp_score} type="icp" /></td>
-                                      <td className="py-3 pr-3"><ScoreBadge score={rep.avg_discovery_score} type="discovery" /></td>
-                                      <td className={`py-3 font-medium ${(rep.positive_pct || 0) >= 60 ? 'text-green-600' : (rep.positive_pct || 0) >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
-                                        {rep.positive_pct !== undefined ? `${rep.positive_pct}%` : '—'}
-                                      </td>
-                                    </tr>
-                                  ))}
+                                  {aggregate.rep_stats.map((rep, i) => {
+                                    const isRamping = (rep.call_count || 0) < 10
+                                    const prior = priorAggregate?.rep_stats?.find(r => r.rep === rep.rep)
+                                    return (
+                                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                                        <td className="py-3 font-medium text-gray-800 pr-3">
+                                          <div className="flex items-center gap-2">
+                                            {rep.rep}
+                                            {isRamping && <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">ramping</span>}
+                                          </div>
+                                        </td>
+                                        <td className="py-3 text-gray-600 pr-3">
+                                          {rep.call_count}
+                                          {prior && <PeriodDelta current={rep.call_count} prior={prior.call_count} direction="higher_better" className="ml-1" />}
+                                        </td>
+                                        <td className="py-3 pr-3">
+                                          <ScoreBadge score={rep.avg_icp_score} type="icp" />
+                                          {prior?.avg_icp_score && <PeriodDelta current={rep.avg_icp_score} prior={prior.avg_icp_score} format="score" direction="higher_better" className="ml-1" />}
+                                        </td>
+                                        <td className="py-3 pr-3">
+                                          <ScoreBadge score={rep.avg_discovery_score} type="discovery" />
+                                          {prior?.avg_discovery_score && <PeriodDelta current={rep.avg_discovery_score} prior={prior.avg_discovery_score} format="score" direction="higher_better" className="ml-1" />}
+                                        </td>
+                                        <td className={`py-3 font-medium pr-3 ${(rep.positive_pct || 0) >= 60 ? 'text-green-600' : (rep.positive_pct || 0) >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
+                                          {rep.positive_pct !== undefined ? `${rep.positive_pct}%` : '—'}
+                                          {prior?.positive_pct != null && <PeriodDelta current={rep.positive_pct} prior={prior.positive_pct} format="percent" direction="higher_better" className="ml-1" />}
+                                        </td>
+                                        <td className="py-3">
+                                          <button
+                                            onClick={() => router.push(`/modules/sales-reports/coaching?rep=${encodeURIComponent(rep.rep)}`)}
+                                            className="text-xs text-gray-400 hover:text-green-600 flex items-center gap-1 whitespace-nowrap"
+                                          >
+                                            <BookOpen className="w-3 h-3" /> Coaching
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
                                 </tbody>
                               </table>
                             </div>
@@ -913,8 +1109,68 @@ export default function CallIntelligence() {
                       {/* Investor narrative */}
                       {aggregate.investor_narrative && (
                         <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
-                          <h3 className="text-sm font-semibold text-green-800 uppercase tracking-wide mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Investor Narrative</h3>
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h3 className="text-sm font-semibold text-green-800 uppercase tracking-wide flex items-center gap-2">
+                                <TrendingUp className="w-4 h-4" /> Investor Narrative
+                              </h3>
+                              {aggregateComputedAt && (
+                                <p className="text-xs text-green-600 mt-0.5">
+                                  Last updated {new Date(aggregateComputedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 ml-4">
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(aggregate.investor_narrative)
+                                  setNarrativeCopied(true)
+                                  setTimeout(() => setNarrativeCopied(false), 2000)
+                                  saveNarrativeVersion(aggregate.investor_narrative)
+                                }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${narrativeCopied ? 'bg-green-200 text-green-800 border-green-300' : 'bg-white text-green-700 border-green-300 hover:bg-green-50'}`}
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                {narrativeCopied ? 'Copied!' : 'Copy'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const blob = new Blob([aggregate.investor_narrative], { type: 'text/plain' })
+                                  const a = document.createElement('a')
+                                  a.href = URL.createObjectURL(blob)
+                                  a.download = `investor-narrative-${new Date().toISOString().split('T')[0]}.txt`
+                                  a.click()
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border bg-white text-green-700 border-green-300 hover:bg-green-50"
+                              >
+                                <Download className="w-3.5 h-3.5" /> Export
+                              </button>
+                              {narrativeVersions.length > 0 && (
+                                <button
+                                  onClick={() => setShowNarrativeHistory(h => !h)}
+                                  className="text-xs text-green-600 hover:text-green-800 underline"
+                                >
+                                  {showNarrativeHistory ? 'Hide' : `${narrativeVersions.length} prior version${narrativeVersions.length > 1 ? 's' : ''}`}
+                                </button>
+                              )}
+                            </div>
+                          </div>
                           <p className="text-gray-700 leading-relaxed">{aggregate.investor_narrative}</p>
+                          {showNarrativeHistory && narrativeVersions.length > 0 && (
+                            <div className="mt-4 border-t border-green-200 pt-4 space-y-3">
+                              <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Version History</p>
+                              {narrativeVersions.map((v, i) => (
+                                <div key={i} className="bg-white/60 rounded-lg p-3 border border-green-100">
+                                  <p className="text-xs text-green-600 mb-1">{new Date(v.generated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}{v.call_count ? ` · ${v.call_count} calls` : ''}</p>
+                                  <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">{v.narrative}</p>
+                                  <button
+                                    onClick={() => { navigator.clipboard.writeText(v.narrative) }}
+                                    className="text-xs text-gray-400 hover:text-gray-600 mt-1"
+                                  >Copy this version</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1429,39 +1685,111 @@ export default function CallIntelligence() {
               </button>
             </div>
 
-            <div className="px-6 py-6 flex-1">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <span>Related calls</span>
-                {insightPanel.calls.length > 0 && (
-                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs font-medium">{insightPanel.calls.length}</span>
-                )}
-              </h3>
-              {insightPanel.calls.length === 0 ? (
-                <p className="text-sm text-gray-400 italic">No specific calls matched — this pattern was identified across many calls in aggregate.</p>
-              ) : (
-                <div className="space-y-2">
-                  {insightPanel.calls.map(call => (
-                    <button
-                      key={call.gongCallId}
-                      onClick={() => { setSelectedCall(call); setInsightPanel(null) }}
-                      className="w-full text-left bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg p-3 transition-colors"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <TypeBadge type={call.callType} />
-                        {call.analysis?.sentiment && <SentimentBadge sentiment={call.analysis.sentiment} />}
-                        {call.analysis?.icp_score != null && <ScoreBadge score={call.analysis.icp_score} type="icp" />}
+            <div className="px-6 py-6 flex-1 space-y-6">
+
+              {/* Counter-tactic (objections only) */}
+              {insightPanel.isObjection && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+                    <BookOpen className="w-3.5 h-3.5" /> Counter-Tactic
+                  </h3>
+                  {insightPanel.counter ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-sm text-gray-700 leading-relaxed">{insightPanel.counter}</p>
+                      <button
+                        onClick={() => router.push('/modules/sales-processes')}
+                        className="text-xs text-green-600 hover:text-green-800 mt-2 underline"
+                      >Edit in Sales Processes →</button>
+                    </div>
+                  ) : (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-red-700">No counter-tactic documented for this objection.</p>
+                        <button
+                          onClick={() => router.push('/modules/sales-processes')}
+                          className="text-xs text-red-600 hover:text-red-800 mt-1 underline"
+                        >Add one in Sales Processes →</button>
                       </div>
-                      <p className="text-sm font-medium text-gray-800 leading-tight">{call.title}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {call.repName} · {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                      </p>
-                      {call.analysis?.summary && (
-                        <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">{call.analysis.summary}</p>
-                      )}
-                    </button>
-                  ))}
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* Active pipeline deals linked to this finding */}
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <Building2 className="w-3.5 h-3.5" /> Active Deals Affected
+                  {insightPanel.linkedAccounts != null && (
+                    <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs font-medium">
+                      {insightPanel.linkedAccounts.length}
+                    </span>
+                  )}
+                </h3>
+                {insightPanel.linkedAccounts === null ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading live deals…
+                  </div>
+                ) : insightPanel.linkedAccounts.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">No active pipeline deals linked to these calls.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {insightPanel.linkedAccounts.map(account => (
+                      <button
+                        key={account.id}
+                        onClick={() => router.push(`/modules/account-pipeline?account=${account.id}`)}
+                        className="w-full text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg p-3 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-800">{account.name}</p>
+                          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-blue-600 capitalize">{account.stage?.replace(/_/g, ' ')}</span>
+                          {account.repName && <span className="text-xs text-gray-400">· {account.repName}</span>}
+                          {account.dealValue && <span className="text-xs text-green-600">· ${(account.dealValue / 1000).toFixed(0)}K</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Related calls */}
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <Phone className="w-3.5 h-3.5" /> Related Calls
+                  {insightPanel.calls.length > 0 && (
+                    <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs font-medium">{insightPanel.calls.length}</span>
+                  )}
+                </h3>
+                {insightPanel.calls.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">No specific calls matched — this pattern was identified across many calls in aggregate.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {insightPanel.calls.map(call => (
+                      <button
+                        key={call.gongCallId}
+                        onClick={() => { setSelectedCall(call); setInsightPanel(null) }}
+                        className="w-full text-left bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg p-3 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <TypeBadge type={call.callType} />
+                          {call.analysis?.sentiment && <SentimentBadge sentiment={call.analysis.sentiment} />}
+                          {call.analysis?.icp_score != null && <ScoreBadge score={call.analysis.icp_score} type="icp" />}
+                        </div>
+                        <p className="text-sm font-medium text-gray-800 leading-tight">{call.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {call.repName} · {call.date ? new Date(call.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                        </p>
+                        {call.analysis?.summary && (
+                          <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">{call.analysis.summary}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -68,7 +68,7 @@ export default async function handler(req, res) {
 
     const { data: rows, error: dbError } = await db
       .from('gong_call_analyses')
-      .select('gong_call_id, analysis, analyzed_at, ignored, ignore_reason, hubspot_deal_id, hubspot_deal_stage, hubspot_checked_at, deal_close_date, deal_name');
+      .select('gong_call_id, analysis, analyzed_at, ignored, ignore_reason, hubspot_deal_id, hubspot_deal_stage, hubspot_checked_at, deal_close_date, deal_name, account_id, scoring_version');
 
     if (dbError) {
       console.error('intel-calls: Supabase read error:', dbError);
@@ -84,6 +84,8 @@ export default async function handler(req, res) {
         hubspotCheckedAt: row.hubspot_checked_at || null,
         dealCloseDate: row.deal_close_date || null,
         dealName: row.deal_name || null,
+        accountId: row.account_id || null,
+        scoringVersion: row.scoring_version || null,
       };
     });
 
@@ -123,6 +125,8 @@ export default async function handler(req, res) {
         hubspotCheckedAt: cached?.hubspotCheckedAt || null,
         dealCloseDate: cached?.dealCloseDate || null,
         dealName: cached?.dealName || null,
+        accountId: cached?.accountId || null,
+        scoringVersion: cached?.scoringVersion || null,
       };
     });
 
