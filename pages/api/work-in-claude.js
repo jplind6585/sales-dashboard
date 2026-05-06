@@ -25,10 +25,43 @@ export default async function handler(req, res) {
   const { messages, taskContext } = req.body || {};
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
-  const { title, description, rationale, primaryAction, dueDate, source, sourceType, account } = taskContext || {};
+  const { title, description, rationale, primaryAction, dueDate, source, sourceType, account, calls } = taskContext || {};
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const repName = user.email?.split('@')[0] || 'the rep';
+
+  const isDemoPrep = /prepare deck|prep.*deck|demo prep/i.test(title || '');
+
+  let callsContext = '';
+  if (calls?.length) {
+    callsContext = '\n\nACCOUNT CALL HISTORY (AI-analyzed Gong recordings):\n' +
+      calls.map((c, i) => {
+        const parts = [`Call ${i + 1}: "${c.title || 'Untitled'}" (${c.date?.slice(0, 10) || 'date unknown'})`]
+        if (c.summary) parts.push(`Summary: ${c.summary.slice(0, 400)}`)
+        if (c.painPoints?.length) parts.push(`Pain points: ${(Array.isArray(c.painPoints) ? c.painPoints : [c.painPoints]).slice(0, 3).join(' | ')}`)
+        if (c.buyingSignals?.length) parts.push(`Buying signals: ${c.buyingSignals.slice(0, 3).join(' | ')}`)
+        if (c.redFlags?.length) parts.push(`Red flags: ${c.redFlags.slice(0, 2).join(' | ')}`)
+        if (c.nextSteps?.length) parts.push(`Committed next steps: ${c.nextSteps.slice(0, 2).join(' | ')}`)
+        if (c.discoveryScore != null) parts.push(`Discovery score: ${c.discoveryScore}/10`)
+        if (c.meddicc) {
+          const gaps = Object.entries(c.meddicc).filter(([, v]) => !v || /unknown|not identified|not mentioned/i.test(v)).map(([k]) => k)
+          if (gaps.length) parts.push(`MEDDIC gaps: ${gaps.join(', ')}`)
+        }
+        return parts.join('\n')
+      }).join('\n\n---\n\n');
+  }
+
+  const demoPrepInstructions = isDemoPrep ? `
+You are helping the rep prepare for an upcoming demo. You have access to all analyzed call history for this account above.
+
+When asked, you can produce:
+- "What We Have Heard" slide bullets (7-9 punchy bullets in plain business language — no em dashes, no AI-sounding phrases — written so the prospect reads each one and thinks "that's exactly our problem")
+- A discovery summary capturing what they care about and why
+- A MEDDIC capture plan with specific questions to fill gaps
+- Demo flow recommendation: which features/workflows to prioritize based on their stated pain
+- Objection handling for anything raised in prior calls
+
+Be specific to this account. Reference actual things they said. Do not give generic sales advice.` : '';
 
   const systemPrompt = [
     `You are a sales AI assistant helping ${repName} work through a specific task. Be practical, specific, and action-oriented.`,
@@ -40,6 +73,8 @@ export default async function handler(req, res) {
     dueDate        ? `DUE: ${dueDate}` : null,
     account?.name  ? `ACCOUNT: ${account.name}${account.stage ? ` (stage: ${account.stage})` : ''}` : null,
     sourceType === 'gong_next_step' ? `SOURCE: Extracted from a Gong call recording` : null,
+    callsContext,
+    demoPrepInstructions,
     ``,
     `TODAY: ${today}`,
     ``,
@@ -55,7 +90,7 @@ export default async function handler(req, res) {
   try {
     const reply = await callAnthropic(apiKey, {
       model: 'claude-sonnet-4-6',
-      maxTokens: 1000,
+      maxTokens: isDemoPrep ? 2000 : 1000,
       system: systemPrompt,
       messages: trimmedMessages,
     });

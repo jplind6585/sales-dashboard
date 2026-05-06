@@ -64,7 +64,45 @@ function ModulesNav({ router }) {
 
 // ─── Work in Claude (per-task AI chat side panel) ────────────────────────────
 
-function buildIntroMessage(task) {
+const DEMO_PREP_TITLES = ['prepare deck', 'prep demo deck', 'prep deck', 'demo prep']
+const isDemoPrepTask = (task) =>
+  DEMO_PREP_TITLES.some(t => task.title?.toLowerCase().includes(t))
+
+function buildIntroMessage(task, calls = []) {
+  if (isDemoPrepTask(task) && task.accountId) {
+    if (calls.length === 0) {
+      return `Loading account call history to help you prepare the deck...`
+    }
+    const lines = [`I've pulled in **${calls.length} analyzed call${calls.length !== 1 ? 's' : ''}** for ${task.account?.name || 'this account'}. Here's what I know going into the demo:\n`]
+
+    const painPoints = []
+    const nextSteps = []
+    const buyingSignals = []
+    const redFlags = []
+    const meddiccGaps = []
+
+    calls.forEach(c => {
+      const a = c.analysis || {}
+      if (a.pain_points_identified) painPoints.push(...(Array.isArray(a.pain_points_identified) ? a.pain_points_identified : [a.pain_points_identified]))
+      if (a.next_steps_mentioned?.length) nextSteps.push(...a.next_steps_mentioned)
+      if (a.buying_signals?.length) buyingSignals.push(...a.buying_signals)
+      if (a.red_flags?.length) redFlags.push(...a.red_flags)
+      const meddicc = a.meddicc || {}
+      Object.entries(meddicc).forEach(([k, v]) => {
+        if (!v || v === 'unknown' || v === 'not identified' || v === 'not mentioned') meddiccGaps.push(k)
+      })
+    })
+
+    if (painPoints.length) lines.push(`**Pain points identified:**\n${[...new Set(painPoints)].slice(0, 5).map(p => `• ${p}`).join('\n')}`)
+    if (buyingSignals.length) lines.push(`\n**Buying signals:**\n${[...new Set(buyingSignals)].slice(0, 4).map(s => `• ${s}`).join('\n')}`)
+    if (redFlags.length) lines.push(`\n**Red flags to address:**\n${[...new Set(redFlags)].slice(0, 3).map(f => `• ${f}`).join('\n')}`)
+    if ([...new Set(meddiccGaps)].length) lines.push(`\n**MEDDIC gaps to fill:** ${[...new Set(meddiccGaps)].join(', ')}`)
+    if (nextSteps.length) lines.push(`\n**Outstanding next steps:** ${[...new Set(nextSteps)].slice(0, 3).join(' | ')}`)
+
+    lines.push(`\nAsk me to: draft "What We Have Heard" slides, write a discovery summary, suggest what to demo based on their pain, or build a MEDDIC capture plan.`)
+    return lines.join('\n')
+  }
+
   const lines = [`I'm ready to help you work through this task.`]
   if (task.rationale) lines.push(`\n**Why it matters:** ${task.rationale}`)
   if (task.primaryAction) lines.push(`\n**Suggested first move:** ${task.primaryAction}`)
@@ -81,17 +119,39 @@ function buildIntroMessage(task) {
 
 function WorkInClaude({ task, onClose }) {
   const storageKey = `wic_${task.id}`
+  const isDemo = isDemoPrepTask(task) && task.accountId
+  const [accountCalls, setAccountCalls] = useState([])
+  const [callsLoading, setCallsLoading] = useState(isDemo)
   const [messages, setMessages] = useState(() => {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) return JSON.parse(saved)
     } catch {}
-    return [{ role: 'assistant', content: buildIntroMessage(task), ts: Date.now() }]
+    return [{ role: 'assistant', content: buildIntroMessage(task, []), ts: Date.now() }]
   })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+
+  // For demo prep tasks: fetch account calls once on open (skip if thread already has history)
+  useEffect(() => {
+    if (!isDemo) return
+    const hasHistory = (() => { try { return !!localStorage.getItem(storageKey) } catch { return false } })()
+    if (hasHistory) { setCallsLoading(false); return }
+    fetch(`/api/gong/account-calls?accountId=${task.accountId}`)
+      .then(r => r.json())
+      .then(d => {
+        const calls = d.calls || []
+        setAccountCalls(calls)
+        const intro = buildIntroMessage(task, calls)
+        const fresh = [{ role: 'assistant', content: intro, ts: Date.now() }]
+        setMessages(fresh)
+        try { localStorage.setItem(storageKey, JSON.stringify(fresh)) } catch {}
+      })
+      .catch(() => {})
+      .finally(() => setCallsLoading(false))
+  }, [])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { inputRef.current?.focus() }, [])
@@ -125,6 +185,18 @@ function WorkInClaude({ task, onClose }) {
             source: task.source,
             sourceType: task.sourceType,
             account: task.account ? { name: task.account.name, stage: task.account.stage } : null,
+            calls: accountCalls.length ? accountCalls.slice(0, 10).map(c => ({
+              title: c.callTitle || c.analysis?.call_title,
+              date: c.analyzedAt,
+              summary: c.analysis?.summary,
+              painPoints: c.analysis?.pain_points_identified,
+              nextSteps: c.analysis?.next_steps_mentioned,
+              buyingSignals: c.analysis?.buying_signals,
+              redFlags: c.analysis?.red_flags,
+              objections: c.analysis?.objections,
+              meddicc: c.analysis?.meddicc,
+              discoveryScore: c.analysis?.discovery_score,
+            })) : undefined,
           },
         }),
       })
@@ -148,7 +220,7 @@ function WorkInClaude({ task, onClose }) {
   }
 
   const clearThread = () => {
-    const fresh = [{ role: 'assistant', content: buildIntroMessage(task), ts: Date.now() }]
+    const fresh = [{ role: 'assistant', content: buildIntroMessage(task, accountCalls), ts: Date.now() }]
     setMessages(fresh)
     persistMessages(fresh)
   }
