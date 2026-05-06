@@ -10,7 +10,7 @@ import {
   parseClaudeJson,
   logRequest,
 } from '../../../lib/apiUtils';
-import { createServerSupabaseClient } from '../../../lib/supabase';
+import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess';
 
 const GONG_API_BASE = 'https://api.gong.io';
@@ -151,7 +151,9 @@ Return ONLY valid JSON:
     });
 
     // Persist to Supabase — this is the source of truth across sessions
-    const db = createServerSupabaseClient(req, res);
+    // When called from a cron (CRON_SECRET auth), use service role client instead of user session
+    const isCron = process.env.CRON_SECRET && req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+    const db = isCron ? getSupabase() : createServerSupabaseClient(req, res);
     const { error: upsertError } = await db.from('gong_call_analyses').upsert(
       {
         gong_call_id: callId,

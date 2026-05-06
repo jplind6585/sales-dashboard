@@ -87,6 +87,19 @@ function sortDesc(arr, key) {
   return [...arr].sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0))
 }
 
+function formatStageName(stage) {
+  if (!stage) return 'Unlinked'
+  const map = {
+    closedwon: 'Closed Won', closedlost: 'Closed Lost',
+    introscheduled: 'Intro Scheduled', intro_scheduled: 'Intro Scheduled',
+    activepursuit: 'Active Pursuit', active_pursuit: 'Active Pursuit',
+    demo: 'Demo', solution_validation: 'Solution Validation',
+    solutionvalidation: 'Solution Validation', proposal: 'Proposal',
+    legal: 'Legal', qualifying: 'Qualifying',
+  }
+  return map[stage.toLowerCase()] || stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
 const ACTION_TYPE_META = {
   coaching_task_create: { label: 'Coaching', icon: <Users className="w-3 h-3" />, cls: 'bg-purple-100 text-purple-700' },
   outreach_batch_create: { label: 'Outreach', icon: <Mail className="w-3 h-3" />, cls: 'bg-blue-100 text-blue-700' },
@@ -158,6 +171,8 @@ export default function CallIntelligence() {
   const [allUsers, setAllUsers] = useState([])
   const [salesReps, setSalesReps] = useState(null) // null = all; Set of names = filtered
   const [showRepFilter, setShowRepFilter] = useState(false)
+  const [stageFilter, setStageFilter] = useState(null) // null = all; Set of stage strings = filtered
+  const [showStageFilter, setShowStageFilter] = useState(false)
   const [aggregate, setAggregate] = useState(null)
   const [loadingCalls, setLoadingCalls] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -199,15 +214,20 @@ export default function CallIntelligence() {
   const [narrativeCopied, setNarrativeCopied] = useState(false)
   const [narrativeVersions, setNarrativeVersions] = useState([])
   const [showNarrativeHistory, setShowNarrativeHistory] = useState(false)
+  const [confirmAction, setConfirmAction] = useState(null) // { action, idx }
+  const [executingIdx, setExecutingIdx] = useState(null)
+  const [executedMap, setExecutedMap] = useState({}) // idx → { taskId, url }
+  const [dealRisks, setDealRisks] = useState([])
+  const [loadingRisks, setLoadingRisks] = useState(false)
 
   const chatEndRef = useRef(null)
   const repFilterRef = useRef(null)
+  const stageFilterRef = useRef(null)
 
   useEffect(() => {
     function handleClickOutside(e) {
-      if (repFilterRef.current && !repFilterRef.current.contains(e.target)) {
-        setShowRepFilter(false)
-      }
+      if (repFilterRef.current && !repFilterRef.current.contains(e.target)) setShowRepFilter(false)
+      if (stageFilterRef.current && !stageFilterRef.current.contains(e.target)) setShowStageFilter(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -222,7 +242,7 @@ export default function CallIntelligence() {
       setSalesReps(new Set(defaults))
       localStorage.setItem('banner_intel_sales_reps', JSON.stringify(defaults))
     }
-    fetchCalls(); fetchAggregate(); fetchSalesProcess(); fetchNarrativeHistory()
+    fetchCalls(); fetchAggregate(); fetchSalesProcess(); fetchNarrativeHistory(); fetchRisks()
   }, [])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
 
@@ -271,6 +291,16 @@ export default function CallIntelligence() {
       const data = await res.json()
       if (data.success && data.config) setSalesProcess(data.config)
     } catch { /* silent */ }
+  }
+
+  async function fetchRisks() {
+    setLoadingRisks(true)
+    try {
+      const res = await fetch('/api/gong/intel-risk')
+      const data = await res.json()
+      if (data.success) setDealRisks(data.risks || [])
+    } catch { /* silent */ }
+    finally { setLoadingRisks(false) }
   }
 
   async function fetchNarrativeHistory() {
@@ -485,9 +515,42 @@ export default function CallIntelligence() {
   const periodCutoff = { '7d': 7, '30d': 30, '6mo': 180 }[timePeriod]
   const periodCutoffDate = periodCutoff ? new Date(Date.now() - periodCutoff * 24 * 60 * 60 * 1000) : null
 
+  // Stages that actually appear in loaded calls (excluding null/closedwon for active filtering)
+  const availableStages = useMemo(() => {
+    const stages = new Set(calls.map(c => c.dealStage).filter(Boolean))
+    return [...stages].sort()
+  }, [calls])
+
+  // Per-stage aggregate metrics computed client-side from analyzed calls
+  const stageBreakdown = useMemo(() => {
+    if (!availableStages.length) return []
+    return availableStages.map(stage => {
+      const sc = analyzedCalls.filter(c => c.dealStage === stage)
+      const icpScores = sc.map(c => c.analysis?.icp_score).filter(s => s != null)
+      const discScores = sc.map(c => c.analysis?.discovery_score).filter(s => s != null)
+      const ratios = sc.map(c => c.analysis?.rep_talk_ratio).filter(r => r != null)
+      const sents = sc.map(c => c.analysis?.sentiment).filter(Boolean)
+      const posCount = sents.filter(s => s === 'positive').length
+      // Aggregate top objections for this stage
+      const objCounts = {}
+      sc.forEach(c => (c.analysis?.objections || []).forEach(o => { objCounts[o.text] = (objCounts[o.text] || 0) + 1 }))
+      const topObjs = Object.entries(objCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([text, count]) => ({ text, count }))
+      return {
+        name: stage,
+        count: sc.length,
+        avgIcp: icpScores.length ? (icpScores.reduce((a, b) => a + b, 0) / icpScores.length).toFixed(1) : null,
+        avgDiscovery: discScores.length ? (discScores.reduce((a, b) => a + b, 0) / discScores.length).toFixed(1) : null,
+        avgTalkRatio: ratios.length ? Math.round(ratios.reduce((a, b) => a + b, 0) / ratios.length) : null,
+        positivePct: sents.length ? Math.round((posCount / sents.length) * 100) : null,
+        topObjs,
+      }
+    }).sort((a, b) => b.count - a.count)
+  }, [analyzedCalls, availableStages])
+
   const filteredCalls = calls
     .filter(c => !periodCutoffDate || !c.date || new Date(c.date) >= periodCutoffDate)
     .filter(c => salesReps == null || (c.repName && salesReps.has(c.repName)))
+    .filter(c => stageFilter == null || (c.dealStage && stageFilter.has(c.dealStage)))
     .filter(c => showIgnored || !c.ignored)
     .filter(c => showClosedWon || c.dealStage?.toLowerCase() !== 'closedwon')
     .filter(c => typeFilter === 'all' || c.callType === typeFilter)
@@ -515,6 +578,7 @@ export default function CallIntelligence() {
 
   const tabs = [
     { id: 'overview', label: 'Overview', disabled: !aggregate },
+    { id: 'stage-breakdown', label: 'Stage Breakdown', disabled: false },
     ...(goneColdDeals.length > 0 ? [{ id: 'cold', label: `Gone Cold (${goneColdDeals.length})`, disabled: false }] : []),
     { id: 'calls', label: `All Calls (${filteredCalls.length})`, disabled: false },
   ]
@@ -566,6 +630,23 @@ export default function CallIntelligence() {
     } else {
       setInsightPanel(prev => prev ? { ...prev, linkedAccounts: [] } : prev)
     }
+  }
+
+  async function executeAction(action, idx) {
+    setConfirmAction(null)
+    setExecutingIdx(idx)
+    try {
+      const res = await fetch('/api/gong/intel-execute-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setExecutedMap(prev => ({ ...prev, [idx]: { taskId: data.taskId, url: data.artifactUrl } }))
+      }
+    } catch { /* silent */ }
+    finally { setExecutingIdx(null) }
   }
 
   function findCounterForObjection(objectionText) {
@@ -634,10 +715,13 @@ export default function CallIntelligence() {
         </div>
       </div>
 
-      {/* Rep filter — compact dropdown */}
-      {allUsers.length > 0 && (
-        <div ref={repFilterRef} className="bg-white border-b border-gray-200 px-6 py-2 shrink-0 relative z-20">
-          <div className="max-w-[1400px] mx-auto flex items-center gap-3">
+      {/* Rep + Stage filter bar */}
+      {(allUsers.length > 0 || availableStages.length > 0) && (
+        <div className="bg-white border-b border-gray-200 shrink-0 relative z-20 flex">
+          {/* Rep filter */}
+          {allUsers.length > 0 && (
+          <div ref={repFilterRef} className="relative flex-1 px-6 py-2">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setShowRepFilter(s => !s)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${salesReps != null ? 'border-green-400 bg-green-50 text-green-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
@@ -659,7 +743,7 @@ export default function CallIntelligence() {
             )}
           </div>
           {showRepFilter && (
-            <div className="absolute left-6 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-72 max-h-72 overflow-y-auto">
+            <div className="absolute left-6 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-72 max-h-72 overflow-y-auto z-30">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select sales reps</span>
                 <button onClick={selectAllReps} className="text-xs text-gray-400 hover:text-gray-600">Reset</button>
@@ -675,6 +759,53 @@ export default function CallIntelligence() {
                 )
               })}
             </div>
+          )}
+          </div>
+          )}
+
+          {/* Stage filter */}
+          {availableStages.length > 0 && (
+          <div ref={stageFilterRef} className="relative border-l border-gray-100">
+            <div className="px-4 flex items-center gap-3 h-full py-1">
+              <button
+                onClick={() => setShowStageFilter(s => !s)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${stageFilter != null ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                {stageFilter != null ? `${stageFilter.size} stage${stageFilter.size !== 1 ? 's' : ''}` : 'All stages'}
+                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showStageFilter ? 'rotate-90' : ''}`} />
+              </button>
+              {stageFilter != null && (
+                <button onClick={() => setStageFilter(null)} className="text-xs text-gray-400 hover:text-gray-600 underline">Clear</button>
+              )}
+            </div>
+            {showStageFilter && (
+              <div className="absolute left-6 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-64 max-h-72 overflow-y-auto z-30">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filter by stage</span>
+                  <button onClick={() => setStageFilter(null)} className="text-xs text-gray-400 hover:text-gray-600">Reset</button>
+                </div>
+                {availableStages.map(stage => {
+                  const active = stageFilter == null || stageFilter.has(stage)
+                  const stageCallCount = calls.filter(c => c.dealStage === stage).length
+                  return (
+                    <label key={stage} className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-gray-50 rounded px-1">
+                      <input type="checkbox" checked={active} onChange={() => {
+                        setStageFilter(prev => {
+                          const base = prev ?? new Set(availableStages)
+                          const next = new Set(base)
+                          if (next.has(stage)) next.delete(stage); else next.add(stage)
+                          return next.size === availableStages.length ? null : next
+                        })
+                      }} className="accent-blue-600" />
+                      <span className="text-sm text-gray-700 flex-1">{formatStageName(stage)}</span>
+                      <span className="text-xs text-gray-400">{stageCallCount}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
           )}
         </div>
       )}
@@ -893,6 +1024,54 @@ export default function CallIntelligence() {
                   {activeTab === 'overview' && aggregate && (
                     <div className="space-y-6">
 
+                      {/* Action cards */}
+                      {aggregate.weekly_actions?.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">This Week's Actions</p>
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            {aggregate.weekly_actions.slice(0, 3).map((action, idx) => {
+                              const done = executedMap[idx]
+                              const executing = executingIdx === idx
+                              const canExecute = ['coaching_task_create', 'outreach_batch_create'].includes(action.action_type)
+                              const urgencyBorder = action.urgency === 'high' ? 'border-l-red-400' : action.urgency === 'medium' ? 'border-l-amber-400' : 'border-l-gray-300'
+                              return (
+                                <div key={idx} className={`bg-white rounded-xl border border-gray-200 border-l-4 ${urgencyBorder} p-5 flex flex-col gap-3`}>
+                                  <div className="flex items-center justify-between">
+                                    <ActionTypeChip type={action.action_type} />
+                                    <span className={`text-xs font-medium ${action.urgency === 'high' ? 'text-red-500' : action.urgency === 'medium' ? 'text-amber-600' : 'text-gray-400'}`}>
+                                      {action.urgency}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-gray-900 leading-snug">{action.title}</p>
+                                    <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{action.description}</p>
+                                  </div>
+                                  {action.scope && (
+                                    <p className="text-xs text-gray-400 border-t border-gray-100 pt-2">{action.scope}</p>
+                                  )}
+                                  {done ? (
+                                    <a href={done.url} className="flex items-center gap-1.5 text-xs font-medium text-green-600 hover:text-green-700">
+                                      <CheckCircle className="w-3.5 h-3.5" /> Created · View in Tasks
+                                    </a>
+                                  ) : canExecute ? (
+                                    <button
+                                      onClick={() => setConfirmAction({ action, idx })}
+                                      disabled={executing || executingIdx != null}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50 self-start"
+                                    >
+                                      <Zap className="w-3 h-3" />
+                                      {executing ? 'Creating…' : 'Execute'}
+                                    </button>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">Manual action</span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Loss reasons — primary section */}
                       {aggregate.loss_reasons?.length > 0 && (
                         <div className="bg-white rounded-xl border border-red-100 p-6">
@@ -1106,6 +1285,57 @@ export default function CallIntelligence() {
                         )}
                       </div>
 
+                      {/* Deals at Risk */}
+                      {(loadingRisks || dealRisks.length > 0) && (
+                        <div className="bg-white rounded-xl border border-gray-200 p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-amber-500" /> Deals at Risk
+                            </h3>
+                            <button onClick={fetchRisks} className="text-xs text-gray-400 hover:text-gray-600">Refresh</button>
+                          </div>
+                          {loadingRisks ? (
+                            <div className="text-sm text-gray-400">Loading…</div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b border-gray-100">
+                                    {['Account', 'Stage', 'Last Call', 'Risk', 'Reasons'].map(h => (
+                                      <th key={h} className="text-left py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide pr-4">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {dealRisks.slice(0, 8).map((r, i) => (
+                                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                                      <td className="py-3 font-medium text-gray-800 pr-4 max-w-[160px] truncate">{r.accountName}</td>
+                                      <td className="py-3 text-gray-500 pr-4 text-xs whitespace-nowrap">{formatStageName(r.stage)}</td>
+                                      <td className="py-3 text-gray-500 pr-4 text-xs whitespace-nowrap">
+                                        {r.lastCallDate
+                                          ? `${r.daysSinceLastCall}d ago`
+                                          : <span className="text-red-400">No calls</span>}
+                                      </td>
+                                      <td className="py-3 pr-4">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                          r.riskLevel === 'high' ? 'bg-red-100 text-red-700'
+                                          : r.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700'
+                                          : 'bg-green-100 text-green-700'
+                                        }`}>{r.riskLevel} · {r.riskScore}</span>
+                                      </td>
+                                      <td className="py-3 text-xs text-gray-500">{r.riskReasons.join(' · ')}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              {dealRisks.filter(r => r.riskLevel === 'high').length === 0 && (
+                                <p className="text-xs text-green-600 mt-3 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5" /> No high-risk deals — all active accounts have recent activity</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Investor narrative */}
                       {aggregate.investor_narrative && (
                         <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
@@ -1172,6 +1402,83 @@ export default function CallIntelligence() {
                             </div>
                           )}
                         </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Stage Breakdown tab ── */}
+                  {activeTab === 'stage-breakdown' && (
+                    <div className="space-y-6">
+                      {availableStages.length === 0 ? (
+                        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+                          <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                          <h3 className="text-lg font-semibold text-gray-700 mb-2">No stage data yet</h3>
+                          <p className="text-gray-500 text-sm mb-5">Sync HubSpot to link calls to deals — each call will be tagged with the deal's pipeline stage so you can compare performance across stages.</p>
+                          <button onClick={runEnrichment} disabled={enriching}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50">
+                            <RefreshCw className={`w-4 h-4 ${enriching ? 'animate-spin' : ''}`} />
+                            {enriching ? 'Syncing…' : 'Sync HubSpot'}
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-sm text-gray-500">{availableStages.length} stages · metrics computed from {analyzedCalls.filter(c => c.dealStage).length} analyzed calls with stage data</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {stageBreakdown.map(stage => (
+                              <div key={stage.name} className="bg-white rounded-xl border border-gray-200 p-5">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h3 className="font-semibold text-gray-800">{formatStageName(stage.name)}</h3>
+                                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{stage.count} call{stage.count !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                  <div className="bg-gray-50 rounded-lg p-2.5">
+                                    <p className="text-xs text-gray-400 mb-0.5">Avg ICP Fit</p>
+                                    <p className={`text-xl font-bold ${stage.avgIcp >= 7 ? 'text-green-600' : stage.avgIcp >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {stage.avgIcp ?? '—'}{stage.avgIcp && <span className="text-xs font-normal text-gray-400">/10</span>}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-50 rounded-lg p-2.5">
+                                    <p className="text-xs text-gray-400 mb-0.5">Avg Discovery</p>
+                                    <p className={`text-xl font-bold ${stage.avgDiscovery >= 7 ? 'text-green-600' : stage.avgDiscovery >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {stage.avgDiscovery ?? '—'}{stage.avgDiscovery && <span className="text-xs font-normal text-gray-400">/10</span>}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-50 rounded-lg p-2.5">
+                                    <p className="text-xs text-gray-400 mb-0.5">Talk Ratio</p>
+                                    <p className={`text-xl font-bold ${stage.avgTalkRatio <= 55 ? 'text-green-600' : stage.avgTalkRatio <= 65 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {stage.avgTalkRatio != null ? `${stage.avgTalkRatio}%` : '—'}
+                                    </p>
+                                  </div>
+                                  <div className="bg-gray-50 rounded-lg p-2.5">
+                                    <p className="text-xs text-gray-400 mb-0.5">Positive %</p>
+                                    <p className={`text-xl font-bold ${stage.positivePct >= 60 ? 'text-green-600' : stage.positivePct >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {stage.positivePct != null ? `${stage.positivePct}%` : '—'}
+                                    </p>
+                                  </div>
+                                </div>
+                                {stage.topObjs.length > 0 && (
+                                  <div>
+                                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5">Top Objections</p>
+                                    <div className="space-y-1">
+                                      {stage.topObjs.map((obj, i) => {
+                                        const maxCount = stage.topObjs[0]?.count || 1
+                                        return (
+                                          <div key={i} className="flex items-center gap-2">
+                                            <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                                              <div className="bg-red-400 h-1.5 rounded-full" style={{ width: `${Math.max(10, (obj.count / maxCount) * 100)}%` }} />
+                                            </div>
+                                            <span className="text-xs text-gray-600 shrink-0 max-w-[140px] truncate" title={obj.text}>{obj.text}</span>
+                                            <span className="text-xs text-gray-400 w-4 text-right">{obj.count}</span>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </>
                       )}
                     </div>
                   )}
@@ -1466,6 +1773,46 @@ export default function CallIntelligence() {
           </>
         )}
       </div>
+
+      {/* Action confirmation modal */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmAction(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">Confirm action</h3>
+              <button onClick={() => setConfirmAction(null)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="mb-4">
+              <ActionTypeChip type={confirmAction.action.action_type} />
+              <p className="font-semibold text-gray-900 mt-3 mb-1">{confirmAction.action.title}</p>
+              <p className="text-sm text-gray-600 leading-relaxed">{confirmAction.action.description}</p>
+              {(confirmAction.action.target_rep || confirmAction.action.target_account) && (
+                <p className="text-xs text-gray-400 mt-2">
+                  {confirmAction.action.target_rep && `Rep: ${confirmAction.action.target_rep}`}
+                  {confirmAction.action.target_account && `Account: ${confirmAction.action.target_account}`}
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mb-5 bg-gray-50 rounded-lg p-3">
+              This will create a task in the Tasks module and assign it to you. You can edit or delete it there.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmAction(null)} className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
+                Cancel
+              </button>
+              <button
+                onClick={() => executeAction(confirmAction.action, confirmAction.idx)}
+                className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700"
+              >
+                Create Task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Call detail drawer */}
       {selectedCall && (

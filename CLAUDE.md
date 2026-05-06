@@ -409,6 +409,8 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 
 ## Recently Shipped (reverse chronological)
 
+- **2026-05-05** — Call Intelligence v2 (session 2): Feature 9 stage filter + Stage Breakdown tab; Feature 1 action cards (coaching_task_create + outreach_batch_create executors, confirmation modal, executed_actions log); intel-execute-action.js (new); Feature 3 Deals at Risk widget (intel-risk.js, accounts + transcripts tables); Feature 4 Pre-call AI brief (generate-pre-call-brief.js, PreCallBrief component in OverviewTab.jsx); nightly cron infrastructure (nightly-intel.js, deal-risk-alerts.js); CRON_SECRET bypass added to intel-analyze.js; vercel.json updated with 2 new crons (2am, 3am UTC daily)
+- **2026-05-05** — Call Intelligence v2 (session 1): PeriodDelta component, stage filter, stage breakdown tab, action cards, intel-execute-action.js, intel-aggregate weekly_actions, HubSpot enrichment fixes (intel-enrich.js now populates deal_stage_at_call)
 - **2026-04-15** — Cross-assign tasks: "Assign to" dropdown in New Task modal; `GET /api/users` endpoint
 - **2026-04-15** — Smart Suggestions expand on click: clicking a suggestion shows why it was surfaced, source email, sender, context
 - **2026-04-15** — Smart Suggestions auto-sync: panel syncs automatically on page load (no more manual "Sync Now")

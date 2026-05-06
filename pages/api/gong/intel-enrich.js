@@ -162,6 +162,7 @@ export default async function handler(req, res) {
       gong_call_id: gongCallId,
       hubspot_deal_id: bestDeal?.dealId || null,
       hubspot_deal_stage: bestDeal?.dealStage || null,
+      deal_stage_at_call: bestDeal?.dealStage || null,
       deal_name: bestDeal?.dealName || null,
       deal_close_date: bestDeal?.dealCloseDate || null,
       hubspot_checked_at: now,

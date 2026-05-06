@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight } from 'lucide-react';
+import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight, X, Sparkles } from 'lucide-react';
 import {
   VERTICALS,
   OWNERSHIP_TYPES,
@@ -376,6 +376,134 @@ const SalesJourneyTracker = ({ account }) => {
   );
 };
 
+const PreCallBrief = ({ account }) => {
+  const [brief, setBrief] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  async function generate() {
+    if (!account?.id || loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/generate-pre-call-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: account.id }),
+      });
+      const data = await res.json();
+      if (data.brief) {
+        setBrief(data);
+        setOpen(true);
+      }
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <>
+      <button
+        onClick={generate}
+        disabled={loading}
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 transition-all"
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        {loading ? 'Generating…' : 'Pre-Call Brief'}
+      </button>
+
+      {open && brief && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-start justify-between rounded-t-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Pre-Call Brief</h2>
+                <p className="text-sm text-gray-500">{brief.accountName} · {(brief.stage || '').replace(/_/g, ' ')}</p>
+              </div>
+              <button onClick={() => setOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {brief.brief.objective && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-1">Objective</p>
+                  <p className="text-sm font-medium text-gray-900">{brief.brief.objective}</p>
+                </div>
+              )}
+
+              {brief.brief.call_focus && (
+                <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-1">Walk Away With</p>
+                  <p className="text-sm font-medium text-gray-900">{brief.brief.call_focus}</p>
+                </div>
+              )}
+
+              {brief.brief.biggest_risk && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-1">Biggest Risk</p>
+                  <p className="text-sm text-gray-800">{brief.brief.biggest_risk}</p>
+                </div>
+              )}
+
+              {brief.brief.key_context?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Key Context</p>
+                  <ul className="space-y-1.5">
+                    {brief.brief.key_context.map((item, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                        <span className="text-indigo-400 mt-0.5">•</span>{item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {brief.brief.questions_to_ask?.length > 0 && (
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Questions to Ask</p>
+                  <ol className="space-y-2">
+                    {brief.brief.questions_to_ask.map((q, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                        <span className="text-gray-400 font-medium shrink-0">{i + 1}.</span>{q}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {brief.brief.open_tasks?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Open Tasks to Address</p>
+                  <ul className="space-y-1.5">
+                    {brief.brief.open_tasks.map((t, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                        <CheckCircle className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />{t}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {brief.brief.tone_note && (
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Tone Note</p>
+                  <p className="text-sm text-gray-600 italic">{brief.brief.tone_note}</p>
+                </div>
+              )}
+
+              {brief.lastCallDate && (
+                <p className="text-xs text-gray-400 border-t border-gray-100 pt-3">
+                  Based on {brief.transcriptCount} call{brief.transcriptCount !== 1 ? 's' : ''} · Last call {new Date(brief.lastCallDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 const OverviewTab = ({ account, onUpdateAccount }) => {
   const metrics = account?.metrics || {};
   const businessAreas = account?.businessAreas || {};
@@ -502,6 +630,12 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
             <p className="text-xs text-gray-400 mt-1">Stage changes and task completions post here. Leave blank to auto-derive from account name.</p>
           </div>
         </div>
+      </div>
+
+      {/* Pre-Call Brief */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400">Quick overview for your next call</p>
+        <PreCallBrief account={account} />
       </div>
 
       {/* Quick Stats */}

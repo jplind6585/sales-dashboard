@@ -103,8 +103,21 @@ Return ONLY valid JSON with this aggregate analysis:
   "win_patterns": ["pattern consistently seen in positive-sentiment calls"],
   "loss_patterns": ["pattern consistently seen in negative-sentiment calls"],
   "rep_stats": [{"rep": "name", "call_count": 5, "avg_talk_ratio": 45, "positive_pct": 60, "avg_icp_score": 7.2, "avg_discovery_score": 5.8, "top_objection": "pricing"}],
-  "investor_narrative": "200-300 words covering: market validation signals (ICP fit scores, named segments closing), product-market fit indicators (positive sentiment trend, buyer themes), momentum metrics (period-over-period improvements), and any identified high-leverage interventions in progress. Frame around momentum and validation. Avoid hedging language. Always pair problem statements with interventions."
-}`;
+  "investor_narrative": "200-300 words covering: market validation signals (ICP fit scores, named segments closing), product-market fit indicators (positive sentiment trend, buyer themes), momentum metrics (period-over-period improvements), and any identified high-leverage interventions in progress. Frame around momentum and validation. Avoid hedging language. Always pair problem statements with interventions.",
+  "weekly_actions": [
+    {
+      "title": "One-line action title — specific enough to act on immediately",
+      "description": "1-2 sentences: what to do and why it matters right now based on the data",
+      "action_type": "coaching_task_create|outreach_batch_create|process_doc_update|flag_counter_for_review",
+      "urgency": "high|medium|low",
+      "target_rep": "rep full name — only for coaching_task_create",
+      "target_account": "company name — only for outreach_batch_create",
+      "scope": "brief scope note e.g. '4 of 5 recent calls' or '3 deals at risk'"
+    }
+  ]
+}
+
+Return exactly 3 weekly_actions. Prioritize: (1) coaching_task_create for the highest-leverage rep coaching gap, (2) outreach_batch_create for the highest-value stalled account, (3) whichever has the most data-backed urgency. Be specific — name reps and accounts where possible.`;
 
     const rawAggregate = await callAnthropic(apiKey, {
       model: 'claude-sonnet-4-6',
