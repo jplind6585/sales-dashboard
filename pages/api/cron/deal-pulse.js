@@ -224,15 +224,15 @@ export default async function handler(req, res) {
 
   const db = getSupabase();
 
-  // Fetch James's active accounts
+  // Fetch James's active accounts — all 180 of his accounts have user_id set, no need for ilike
   const { data: accounts, error: accErr } = await db
     .from('accounts')
     .select('id, name, stage, owner_name, hubspot_deal_id')
     .in('stage', ACTIVE_STAGES)
-    .or(`user_id.eq.${JAMES_USER_ID},owner_name.ilike.%james%`);
+    .eq('user_id', JAMES_USER_ID);
 
   if (accErr) {
-    console.error('[deal-pulse] Account fetch error:', accErr.message);
+    console.error('[deal-pulse] Account fetch error:', accErr.message, accErr.code);
     return res.status(500).json({ error: accErr.message });
   }
 
