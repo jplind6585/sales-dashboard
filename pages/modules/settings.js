@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Save, CheckCircle2, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Save, CheckCircle2, ShieldCheck, Users } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
 
 export default function SettingsPage() {
@@ -15,16 +15,35 @@ export default function SettingsPage() {
   const [slackSaving, setSlackSaving] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
 
+  // Rep type
+  const [repType, setRepType] = useState(null) // 'sdr' | 'ae' | null
+  const [repTypeSaving, setRepTypeSaving] = useState(false)
+  const [repTypeSaved, setRepTypeSaved] = useState(false)
+
   // Load settings on mount
   useEffect(() => {
     const settings = getUserSettings()
     setEmailSignature(settings.emailSignature || '')
     setAutoAppend(settings.emailPreferences?.autoAppendSignature !== false)
-    // Load Slack user ID from profile
+    // Load profile fields
     fetch('/api/me')
       .then(r => r.json())
-      .then(d => { if (d.profile?.slack_user_id) setSlackUserId(d.profile.slack_user_id) })
-      .catch(() => {})
+      .then(d => {
+        if (d.profile?.slack_user_id) setSlackUserId(d.profile.slack_user_id)
+        if (d.profile?.rep_type) {
+          setRepType(d.profile.rep_type)
+          if (typeof window !== 'undefined') localStorage.setItem('user_rep_type', d.profile.rep_type)
+        } else if (typeof window !== 'undefined') {
+          const local = localStorage.getItem('user_rep_type')
+          if (local) setRepType(local)
+        }
+      })
+      .catch(() => {
+        if (typeof window !== 'undefined') {
+          const local = localStorage.getItem('user_rep_type')
+          if (local) setRepType(local)
+        }
+      })
   }, [])
 
   const handleSlackSave = async () => {
@@ -39,6 +58,22 @@ export default function SettingsPage() {
       setTimeout(() => setSlackSaved(false), 3000)
     } catch {}
     finally { setSlackSaving(false) }
+  }
+
+  const handleRepTypeSave = async (type) => {
+    setRepType(type)
+    if (typeof window !== 'undefined') localStorage.setItem('user_rep_type', type)
+    setRepTypeSaving(true)
+    try {
+      await fetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rep_type: type }),
+      })
+      setRepTypeSaved(true)
+      setTimeout(() => setRepTypeSaved(false), 3000)
+    } catch {}
+    finally { setRepTypeSaving(false) }
   }
 
   const handleSave = async () => {
@@ -177,6 +212,47 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Rep Type */}
+        <div className="bg-white rounded-xl shadow-sm border p-6 mt-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="w-5 h-5 text-gray-500" />
+            <h2 className="text-lg font-semibold">Role Type</h2>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            Sets your view in the Today page and determines which AI-generated insights are most relevant for you.
+          </p>
+          <div className="flex gap-3">
+            {[
+              { value: 'sdr', label: 'SDR', desc: 'Call queue, pursuit tracking, activity goals' },
+              { value: 'ae', label: 'AE', desc: 'Meeting prep, deal progress, pipeline focus' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => handleRepTypeSave(opt.value)}
+                className={`flex-1 p-4 rounded-xl border-2 text-left transition-colors ${
+                  repType === opt.value
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className={`text-sm font-semibold mb-1 ${repType === opt.value ? 'text-blue-700' : 'text-gray-800'}`}>
+                  {opt.label}
+                  {repType === opt.value && <span className="ml-2 text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded">Active</span>}
+                </div>
+                <div className="text-xs text-gray-500">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+          {repTypeSaved && (
+            <p className="text-sm text-green-600 font-medium mt-3 flex items-center gap-1">
+              <CheckCircle2 className="w-4 h-4" /> Role type saved
+            </p>
+          )}
+          {!repType && (
+            <p className="text-xs text-gray-400 mt-3">Not set — Today page will default to AE view</p>
           )}
         </div>
 

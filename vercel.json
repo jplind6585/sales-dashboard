@@ -39,6 +39,14 @@
     {
       "path": "/api/cron/deal-pulse",
       "schedule": "0 11 * * 1-5"
+    },
+    {
+      "path": "/api/cron/sdr-activity",
+      "schedule": "0 21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/rep-pulse",
+      "schedule": "0 22 * * 1-5"
     }
   ]
 }

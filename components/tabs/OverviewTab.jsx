@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight, X, Sparkles } from 'lucide-react';
+import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight, X, Sparkles, Swords, Play, ChevronDown } from 'lucide-react';
 import {
   VERTICALS,
   OWNERSHIP_TYPES,
@@ -706,8 +706,183 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
           </div>
         </div>
       )}
+
+      {/* Competitor Intel */}
+      <CompetitorIntel account={account} />
+
+      {/* Run Playbook */}
+      <RunPlaybook account={account} />
     </div>
   );
 };
+
+// ─── Competitor Intel ─────────────────────────────────────────────────────────
+
+function CompetitorIntel({ account }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [expandedCompetitor, setExpandedCompetitor] = useState(null);
+
+  useEffect(() => {
+    if (!account?.id) return;
+    setLoading(true);
+    fetch(`/api/gong/account-competitors?accountId=${account.id}`)
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [account?.id]);
+
+  if (loading) return null;
+  if (!data?.competitors?.length) return null;
+
+  const competitors = data.competitors;
+
+  const sentimentColor = (s) => {
+    if (s === 'positive') return 'text-green-600 bg-green-50';
+    if (s === 'negative') return 'text-red-600 bg-red-50';
+    return 'text-gray-600 bg-gray-100';
+  };
+
+  const sentimentLabel = (s) => {
+    if (s === 'positive') return 'Positive for us';
+    if (s === 'negative') return 'Risk';
+    return 'Neutral';
+  };
+
+  return (
+    <div className="bg-white border rounded-xl overflow-hidden">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Swords className="w-4 h-4 text-orange-500" />
+          <span className="text-sm font-semibold text-gray-800">
+            Competitor Intel
+          </span>
+          <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-medium">
+            {competitors.length} mentioned
+          </span>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      {expanded && (
+        <div className="border-t px-4 py-3 space-y-3">
+          {competitors.map(c => (
+            <div key={c.name} className="border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setExpandedCompetitor(expandedCompetitor === c.name ? null : c.name)}
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-800">{c.name}</span>
+                  <span className="text-xs text-gray-500">{c.mentions}× mentioned</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${sentimentColor(c.overallSentiment)}`}>
+                    {sentimentLabel(c.overallSentiment)}
+                  </span>
+                </div>
+                <ChevronRight className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expandedCompetitor === c.name ? 'rotate-90' : ''}`} />
+              </button>
+
+              {expandedCompetitor === c.name && c.contexts.length > 0 && (
+                <div className="px-3 py-2 space-y-2 bg-white">
+                  {c.contexts.map((ctx, i) => (
+                    <div key={i} className="text-sm text-gray-600 border-l-2 border-orange-200 pl-2">
+                      <span className="text-xs text-gray-400 block mb-0.5">
+                        {ctx.date ? new Date(ctx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      </span>
+                      {ctx.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          <p className="text-xs text-gray-400">Based on {data.totalCalls} analyzed calls for this account</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Run Playbook ─────────────────────────────────────────────────────────────
+
+function RunPlaybook({ account }) {
+  const [playbooks, setPlaybooks] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/playbooks')
+      .then(r => r.json())
+      .then(d => setPlaybooks((d.playbooks || []).filter(p => p.active)))
+      .catch(() => {});
+  }, []);
+
+  if (!playbooks.length || !account?.id) return null;
+
+  const handleRun = async (playbook) => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch('/api/playbooks/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playbookId: playbook.id, accountId: account.id }),
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch (e) {
+      setResult({ error: e.message });
+    } finally {
+      setRunning(false);
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+      >
+        <Play className="w-3.5 h-3.5" />
+        Run Playbook
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 bg-white border rounded-xl shadow-lg z-10 w-64 py-1.5">
+          {playbooks.map(pb => (
+            <button
+              key={pb.id}
+              onClick={() => handleRun(pb)}
+              disabled={running}
+              className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Play className="w-3.5 h-3.5 mt-0.5 text-blue-500 shrink-0" />
+              <div>
+                <div className="text-sm font-medium text-gray-800">{pb.name}</div>
+                {pb.description && <div className="text-xs text-gray-500">{pb.description}</div>}
+                <div className="text-xs text-gray-400">{pb.steps?.length || 0} tasks</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {result && (
+        <div className={`mt-2 text-sm rounded-lg px-3 py-2 ${result.error || result.alreadyActive ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+          {result.error ? `Error: ${result.error}` : result.message}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default OverviewTab;

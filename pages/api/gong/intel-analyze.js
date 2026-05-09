@@ -270,6 +270,20 @@ ICP scoring guide (Banner's ideal customer):
 Discovery score guide (MEDDICC coverage):
   Score based on how well rep uncovered: economic buyer (who controls budget), decision process (how they evaluate and decide), timeline, quantified pain (specific $ or operational impact), champion (internal advocate identified). 10 = all five uncovered.
 
+Pain depth score guide (1-10):
+  9-10: Pain quantified (specific $ or operational impact) AND tied to a named stakeholder AND urgency established (why act now)
+  7-8: Pain quantified AND stakeholder-tied, but no urgency driver yet
+  5-6: Pain quantified OR stakeholder-tied (only one of the two)
+  3-4: Pain acknowledged and discussed but not quantified or clearly owned
+  1-2: Pain mentioned superficially or prospect deflected, no real exploration
+
+Champion health score guide (1-10):
+  9-10: Champion actively mobilizing internal resources — scheduling meetings, sharing internal docs, looping in decision-makers
+  7-8: Champion clearly identified, sharing information unprompted, giving inside perspective
+  5-6: Potential champion identified with some genuine engagement (asking good questions, replying promptly)
+  3-4: Someone shows interest but behavior is passive — responding but not advocating
+  1-2: No champion identified or champion is disengaged, skeptical, or not present on calls
+
 Disqualification signal: Set to true if the call ended with a soft, non-committal close — phrases like "we'll send over some info", "let's circle back", "I'll think about it", "reach back out in a few weeks", or "let's keep in touch" — WITHOUT a specific next step (date, meeting, or clear action committed to by both sides). This is a flag for "we're limping along rather than qualifying or disqualifying." Set to false if a clear mutual next step was established.
 
 Return ONLY valid JSON:
@@ -289,6 +303,10 @@ Return ONLY valid JSON:
   "discovery_gaps": ["economic buyer not identified", "no timeline established"],
   "disqualification_signal": false,
   "disqualification_notes": "null if no signal, otherwise brief explanation — e.g. 'Call ended with prospect saying they'd think about it and rep agreed to follow up later with no date set'",
+  "pain_depth_score": 5,
+  "pain_depth_notes": "one sentence — what pain was surfaced and how well it was developed (quantified, stakeholder-tied, urgency established)",
+  "champion_health_score": 5,
+  "champion_health_notes": "one sentence — who the potential champion is and how engaged they are (passive interest vs actively mobilizing internally)",
   "commitments": ["Verbatim or near-verbatim rep statement where they promised to do something. Only include first-person promises starting with I'll, I will, I can, I'm going to, etc. Example: 'I'll send the deck over today'"]
 }`;
 
@@ -314,6 +332,10 @@ Return ONLY valid JSON:
       discovery_gaps: [],
       disqualification_signal: false,
       disqualification_notes: null,
+      pain_depth_score: null,
+      pain_depth_notes: null,
+      champion_health_score: null,
+      champion_health_notes: null,
       commitments: [],
     });
 

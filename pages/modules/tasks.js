@@ -6,7 +6,7 @@ import {
   Calendar, Building2, BarChart3, X, ChevronRight,
   LayoutGrid, TrendingUp, Send, ChevronUp, Sparkles,
   Target, BanIcon, Info, Star, MessageSquare, ArrowRight,
-  Loader2, CornerDownLeft
+  Loader2, CornerDownLeft, Phone
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
@@ -17,10 +17,13 @@ import TaskCompleteModal from '../../components/tasks/TaskCompleteModal';
 
 // ─── Modules quick-nav ────────────────────────────────────────────────────────
 const QUICK_MODULES = [
+  { label: 'Today', href: '/modules/today', icon: Zap, color: 'text-amber-500' },
   { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-600' },
   { label: 'Outbound Engine', href: '/modules/outbound-engine', icon: Send, color: 'text-purple-600' },
   { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
   { label: 'Rep Coaching', href: '/modules/coaching', icon: Users, color: 'text-indigo-600' },
+  { label: 'Account Pursuit', href: '/modules/pursuit', icon: Target, color: 'text-orange-500' },
+  { label: 'Bottleneck', href: '/modules/bottleneck', icon: BarChart3, color: 'text-red-500' },
   { label: 'All Modules', href: '/modules', icon: LayoutGrid, color: 'text-gray-600' },
 ]
 
@@ -508,6 +511,158 @@ function NLTaskBar({ onCreate }) {
               {creating ? 'Creating…' : 'Create task'}
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Call Commitments Panel ───────────────────────────────────────────────────
+
+const COMMITMENTS_DISMISSED_KEY = 'call_commitments_dismissed'
+
+function loadDismissedCommitments() {
+  try {
+    const raw = localStorage.getItem(COMMITMENTS_DISMISSED_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDismissedCommitments(set) {
+  try {
+    localStorage.setItem(COMMITMENTS_DISMISSED_KEY, JSON.stringify([...set]))
+  } catch {}
+}
+
+function CallCommitmentsPanel({ onAddTask }) {
+  const [commitments, setCommitments] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState(false)
+  const [dismissed, setDismissed] = useState(new Set())
+  const [added, setAdded] = useState(new Set())
+
+  useEffect(() => {
+    const storedDismissed = loadDismissedCommitments()
+    setDismissed(storedDismissed)
+
+    fetch('/api/tasks/call-commitments')
+      .then(r => r.json())
+      .then(d => {
+        const items = (d.commitments || []).filter(c => !storedDismissed.has(c.id))
+        setCommitments(items)
+        if (items.length > 0) setOpen(true)
+      })
+      .catch(() => setCommitments([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleDismiss = (id) => {
+    const updated = new Set([...dismissed, id])
+    setDismissed(updated)
+    saveDismissedCommitments(updated)
+    setCommitments(prev => (prev || []).filter(c => c.id !== id))
+  }
+
+  const handleAdd = (commitment) => {
+    onAddTask({
+      title: commitment.text,
+      description: `From call: "${commitment.callTitle}" on ${commitment.callDate}${commitment.accountName ? `\nAccount: ${commitment.accountName}` : ''}`,
+      type: 'triggered',
+      priority: commitment.type === 'commitment' ? 1 : 2,
+      source: 'gong',
+    })
+    setAdded(prev => new Set([...prev, commitment.id]))
+    // Remove after a brief moment so user sees the checkmark
+    setTimeout(() => {
+      setCommitments(prev => (prev || []).filter(c => c.id !== commitment.id))
+    }, 800)
+  }
+
+  const visible = (commitments || []).filter(c => !dismissed.has(c.id))
+
+  if (loading || visible.length === 0) return null
+
+  return (
+    <div className="mb-6 border border-orange-200 rounded-xl overflow-hidden bg-white">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 text-left"
+      >
+        {open ? <ChevronDown className="w-4 h-4 text-orange-500 shrink-0" /> : <ChevronRight className="w-4 h-4 text-orange-500 shrink-0" />}
+        <div className="flex items-center gap-2 flex-1">
+          <Phone className="w-4 h-4 text-orange-600" />
+          <span className="font-semibold text-gray-800 text-sm">From Recent Calls</span>
+          <span className="text-xs text-gray-400">Commitments & next steps</span>
+        </div>
+        <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded-full">
+          {visible.length}
+        </span>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-2">
+          <p className="text-xs text-gray-400 mb-3">
+            These items came up in your last 7 days of calls and don't appear to have a task yet.
+          </p>
+          {visible.map(c => {
+            const isAdded = added.has(c.id)
+            return (
+              <div
+                key={c.id}
+                className={`flex items-start gap-2 p-3 rounded-lg border transition-all ${
+                  isAdded ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium ${isAdded ? 'text-green-700' : 'text-gray-800'}`}>
+                    {c.text}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    {c.accountName && (
+                      <span className="flex items-center gap-1 text-xs text-gray-500">
+                        <Building2 className="w-3 h-3" />
+                        {c.accountName}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">{c.callDate}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                      c.type === 'commitment'
+                        ? 'bg-orange-100 text-orange-700'
+                        : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {c.type === 'commitment' ? 'your commitment' : 'next step'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">{c.callTitle}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {isAdded ? (
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleAdd(c)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-200"
+                        title="Add as task"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add task
+                      </button>
+                      <button
+                        onClick={() => handleDismiss(c.id)}
+                        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
+                        title="Dismiss"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -1496,6 +1651,9 @@ export default function TasksPage() {
 
             {/* Today's Focus morning brief */}
             <TodaysFocus />
+
+            {/* Unresolved commitments + next steps from recent Gong calls */}
+            <CallCommitmentsPanel onAddTask={handleCreate} />
 
             {/* Smart Suggestions from Gmail + Calendar */}
             <div className="mb-6">

@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PATCH') {
-    const allowed = ['slack_user_id', 'full_name']
+    const allowed = ['slack_user_id', 'full_name', 'rep_type']
     const updates = {}
     for (const key of allowed) {
       if (key in req.body) updates[key] = req.body[key]

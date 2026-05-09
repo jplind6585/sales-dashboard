@@ -187,7 +187,9 @@ The default landing page after login. Not a secondary module — the front of th
 - Task types: Triggered, Assigned, Recurring, Project — displayed as grouped lists
 - Status: open, in_progress, complete, blocked
 - **AI task completion** — marking complete opens `TaskCompleteModal` which uses Claude to draft the deliverable (email, call prep, doc, action plan) with refinement questions
-- **Smart Suggestions panel** (`SmartSuggestionsPanel.jsx`) — auto-syncs Gmail + Calendar on page load when Google token is available; suggestions are expandable (click to see why surfaced, source email, sender, context); click + to add as task, ✕ to dismiss, ⓘ to expand
+- **Smart Suggestions panel** (`SmartSuggestionsPanel.jsx`) — auto-syncs Gmail + Calendar on page load when Google token is available; suggestions are expandable (click to see why surfaced, source email, sender, context); click + to add as task, ✕ to dismiss, ⓘ to expand; "Block sender" button on each suggestion persists sender to localStorage blocklist (`email_sender_blocklist`); `(no subject)` emails auto-filtered; blocked sender count shown in metrics strip with "clear" link
+- **AI Prep Brief modal** — calendar meeting "AI Brief" button (was "Prep task") opens a modal that fuzzy-matches meeting title to pipeline accounts, pulls call history + stakeholders, generates brief via Sonnet 4.6 with: opening recommendation, objectives, talking points, discovery questions, watch-outs, closing ask; "Add prep task with brief" attaches full brief to task description; "Basic task" skips brief; powered by `POST /api/calendar/prep-brief`
+- **From Recent Calls panel** (`CallCommitmentsPanel`) — sits above Smart Suggestions; fetches from `GET /api/tasks/call-commitments`; surfaces commitments and next steps from last 7 days of Gong calls that don't already have a task; each item shows account name, call date, type badge (your commitment / next step); [+ Add task] and [✕ dismiss] per item; dismissals persisted to localStorage (`call_commitments_dismissed`); panel hidden when no items
 - **Cross-assign** — New Task modal has "Assign to" dropdown; fetches all team members from `GET /api/users`; defaults to self
 - **Demo seed tasks** — auto-populates "Email UDR for an update" and "Create swim lanes for IRT" on first load when task list is empty
 - **Recurring task templates** — daily/weekly/monthly tasks that auto-spawn instances
@@ -355,12 +357,13 @@ Migration files are in `supabase/migrations/` for reference.
 
 ---
 
-## Backlog (as of 2026-04-15)
+## Backlog (as of 2026-05-09)
 
 ### High Priority — Tasks
-- **"Work in Claude" button** — each task gets a button opening a persistent Claude chat. Chat saved to task, picks back up on return. One chat per account (not per task) so context builds across the deal. Must handle context window limits when accounts have many transcripts.
-- **Smart Suggestions from Gong** — currently only Gmail + Calendar. Should also pull action items from recent Gong call transcripts (next steps, follow-ups, commitments).
+- **Commitment status check (Gmail/Calendar verification)** — for tasks sourced from Gong commitments, check Gmail sent folder for emails to that contact after the call date; check Calendar for events with that company. Show "Email sent?" / "Meeting booked?" status on the task row. Most complex tasks feature — needs per-stakeholder email matching.
 - **Stage-triggered task checklists (expanded)** — flesh out the full trigger → checklist mapping with James + Mark. Example: booking intro meeting auto-creates: "Add to #sales-ops channel", "Update pursuit channel", "Update HubSpot deal", "Send intro link with deal details".
+- **Playbook trigger wiring** — `task_playbooks` table and run records exist but no UI trigger yet. Button in Account Pipeline header to fire a playbook (e.g. "Demo Booked") → creates task batch with due dates from `due_offset_hours`.
+- **Near-real-time post-call processing** — currently nightly cron. James wants faster: analysis + task creation + Slack notification within ~30 min of call ending. Options: (1) Gong webhook trigger, (2) 30-min polling cron (Hobby plan limitations apply), (3) manual "Process calls" button.
 
 ### High Priority — Account Pipeline
 - **HubSpot sync** — push stage changes, notes, deal updates to HubSpot. Reps currently update HubSpot manually.
@@ -420,6 +423,21 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 ---
 
 ## Recently Shipped (reverse chronological)
+
+- **2026-05-09** — Tasks intelligence upgrade (4 features):
+  - **From Recent Calls panel**: `GET /api/tasks/call-commitments` — queries `gong_call_analyses` for past 7 days by rep_email, extracts `commitments[]` and `next_steps_mentioned[]`, cross-references existing tasks to skip already-added items, returns account names. `CallCommitmentsPanel` component in tasks.js auto-fetches on load, shows orange badge panel above Smart Suggestions, dismissals persist to localStorage.
+  - **Morning brief with real data**: Rewrote `GET /api/rep/morning-brief` to pull active accounts (excluding closed stages), compute last call date per account via `gong_call_analyses`, identify stale accounts (no call in 14+ days), build late-stage deal list (demo/proposal/legal), pass all real account names into Claude Haiku prompt. Fallback uses stale accounts list.
+  - **AI Prep Brief modal**: `POST /api/calendar/prep-brief` — fuzzy-matches meeting title to pipeline accounts (word overlap score), fetches last 3 calls + stakeholders for matched account, generates brief via Sonnet 4.6 (opening recommendation, objectives, talking points, discovery questions, watch-outs, closing ask). `PrepBriefModal` component opens from "AI Brief" button on calendar events. "Add prep task with brief" writes full brief into task description.
+  - **Warmy sender blocklist**: `SmartSuggestionsPanel.jsx` — `blockedSenders` array loaded from localStorage `email_sender_blocklist` on mount; "Block sender" button in expanded suggestion panel blocks by sender name, persists to localStorage, filters all suggestions from that sender. Auto-filters `(no subject)` emails. Metrics strip shows blocked count + "clear all" link.
+
+- **2026-05-09** — OAuth login flow fixed (server-side PKCE):
+  - Root cause: `setAll` in `createServerSupabaseClient` was hard-coding `HttpOnly` flag, hiding session tokens from browser's `document.cookie` read by `createBrowserClient`.
+  - Fix: `lib/supabase.js` — `setAll` now only adds `HttpOnly` if `options.httpOnly === true` (Supabase never sets this for auth tokens).
+  - New `pages/api/auth/sign-in.js` — generates Google OAuth URL server-side via `createServerSupabaseClient` so PKCE code verifier is stored in a proper server-set cookie, not via `document.cookie`.
+  - New `pages/api/auth/callback.js` — exchanges code for session server-side; `@withbanner.com` domain check; auto-provisions profile on first sign-in; fires Gong onboarding sync; uses explicit `res.setHeader + res.writeHead(302) + res.end()` to preserve Set-Cookie headers.
+  - `lib/auth.js` `signInWithGoogle()` — now calls `/api/auth/sign-in` to get URL then redirects, instead of calling `supabase.auth.signInWithOAuth` client-side.
+  - `pages/modules/tasks.js` — switched from `getUser()` (network call, fails cold) to `getSession()` (reads cookies locally, reliable).
+  - Vercel deployment was also blocked by `0 */2 * * 1-5` cron schedule (Hobby plan rejects non-daily crons) — removed that entry from `vercel.json`.
 
 - **2026-05-06** — Deal Pulse cron (`pages/api/cron/deal-pulse.js`): scores James's active accounts for attention needed (overdue tasks +40 each, days since last call up to +80, stage weight, open next steps, red flags), picks top 3, calls Claude Haiku per account for urgency_reason + specific action + draft opener, sends Slack blocks to SLACK_MANAGER_CHANNEL (D02PGNHTR53). Cron: Mon–Fri 11am UTC (7am EST). Manual trigger: POST /api/cron/deal-pulse with Authorization: Bearer {CRON_SECRET}.
 
