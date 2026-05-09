@@ -1,77 +1,21 @@
-import { useEffect, useState } from 'react'
+// This page is no longer the primary callback handler.
+// OAuth redirects go to /api/auth/callback (server-side PKCE exchange).
+// This page only renders if someone navigates here directly.
+import { useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { getSupabase } from '../../lib/supabase'
 
-/**
- * Auth callback page — handles PKCE code exchange after Google sign-in.
- *
- * @supabase/ssr's createBrowserClient does not auto-exchange the authorization
- * code. We must call exchangeCodeForSession() explicitly with the code from
- * the URL, then redirect once the session is established.
- */
 export default function AuthCallback() {
   const router = useRouter()
-  const [status, setStatus] = useState('Completing sign in...')
 
   useEffect(() => {
-    const supabase = getSupabase()
+    // If landed here with a code, forward to the API route handler
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
-    const errorParam = params.get('error')
-    const errorDesc = params.get('error_description')
-
-    if (errorParam) {
-      setStatus(`Auth error: ${errorDesc || errorParam}`)
-      return // stay on page so James can read it
+    if (code) {
+      window.location.replace(`/api/auth/callback${window.location.search}`)
+    } else {
+      router.replace('/login')
     }
-
-    if (!code) {
-      setStatus(`No code in URL. Params: ${window.location.search || '(none)'}`)
-      return // stay on page so James can read it
-    }
-
-    setStatus('Exchanging code...')
-
-    supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
-      if (error || !data.session) {
-        setStatus(`Exchange failed: ${error?.message || 'no session returned'}`)
-        return // stay on page so James can read it
-      }
-
-      const session = data.session
-
-      // Restrict to @withbanner.com
-      const email = session.user?.email || ''
-      if (!email.endsWith('@withbanner.com')) {
-        await supabase.auth.signOut()
-        router.replace('/login?error=unauthorized_domain')
-        return
-      }
-
-      // Auto-provision profile on first sign-in
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', session.user.id)
-        .single()
-
-      if (!profile) {
-        await supabase.from('profiles').insert({
-          id: session.user.id,
-          email: session.user.email,
-          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
-          role: 'rep',
-        })
-
-        fetch('/api/gong/onboarding-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: session.user.id, email: session.user.email }),
-        }).catch(err => console.warn('Gong onboarding sync failed:', err))
-      }
-
-      router.replace('/modules/tasks')
-    })
   }, [router])
 
   return (
@@ -83,7 +27,7 @@ export default function AuthCallback() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
         </div>
-        <p className="text-gray-600">{status}</p>
+        <p className="text-gray-600">Completing sign in...</p>
       </div>
     </div>
   )
