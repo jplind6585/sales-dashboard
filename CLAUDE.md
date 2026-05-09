@@ -34,7 +34,7 @@ The goal is to reduce rep busywork, surface what needs attention, and keep deals
 | Integrations | Gong API, Gmail API, Google Calendar API, Slack Bot API |
 | Deployment | Vercel (with cron jobs via vercel.json) |
 | State | Zustand (`stores/useAccountStore.js`, `stores/useAuthStore.js`) |
-| Storage | Supabase (primary) + localStorage (Outbound Engine only) |
+| Storage | Supabase (primary) + localStorage (Outbound Engine + Account Pursuit + SDR touch log) |
 
 ---
 
@@ -43,24 +43,34 @@ The goal is to reduce rep busywork, surface what needs attention, and keep deals
 ```
 pages/
   modules/           # Full-page module views
-    tasks.js         # Default landing page after login
+    tasks.js         # Task management (quick-nav includes Today, Pursuit, Bottleneck)
+    today.js         # Role-aware landing page (SDR call queue / AE focus / Manager team view)
     account-pipeline.js
+    pursuit.js       # Account Pursuit Dashboard — top-50 SDR named accounts, touch logging, localStorage
     outbound-engine.js
     pipeline-overview.js
-    settings.js
+    bottleneck.js    # Bottleneck Tracker — funnel conversion rates, stall alerts, per-rep table
+    settings.js      # Email sig, Slack ID, rep_type (SDR/AE) selector
     content.js
   api/               # Serverless API routes
     tasks.js         # GET (list), POST (create)
     tasks/[id].js    # GET, PATCH, DELETE
+    tasks/call-commitments.js  # GET — unresolved Gong commitments/next steps for tasks panel
     users.js         # GET all profiles (for assign-to dropdowns)
-    me.js            # GET/PATCH current user profile
+    me.js            # GET/PATCH current user profile (allows: slack_user_id, full_name, rep_type)
     pipeline-overview.js
+    bottleneck.js    # GET — stage conversion rates, bottleneck detection, stall alerts
     send-daily-digest.js
     slack/notify.js  # Real-time Slack notifications (stage change, task complete)
     gmail/suggestions.js
     calendar/upcoming.js
+    calendar/prep-brief.js  # POST — AI pre-call brief (fuzzy account match + call history)
     gong/import-call.js, list-calls.js, onboarding-sync.js
+    gong/account-competitors.js  # GET ?accountId — aggregated competitor mentions across calls
+    playbooks/execute.js  # POST {playbookId, accountId} — creates task batch from playbook steps
     cron/cleanup-inactive-users.js
+    cron/sdr-activity.js  # 9pm UTC weekdays — SDR Activity Leaderboard → Slack manager channel
+    cron/rep-pulse.js     # 10pm UTC weekdays — private Slack DM per rep (coaching + tomorrow focus)
     generate-*.js    # Claude-powered generation endpoints (follow-up, demo-brief, next-actions, etc.)
     analyze-transcript.js
     account-assistant.js
@@ -259,9 +269,38 @@ Manager / CEO view. Read-only aggregate view.
 
 ---
 
+### Today (`pages/modules/today.js`)
+Role-aware landing page. Role determined by `localStorage.user_rep_type` (SDR/AE) + `profile.role === 'manager'` check.
+
+- **AE view** (default): Morning Brief card (`GET /api/rep/morning-brief`), Today's Tasks (top 5 open, `GET /api/tasks`), Calendar (`POST /api/calendar/upcoming` filtered to today), Pipeline Focus (top 3 stale accounts from `GET /api/pipeline-overview`). AI Brief button on calendar events opens PrepBriefModal (`POST /api/calendar/prep-brief`).
+- **SDR view**: Daily targets strip (calls/connects/meetings from `sdr_touches_today` localStorage), Call Queue (from `pursuit_accounts` localStorage ranked list), Today's Log (all touches), link → `/modules/pursuit`
+- **Manager view**: Team Activity table (from pipeline-overview), At-Risk Deals (late-stage stale accounts), link → `/modules/pipeline-overview`
+- SDR/AE toggle in header updates localStorage + re-renders. Manager view auto-engages when `profile.role === 'manager'`.
+
+### Account Pursuit (`pages/modules/pursuit.js`)
+SDR tool for tracking top-50 named accounts. 100% localStorage-backed (like Outbound Engine).
+
+localStorage keys: `pursuit_accounts`, `sdr_touches_today`, `pursuit_touches_all`
+
+- Ranked account table: coverage score progress bar (touches30d / 8 × 100%), last touch date + type icon, next touch recommendation (cycles call→email→linkedin→call), 30d touch count vs target 8
+- Log Touch modal: touch type button group + context-sensitive outcome select + notes. Saves to all touch stores, recomputes coverage score.
+- Right detail panel: SVG arc progress gauge, full touch history, inline hypothesis editing
+- Add Account modal: name, rank (auto-assigned), vertical, hypothesis
+- Empty state CTA when no accounts added
+
+### Bottleneck Tracker (`pages/modules/bottleneck.js`)
+Manager view showing where deals stall. Reads `GET /api/bottleneck`.
+
+- Horizontal funnel: each active stage as a proportional bar, conversion % arrows between stages (green >60%, yellow 40-60%, red <40%), bottleneck stage highlighted orange
+- 4-stat bar: active deals, win rate, biggest bottleneck stage, stalled deals count
+- Stalled deals panel: accounts in demo/proposal/legal not updated in 21+ days, click → account pipeline
+- Conversion details: collapsible, shows from/to counts and rate per stage pair
+- Per-rep breakdown table: sortable, bottleneck column highlighted
+
 ### Settings (`pages/modules/settings.js`)
 - Email signature — saved and auto-appended to generated follow-up emails
-- Slack Member ID — reps paste their Slack ID here to receive daily digest as a DM (Slack → profile photo → 3-dot menu → Copy member ID)
+- Slack Member ID — reps paste their Slack ID here to receive daily digest as a DM
+- **Rep Type** — SDR/AE selector, saves to `localStorage.user_rep_type` AND `profiles.rep_type` (DB column needs migration 20260509_big_build_schema.sql). Drives Today page view.
 
 ---
 
@@ -339,6 +378,20 @@ Do not run these again:
 - `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slack_user_id TEXT;`
 - **name_cleanup** (2026-05-06): `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'active'`; stripped " - New Deal" suffix from all 551 account names
 - **stakeholders_hubspot** (2026-05-06): `ALTER TABLE stakeholders ADD COLUMN IF NOT EXISTS email TEXT` and `hubspot_contact_id TEXT`
+
+## SQL Migrations PENDING (needs Supabase MCP re-auth)
+
+File: `supabase/migrations/20260509_big_build_schema.sql` — **run this first thing next session**.
+
+```sql
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS rep_type TEXT CHECK (rep_type IN ('sdr', 'ae'));
+CREATE TABLE IF NOT EXISTS account_pursuit_lists (...);  -- SDR top-50 named accounts (Supabase-backed version of localStorage pursuit)
+CREATE TABLE IF NOT EXISTS account_touches (...);         -- multi-channel touch log
+CREATE TABLE IF NOT EXISTS meeting_quality_scores (...);  -- SDR→AE warm transfer quality
+CREATE TABLE IF NOT EXISTS daily_insights (...);          -- AI-generated per-rep daily insight
+```
+
+To run: re-authorize Supabase MCP in Claude extension settings → then call `mcp__supabase__apply_migration`.
 
 Migration files are in `supabase/migrations/` for reference.
 
@@ -423,6 +476,17 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 ---
 
 ## Recently Shipped (reverse chronological)
+
+- **2026-05-09** — Big build (phase 1):
+  - **Today page** (`/modules/today`): role-aware landing (SDR/AE/Manager). SDR view: daily call targets from `sdr_touches_today` localStorage, call queue from `pursuit_accounts` localStorage, touch logging (call/email/linkedin/meeting/voicemail + outcome). AE view: morning brief, top-5 tasks, today's calendar with AI Brief, top-3 stale pipeline accounts. Manager view: team activity table, at-risk late-stage accounts. Role toggle saves to localStorage + profiles.rep_type.
+  - **Account Pursuit Dashboard** (`/modules/pursuit`): top-50 named SDR account tracking. 100% localStorage. Coverage score = touches30d / 8 × 100%. Touch log with type + outcome. Right detail panel with SVG arc gauge + full history. Add Account modal with rank/hypothesis/vertical.
+  - **Bottleneck Tracker** (`/modules/bottleneck` + `/api/bottleneck`): funnel visualization, stage-to-stage conversion rates, bottleneck detection (highest absolute drop), stall alerts (21+ days in late stages), per-rep breakdown table.
+  - **intel-analyze.js**: added `pain_depth_score` (1-10) + `champion_health_score` (1-10) to Claude prompt + scoring guides. Both fields now stored in every new `gong_call_analyses` row.
+  - **OverviewTab.jsx**: `CompetitorIntel` component — lazy-fetches `/api/gong/account-competitors?accountId=X`, aggregates mentions across all calls, collapsible battle card with sentiment badge + context quotes. `RunPlaybook` button — fetches active playbooks, executes via `/api/playbooks/execute`, shows result inline.
+  - **Settings**: rep_type SDR/AE selector — saves to localStorage + `profiles.rep_type` via `/api/me` PATCH (column requires migration).
+  - **Crons**: `sdr-activity` (9pm UTC weekdays) posts team call/accounts/meetings leaderboard to Slack manager channel. `rep-pulse` (10pm UTC weekdays) sends private Slack DM per rep with today's calls, AI coaching insight, tomorrow's top account.
+  - **New APIs**: `/api/gong/account-competitors`, `/api/playbooks/execute`, `/api/calendar/prep-brief`, `/api/tasks/call-commitments`, `/api/bottleneck`
+  - **DB migration pending**: `supabase/migrations/20260509_big_build_schema.sql` — needs Supabase MCP re-auth to run. Adds: `profiles.rep_type`, `account_pursuit_lists`, `account_touches`, `meeting_quality_scores`, `daily_insights` tables. Run this migration as first action next session.
 
 - **2026-05-09** — Tasks intelligence upgrade (4 features):
   - **From Recent Calls panel**: `GET /api/tasks/call-commitments` — queries `gong_call_analyses` for past 7 days by rep_email, extracts `commitments[]` and `next_steps_mentioned[]`, cross-references existing tasks to skip already-added items, returns account names. `CallCommitmentsPanel` component in tasks.js auto-fetches on load, shows orange badge panel above Smart Suggestions, dismissals persist to localStorage.
