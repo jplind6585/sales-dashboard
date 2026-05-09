@@ -6,6 +6,7 @@ import { BarChart3, AlertTriangle } from 'lucide-react'
 export default function LoginPage() {
   const router = useRouter()
   const isUnauthorizedDomain = router.query.error === 'unauthorized_domain'
+  const errorMsg = router.query.error && router.query.error !== 'unauthorized_domain' ? router.query.error : null
 
   return (
     <>
@@ -24,6 +25,13 @@ export default function LoginPage() {
               Track your accounts, analyze calls, and close more deals with AI-powered insights.
             </p>
           </div>
+
+          {errorMsg && (
+            <div className="mb-4 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 font-mono break-all">{decodeURIComponent(errorMsg)}</p>
+            </div>
+          )}
 
           {isUnauthorizedDomain && (
             <div className="mb-4 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
