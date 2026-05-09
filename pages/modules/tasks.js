@@ -1239,13 +1239,10 @@ export default function TasksPage() {
     const init = async () => {
       const useAuth = isSupabaseConfigured() && process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false'
       if (useAuth) {
-        const { user: currentUser } = await getCurrentUser()
-        if (!currentUser) { router.push('/login'); return }
-        setUser(currentUser)
-        // Grab Google provider_token for Gmail/Calendar (non-blocking)
-        getSession().then(({ session }) => {
-          if (session?.provider_token) setProviderToken(session.provider_token)
-        }).catch(() => {})
+        const { session } = await getSession()
+        if (!session) { router.push('/login'); return }
+        setUser(session.user)
+        if (session?.provider_token) setProviderToken(session.provider_token)
         // Fetch team members for assign-to dropdown (non-blocking)
         fetch('/api/users').then(r => r.json()).then(d => { if (d.users) setUsers(d.users) }).catch(() => {})
       }
