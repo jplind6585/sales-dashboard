@@ -16,11 +16,17 @@ export default async function handler(req, res) {
     return res.redirect('/login?error=no_code')
   }
 
+  // DEBUG: log cookie names to understand what's arriving
+  const cookieKeys = Object.keys(req.cookies || {})
+  console.log('[auth/callback] cookies received:', cookieKeys)
+  console.log('[auth/callback] code verifier present:', cookieKeys.some(k => k.includes('code-verifier')))
+
   const supabase = createServerSupabaseClient(req, res)
   const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error || !data?.session) {
-    return res.redirect(`/login?error=${encodeURIComponent(error?.message || 'no_session')}`)
+    const debugInfo = `${error?.message || 'no_session'} | cookies: ${cookieKeys.filter(k => k.includes('sb-')).join(',') || 'none'}`
+    return res.redirect(`/login?error=${encodeURIComponent(debugInfo)}`)
   }
 
   const session = data.session
