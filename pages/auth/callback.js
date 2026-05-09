@@ -15,26 +15,27 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const supabase = getSupabase()
-    const code = new URLSearchParams(window.location.search).get('code')
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const errorParam = params.get('error')
+    const errorDesc = params.get('error_description')
+
+    if (errorParam) {
+      setStatus(`Auth error: ${errorDesc || errorParam}`)
+      return // stay on page so James can read it
+    }
 
     if (!code) {
-      // No code in URL — check if already signed in (e.g. page refresh)
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          router.replace('/modules/tasks')
-        } else {
-          router.replace('/login')
-        }
-      })
-      return
+      setStatus(`No code in URL. Params: ${window.location.search || '(none)'}`)
+      return // stay on page so James can read it
     }
+
+    setStatus('Exchanging code...')
 
     supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
       if (error || !data.session) {
-        console.error('[auth/callback] exchangeCodeForSession error:', error?.message)
-        setStatus('Sign in failed. Redirecting...')
-        router.replace('/login')
-        return
+        setStatus(`Exchange failed: ${error?.message || 'no session returned'}`)
+        return // stay on page so James can read it
       }
 
       const session = data.session
