@@ -1,6 +1,3 @@
-// Server-side PKCE code exchange — avoids "code verifier not found in storage"
-// error that occurs when client-side createBrowserClient can't find the verifier
-// after a full page reload through Google's OAuth redirect.
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase'
 
 export default async function handler(req, res) {
@@ -9,24 +6,18 @@ export default async function handler(req, res) {
   const errorDesc = req.query.error_description
 
   if (errorParam) {
-    return res.redirect(`/login?error=${encodeURIComponent(errorDesc || errorParam)}`)
+    return redirect(res, `/login?error=${encodeURIComponent(errorDesc || errorParam)}`)
   }
 
   if (!code) {
-    return res.redirect('/login?error=no_code')
+    return redirect(res, '/login?error=no_code')
   }
-
-  // DEBUG: log cookie names to understand what's arriving
-  const cookieKeys = Object.keys(req.cookies || {})
-  console.log('[auth/callback] cookies received:', cookieKeys)
-  console.log('[auth/callback] code verifier present:', cookieKeys.some(k => k.includes('code-verifier')))
 
   const supabase = createServerSupabaseClient(req, res)
   const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error || !data?.session) {
-    const debugInfo = `${error?.message || 'no_session'} | cookies: ${cookieKeys.filter(k => k.includes('sb-')).join(',') || 'none'}`
-    return res.redirect(`/login?error=${encodeURIComponent(debugInfo)}`)
+    return redirect(res, `/login?error=${encodeURIComponent(error?.message || 'no_session')}`)
   }
 
   const session = data.session
@@ -34,7 +25,7 @@ export default async function handler(req, res) {
 
   if (!email.endsWith('@withbanner.com')) {
     await supabase.auth.signOut()
-    return res.redirect('/login?error=unauthorized_domain')
+    return redirect(res, '/login?error=unauthorized_domain')
   }
 
   // Auto-provision profile on first sign-in
@@ -53,7 +44,6 @@ export default async function handler(req, res) {
       role: 'rep',
     })
 
-    // Fire-and-forget Gong onboarding sync
     const baseUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host'] || req.headers.host}`
     fetch(`${baseUrl}/api/gong/onboarding-sync`, {
       method: 'POST',
@@ -62,5 +52,12 @@ export default async function handler(req, res) {
     }).catch(err => console.warn('Gong onboarding sync failed:', err))
   }
 
-  return res.redirect('/modules/tasks')
+  return redirect(res, '/modules/tasks')
+}
+
+// Explicit redirect that preserves Set-Cookie headers set via res.setHeader()
+function redirect(res, url) {
+  res.setHeader('Location', url)
+  res.writeHead(302)
+  res.end()
 }
