@@ -3,15 +3,11 @@ import { useRouter } from 'next/router'
 import { getSupabase } from '../../lib/supabase'
 
 /**
- * Auth callback page — handles the OAuth code exchange after Google sign-in.
+ * Auth callback page — handles PKCE code exchange after Google sign-in.
  *
- * Supabase redirects here after the user completes Google OAuth.
- * The browser client detects the code in the URL, exchanges it for a session,
- * then fires onAuthStateChange with SIGNED_IN. We wait for that event
- * before redirecting the user to /modules.
- *
- * Without this page, the code lands on /modules and getSession() races
- * against the exchange — usually losing, which sends the user back to /login.
+ * @supabase/ssr's createBrowserClient does not auto-exchange the authorization
+ * code. We must call exchangeCodeForSession() explicitly with the code from
+ * the URL, then redirect once the session is established.
  */
 export default function AuthCallback() {
   const router = useRouter()
@@ -19,65 +15,62 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const supabase = getSupabase()
+    const code = new URLSearchParams(window.location.search).get('code')
 
-    // onAuthStateChange fires once the code is exchanged and session is set
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        // Restrict sign-in to @withbanner.com
-        const email = session.user?.email || ''
-        if (!email.endsWith('@withbanner.com')) {
-          await supabase.auth.signOut()
-          router.replace('/login?error=unauthorized_domain')
-          return
+    if (!code) {
+      // No code in URL — check if already signed in (e.g. page refresh)
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          router.replace('/modules/tasks')
+        } else {
+          router.replace('/login')
         }
-
-        // Auto-provision profile if it doesn't exist yet
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', session.user.id)
-          .single()
-
-        const isNewUser = !profile
-        if (isNewUser) {
-          await supabase.from('profiles').insert({
-            id: session.user.id,
-            email: session.user.email,
-            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
-            role: 'rep',
-          })
-
-          // Kick off Gong onboarding sync in background (non-blocking)
-          fetch('/api/gong/onboarding-sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: session.user.id, email: session.user.email }),
-          }).catch(err => console.warn('Gong onboarding sync failed:', err))
-        }
-
-        router.replace('/modules/tasks')
-      } else if (event === 'SIGNED_OUT') {
-        router.replace('/login')
-      }
-    })
-
-    // Fallback: if already signed in (e.g. page refresh), redirect immediately
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.replace('/modules/tasks')
-      }
-    })
-
-    // Safety timeout — if nothing fires in 10s, send to login
-    const timeout = setTimeout(() => {
-      setStatus('Something went wrong. Redirecting...')
-      router.replace('/login')
-    }, 10000)
-
-    return () => {
-      subscription.unsubscribe()
-      clearTimeout(timeout)
+      })
+      return
     }
+
+    supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
+      if (error || !data.session) {
+        console.error('[auth/callback] exchangeCodeForSession error:', error?.message)
+        setStatus('Sign in failed. Redirecting...')
+        router.replace('/login')
+        return
+      }
+
+      const session = data.session
+
+      // Restrict to @withbanner.com
+      const email = session.user?.email || ''
+      if (!email.endsWith('@withbanner.com')) {
+        await supabase.auth.signOut()
+        router.replace('/login?error=unauthorized_domain')
+        return
+      }
+
+      // Auto-provision profile on first sign-in
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', session.user.id)
+        .single()
+
+      if (!profile) {
+        await supabase.from('profiles').insert({
+          id: session.user.id,
+          email: session.user.email,
+          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
+          role: 'rep',
+        })
+
+        fetch('/api/gong/onboarding-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: session.user.id, email: session.user.email }),
+        }).catch(err => console.warn('Gong onboarding sync failed:', err))
+      }
+
+      router.replace('/modules/tasks')
+    })
   }, [router])
 
   return (
