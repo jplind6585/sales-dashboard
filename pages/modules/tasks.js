@@ -1382,6 +1382,8 @@ export default function TasksPage() {
   const [view, setView] = useState('rep') // 'rep' | 'manager'
   const [showNewTask, setShowNewTask] = useState(false)
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
+  const [sdrViewTab, setSdrViewTab] = useState('all') // 'all' | 'campaigns' | 'top50' | 'standard'
+  const [repType, setRepType] = useState(null)
   const [providerToken, setProviderToken] = useState(null)
   const [completeTask, setCompleteTask] = useState(null) // task being completed via AI modal
   const [dismissTask, setDismissTask] = useState(null) // task being dismissed
@@ -1404,6 +1406,10 @@ export default function TasksPage() {
       setIsReady(true)
     }
     init()
+  }, [])
+
+  useEffect(() => {
+    try { setRepType(localStorage.getItem('user_rep_type') || null) } catch {}
   }, [])
 
   const seedDemoTasks = useCallback(async () => {
@@ -1547,6 +1553,12 @@ export default function TasksPage() {
     if (filterStatus === 'active') return t.status !== 'complete'
     if (filterStatus === 'complete') return t.status === 'complete'
     return true
+  }).filter(task => {
+    if (repType !== 'sdr' || sdrViewTab === 'all') return true
+    if (sdrViewTab === 'campaigns') return task.source_type === 'campaign'
+    if (sdrViewTab === 'top50') return task.source_type === 'pursuit'
+    if (sdrViewTab === 'standard') return task.source_type !== 'campaign' && task.source_type !== 'pursuit'
+    return true
   })
 
   if (!isReady) {
@@ -1627,6 +1639,32 @@ export default function TasksPage() {
           />
         ) : (
           <>
+            {/* SDR source-type tab bar */}
+            {repType === 'sdr' && (
+              <div className="flex items-center gap-1 mb-3">
+                {[
+                  { id: 'all', label: 'All Tasks' },
+                  { id: 'campaigns', label: 'Campaigns' },
+                  { id: 'top50', label: 'My Top 50' },
+                  { id: 'standard', label: 'Standard' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setSdrViewTab(tab.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      sdrViewTab === tab.id
+                        ? tab.id === 'campaigns' ? 'bg-indigo-600 text-white'
+                          : tab.id === 'top50' ? 'bg-orange-500 text-white'
+                          : 'bg-gray-800 text-white'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Filter bar */}
             <div className="flex items-center gap-2 mb-6">
               <Filter className="w-4 h-4 text-gray-400" />
@@ -1663,14 +1701,71 @@ export default function TasksPage() {
               />
             </div>
 
-            <RepView
-              tasks={filteredTasks}
-              onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
-              onDismiss={task => setDismissTask(task)}
-              onWorkInClaude={task => setWorkTask(task)}
-              onNewTask={() => setShowNewTask(true)}
-            />
+            {repType === 'sdr' && sdrViewTab === 'campaigns' ? (
+              (() => {
+                const campaignGroups = filteredTasks.reduce((acc, task) => {
+                  const key = task.source_id || 'ungrouped'
+                  if (!acc[key]) acc[key] = []
+                  acc[key].push(task)
+                  return acc
+                }, {})
+                const groupKeys = Object.keys(campaignGroups)
+                if (groupKeys.length === 0) {
+                  return (
+                    <div className="text-center py-16 text-gray-400">
+                      <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">No campaign tasks yet.</p>
+                    </div>
+                  )
+                }
+                return (
+                  <div className="space-y-6">
+                    {groupKeys.map(campaignId => {
+                      const group = campaignGroups[campaignId]
+                      const firstTask = group[0]
+                      // Extract account name from title pattern "Stage X: AccountName — ..."
+                      const titleMatch = firstTask.title?.match(/Stage \d+:\s*(.+?)\s*[—-]/)
+                      const accountLabel = titleMatch ? titleMatch[1] : (firstTask.account?.name || campaignId)
+                      const pastDue = group.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status === 'open').length
+                      const completed = group.filter(t => t.status === 'complete').length
+                      const total = group.length
+                      return (
+                        <div key={campaignId}>
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
+                              Campaign
+                            </span>
+                            <span className="text-sm font-semibold text-gray-800">{accountLabel}</span>
+                            <span className="text-xs text-gray-400">Stage {completed} of {total}</span>
+                            {pastDue > 0 ? (
+                              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title={`${pastDue} past due`} />
+                            ) : completed === total ? (
+                              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="All complete" />
+                            ) : (
+                              <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            {group.map(task => (
+                              <TaskRow key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} onDismiss={task => setDismissTask(task)} onWorkInClaude={task => setWorkTask(task)} />
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()
+            ) : (
+              <RepView
+                tasks={filteredTasks}
+                onStatusChange={handleStatusChange}
+                onDelete={handleDelete}
+                onDismiss={task => setDismissTask(task)}
+                onWorkInClaude={task => setWorkTask(task)}
+                onNewTask={() => setShowNewTask(true)}
+              />
+            )}
           </>
         )}
       </div>

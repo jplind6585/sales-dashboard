@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     const allowedFields = [
       'icp_definition', 'discovery_framework', 'stage_exit_criteria',
       'disqualification_signals', 'coaching_priorities', 'qualification_framework',
-      'winning_tactics', 'competitor_playbook', 'notes',
+      'winning_tactics', 'competitor_playbook', 'notes', 'reengagement_playbook',
     ];
     const filtered = Object.fromEntries(Object.entries(updates).filter(([k]) => allowedFields.includes(k)));
 

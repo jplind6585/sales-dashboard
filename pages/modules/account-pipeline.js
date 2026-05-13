@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { Building2, AlertCircle, Sparkles, ArrowLeft, Search, Filter, X, ChevronDown, Flame, Archive, Eye, EyeOff } from 'lucide-react';
+import { Building2, AlertCircle, Sparkles, ArrowLeft, Search, Filter, X, ChevronDown, Flame, Archive, Eye, EyeOff, RefreshCw, CheckCircle } from 'lucide-react';
 
 // Hooks
 import { useAccounts } from '../../hooks/useAccounts';
@@ -116,6 +116,18 @@ export default function Home() {
   const [filterStage, setFilterStage] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+
+  // Campaign builder state
+  const [campaignMode, setCampaignMode] = useState(false)
+  const [selectedForCampaign, setSelectedForCampaign] = useState(new Set())
+  const [showCampaignModal, setShowCampaignModal] = useState(false)
+  const [campaignStep, setCampaignStep] = useState(1)
+  const [campaignStakeholders, setCampaignStakeholders] = useState({})
+  const [loadingStakeholders, setLoadingStakeholders] = useState(false)
+  const [campaignAssignee, setCampaignAssignee] = useState(null)
+  const [teamMembers, setTeamMembers] = useState([])
+  const [buildingCampaign, setBuildingCampaign] = useState(false)
+  const [campaignResult, setCampaignResult] = useState(null)
 
   // Reengagement state
   const [reengageLoading, setReengageLoading] = useState(false);
@@ -237,6 +249,67 @@ export default function Home() {
       })
     }
   }, [selectedAccount, store])
+
+  // Load team members when campaign modal opens
+  useEffect(() => {
+    if (showCampaignModal && teamMembers.length === 0) {
+      fetch('/api/users').then(r => r.json()).then(d => {
+        if (d.users) setTeamMembers(d.users)
+      }).catch(() => {})
+    }
+  }, [showCampaignModal])
+
+  async function loadCampaignStakeholders(accountIds) {
+    setLoadingStakeholders(true)
+    const results = {}
+    for (const id of accountIds) {
+      try {
+        const res = await fetch('/api/accounts/reengage-stakeholders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountId: id }),
+        })
+        const data = await res.json()
+        if (data.success) results[id] = { stakeholders: data.stakeholders, gongSummary: data.gongSummary, accountName: data.accountName }
+      } catch { results[id] = { stakeholders: [], gongSummary: null, accountName: '' } }
+    }
+    setCampaignStakeholders(results)
+    setLoadingStakeholders(false)
+  }
+
+  async function buildCampaign() {
+    if (!campaignAssignee) return
+    setBuildingCampaign(true)
+    const campaignId = crypto.randomUUID()
+    try {
+      const accountsPayload = [...selectedForCampaign].map(id => {
+        const account = accounts.find(a => a.id === id)
+        const stData = campaignStakeholders[id] || {}
+        return {
+          id,
+          name: account?.name || '',
+          dockUrl: account?.dock_url || null,
+          stakeholders: (stData.stakeholders || []).map(s => ({
+            id: s.id, name: s.name, title: s.title, email: s.email,
+            role: s.confirmedRole || s.suggestedRole,
+          })),
+        }
+      })
+      const res = await fetch('/api/accounts/reengage-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accounts: accountsPayload,
+          assigneeId: campaignAssignee.id,
+          assigneeEmail: campaignAssignee.email,
+          campaignId,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) setCampaignResult(data)
+    } catch { /* silent */ }
+    finally { setBuildingCampaign(false) }
+  }
 
   // Reengagement handler
   const handleReengage = useCallback(async () => {
@@ -399,19 +472,38 @@ export default function Home() {
                     return (
                       <button
                         key={account.id}
-                        onClick={() => handleSelectAccount(account)}
+                        onClick={() => {
+                          if (campaignMode && (account.stage === 'inactive_sdr_follow_up' || account.stage === 'inactive_ae_follow_up')) {
+                            setSelectedForCampaign(prev => {
+                              const next = new Set(prev)
+                              if (next.has(account.id)) next.delete(account.id); else next.add(account.id)
+                              return next
+                            })
+                          } else {
+                            handleSelectAccount(account)
+                          }
+                        }}
                         className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${
-                          selectedAccount?.id === account.id
-                            ? 'bg-blue-50 border border-blue-200'
-                            : 'hover:bg-gray-50 border border-transparent'
+                          selectedForCampaign.has(account.id)
+                            ? 'bg-indigo-50 border border-indigo-200'
+                            : selectedAccount?.id === account.id
+                              ? 'bg-blue-50 border border-blue-200'
+                              : 'hover:bg-gray-50 border border-transparent'
                         }`}
                       >
-                        <span className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 block">{account.name}</span>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${stageColor}`}>{stageLabel}</span>
-                          {account.ownerName && (
-                            <span className="text-xs text-gray-400 truncate max-w-[80px]">{account.ownerName.split(' ')[0]}</span>
+                        <div className="flex items-start gap-2">
+                          {campaignMode && (account.stage === 'inactive_sdr_follow_up' || account.stage === 'inactive_ae_follow_up') && (
+                            <input type="checkbox" className="mt-0.5 accent-indigo-600 shrink-0" checked={selectedForCampaign.has(account.id)} onChange={() => {}} />
                           )}
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 block">{account.name}</span>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${stageColor}`}>{stageLabel}</span>
+                              {account.ownerName && (
+                                <span className="text-xs text-gray-400 truncate max-w-[80px]">{account.ownerName.split(' ')[0]}</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </button>
                     )
@@ -420,8 +512,8 @@ export default function Home() {
               )}
             </div>
 
-            {/* Inactive accounts toggle */}
-            <div className="p-3 border-t flex-shrink-0">
+            {/* Inactive accounts toggle + campaign trigger */}
+            <div className="p-3 border-t flex-shrink-0 space-y-2">
               <button
                 onClick={() => setShowInactive(v => !v)}
                 className={`flex items-center gap-2 text-xs transition-colors ${showInactive ? 'text-gray-700 font-medium' : 'text-gray-400 hover:text-gray-600'}`}
@@ -429,6 +521,27 @@ export default function Home() {
                 {showInactive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 {showInactive ? 'Hide inactive' : 'Show inactive'}
               </button>
+              {showInactive && (
+                <button
+                  onClick={() => { setCampaignMode(m => !m); setSelectedForCampaign(new Set()) }}
+                  className={`flex items-center gap-2 text-xs font-medium transition-colors ${campaignMode ? 'text-indigo-700' : 'text-indigo-500 hover:text-indigo-700'}`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {campaignMode ? 'Cancel selection' : 'Bulk reengage'}
+                </button>
+              )}
+              {campaignMode && selectedForCampaign.size > 0 && (
+                <button
+                  onClick={() => {
+                    setShowCampaignModal(true)
+                    setCampaignStep(1)
+                    loadCampaignStakeholders([...selectedForCampaign])
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700"
+                >
+                  Build Campaign ({selectedForCampaign.size})
+                </button>
+              )}
             </div>
           </div>
 
@@ -643,6 +756,224 @@ export default function Home() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Campaign Builder Modal */}
+      {showCampaignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!buildingCampaign) setShowCampaignModal(false) }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Reengagement Campaign</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {campaignResult ? 'Campaign created' : `${selectedForCampaign.size} account${selectedForCampaign.size !== 1 ? 's' : ''} selected · Step ${campaignStep} of 3`}
+                </p>
+              </div>
+              {!buildingCampaign && !campaignResult && (
+                <button onClick={() => setShowCampaignModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+
+              {/* Step 1: Review accounts */}
+              {campaignStep === 1 && !campaignResult && (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">Review the accounts selected for this campaign. These will each receive a personalized 4-stage reengagement plan.</p>
+                  <div className="space-y-2">
+                    {[...selectedForCampaign].map(id => {
+                      const account = accounts.find(a => a.id === id)
+                      return (
+                        <div key={id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{account?.name}</p>
+                            <p className="text-xs text-gray-400">{STAGE_LABELS[account?.stage] || account?.stage}</p>
+                          </div>
+                          <button onClick={() => setSelectedForCampaign(prev => { const n = new Set(prev); n.delete(id); return n })}
+                            className="text-gray-300 hover:text-red-400 p-1">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {loadingStakeholders && (
+                    <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Loading stakeholder data…
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2: Stakeholder review */}
+              {campaignStep === 2 && !campaignResult && (
+                <div className="space-y-5">
+                  <p className="text-sm text-gray-600">Review the AI-suggested stakeholder roles. These drive who gets contacted and how. Change any that are wrong — the plan updates automatically.</p>
+                  {[...selectedForCampaign].map(accountId => {
+                    const stData = campaignStakeholders[accountId] || {}
+                    const accountName = stData.accountName || accounts.find(a => a.id === accountId)?.name || accountId
+                    return (
+                      <div key={accountId} className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                          <p className="text-sm font-semibold text-gray-800">{accountName}</p>
+                          {stData.gongSummary?.lastCallDate && (
+                            <p className="text-xs text-gray-400 mt-0.5">Last call: {new Date(stData.gongSummary.lastCallDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {stData.gongSummary.callCount} calls total</p>
+                          )}
+                          {stData.gongSummary?.topPainPoints?.length > 0 && (
+                            <p className="text-xs text-indigo-600 mt-0.5">Pain points: {stData.gongSummary.topPainPoints.slice(0, 3).join(' · ')}</p>
+                          )}
+                        </div>
+                        {stData.stakeholders?.length === 0 && (
+                          <p className="text-xs text-amber-600 px-4 py-3">No stakeholders on file — add contacts in the account's Stakeholders tab before generating.</p>
+                        )}
+                        {stData.stakeholders?.map((s, i) => (
+                          <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                              <p className="text-xs text-gray-400">{s.title}</p>
+                              {s.rationale && <p className="text-xs text-gray-400 italic mt-0.5">{s.rationale}</p>}
+                            </div>
+                            <select
+                              value={s.confirmedRole || s.suggestedRole}
+                              onChange={e => {
+                                setCampaignStakeholders(prev => ({
+                                  ...prev,
+                                  [accountId]: {
+                                    ...prev[accountId],
+                                    stakeholders: prev[accountId].stakeholders.map((st, idx) =>
+                                      idx === i ? { ...st, confirmedRole: e.target.value } : st
+                                    )
+                                  }
+                                }))
+                              }}
+                              className={`text-xs px-2 py-1 rounded border font-medium focus:outline-none focus:ring-1 focus:ring-indigo-400 ${
+                                (s.confirmedRole || s.suggestedRole) === 'champion' ? 'bg-green-100 text-green-700 border-green-200' :
+                                (s.confirmedRole || s.suggestedRole) === 'exec_sponsor' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                (s.confirmedRole || s.suggestedRole) === 'promoter' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                (s.confirmedRole || s.suggestedRole) === 'detractor' ? 'bg-red-100 text-red-700 border-red-200' :
+                                'bg-gray-100 text-gray-600 border-gray-200'
+                              }`}
+                            >
+                              <option value="champion">Champion</option>
+                              <option value="exec_sponsor">Exec Sponsor</option>
+                              <option value="promoter">Promoter</option>
+                              <option value="detractor">Detractor</option>
+                              <option value="unknown">Unknown</option>
+                            </select>
+                            <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
+                              s.confidence === 'high' ? 'bg-green-50 text-green-600' :
+                              s.confidence === 'medium' ? 'bg-amber-50 text-amber-600' :
+                              'bg-gray-50 text-gray-400'
+                            }`}>{s.confidence}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Step 3: Assign + Build */}
+              {campaignStep === 3 && !campaignResult && (
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 mb-2">Assign campaign to</p>
+                    <select
+                      value={campaignAssignee?.id || ''}
+                      onChange={e => {
+                        const member = teamMembers.find(m => m.id === e.target.value)
+                        setCampaignAssignee(member ? { id: member.id, name: member.full_name || member.email, email: member.email } : null)
+                      }}
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                      <option value="">Select a rep…</option>
+                      {teamMembers.map(m => (
+                        <option key={m.id} value={m.id}>{m.full_name || m.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                    <p className="text-sm font-semibold text-indigo-800 mb-2">What gets created</p>
+                    <ul className="space-y-1.5 text-xs text-indigo-700">
+                      <li>• 4 tasks per account (Stage 1–4), sequenced across 14 days</li>
+                      <li>• Each task contains specific outreach by stakeholder role</li>
+                      <li>• Tasks appear in the rep's Campaigns tab with pace tracking</li>
+                      <li>• Information Room brief included (or URL if stored on account)</li>
+                    </ul>
+                  </div>
+                  {buildingCampaign && (
+                    <div className="flex items-center gap-3 text-sm text-gray-600 py-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                      Generating personalized plans… this takes ~20 seconds per account
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Result */}
+              {campaignResult && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <CheckCircle className="w-6 h-6 text-green-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-green-800">Campaign created</p>
+                      <p className="text-xs text-green-600">{campaignResult.totalTasksCreated} tasks created across {campaignResult.plans?.length} accounts · assigned to {campaignAssignee?.name}</p>
+                    </div>
+                  </div>
+                  {campaignResult.plans?.map((plan, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <p className="text-sm font-medium text-gray-900">{plan.accountName}</p>
+                      <span className="text-xs text-green-600 font-medium">{plan.tasksCreated} tasks</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!campaignResult && (
+              <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
+                <button
+                  onClick={() => { if (campaignStep > 1) setCampaignStep(s => s - 1) }}
+                  disabled={campaignStep === 1 || buildingCampaign}
+                  className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-40"
+                >
+                  Back
+                </button>
+                {campaignStep < 3 ? (
+                  <button
+                    onClick={() => setCampaignStep(s => s + 1)}
+                    disabled={loadingStakeholders || selectedForCampaign.size === 0}
+                    className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    onClick={buildCampaign}
+                    disabled={!campaignAssignee || buildingCampaign}
+                    className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50"
+                  >
+                    {buildingCampaign ? <><RefreshCw className="w-4 h-4 animate-spin" />Generating…</> : <><Sparkles className="w-4 h-4" />Build Campaign</>}
+                  </button>
+                )}
+              </div>
+            )}
+            {campaignResult && (
+              <div className="px-6 py-4 border-t bg-gray-50">
+                <button onClick={() => { setShowCampaignModal(false); setCampaignResult(null); setCampaignMode(false); setSelectedForCampaign(new Set()); setCampaignStep(1) }}
+                  className="w-full px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 font-medium">
+                  Done
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
