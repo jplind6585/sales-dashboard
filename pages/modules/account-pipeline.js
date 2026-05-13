@@ -31,21 +31,35 @@ import InformationGapsTab from '../../components/tabs/InformationGapsTab';
 import ContentTab from '../../components/tabs/ContentTab';
 import ChatTab from '../../components/tabs/ChatTab';
 
-const TIER_CONFIG = {
-  hot: { label: 'Hot', classes: 'bg-red-100 text-red-700', icon: '🔥' },
-  active: { label: 'Active', classes: 'bg-blue-100 text-blue-700', icon: '' },
-  watching: { label: 'Watching', classes: 'bg-yellow-100 text-yellow-700', icon: '👁' },
-  archived: { label: 'Archived', classes: 'bg-gray-100 text-gray-500', icon: '—' },
-}
+const STAGE_ORDER = [
+  'active_pursuit',
+  'qualifying',
+  'solution_validation',
+  'proposal',
+  'legal',
+  'demo',
+  'intro_scheduled',
+  'inactive_sdr_follow_up',
+  'inactive_ae_follow_up',
+  'closed_won',
+  'closed_lost',
+  'won',
+  'lost',
+]
+
+const INACTIVE_STAGES = new Set(['inactive_sdr_follow_up', 'inactive_ae_follow_up'])
+const CLOSED_STAGES = new Set(['closed_won', 'closed_lost', 'won', 'lost'])
 
 const STAGE_LABELS = {
+  active_pursuit: 'Active Pursuit',
   qualifying: 'Qualifying',
   intro_scheduled: 'Intro Sched.',
-  active_pursuit: 'Active',
   demo: 'Demo',
   solution_validation: 'Sol. Val.',
   proposal: 'Proposal',
   legal: 'Legal',
+  inactive_sdr_follow_up: 'Inactive SDR',
+  inactive_ae_follow_up: 'Inactive AE',
   won: 'Won',
   lost: 'Lost',
   closed_won: 'Won',
@@ -53,13 +67,15 @@ const STAGE_LABELS = {
 }
 
 const STAGE_COLORS = {
-  qualifying: 'bg-gray-100 text-gray-600',
-  intro_scheduled: 'bg-blue-100 text-blue-700',
   active_pursuit: 'bg-indigo-100 text-indigo-700',
+  qualifying: 'bg-blue-100 text-blue-700',
+  intro_scheduled: 'bg-sky-100 text-sky-700',
   demo: 'bg-purple-100 text-purple-700',
   solution_validation: 'bg-orange-100 text-orange-700',
   proposal: 'bg-yellow-100 text-yellow-700',
   legal: 'bg-pink-100 text-pink-700',
+  inactive_sdr_follow_up: 'bg-gray-100 text-gray-500',
+  inactive_ae_follow_up: 'bg-gray-100 text-gray-500',
   won: 'bg-green-100 text-green-700',
   lost: 'bg-red-100 text-red-500',
   closed_won: 'bg-green-100 text-green-700',
@@ -98,9 +114,8 @@ export default function Home() {
   // Sidebar filter state
   const [search, setSearch] = useState('');
   const [filterStage, setFilterStage] = useState('');
-  const [filterTier, setFilterTier] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   // Reengagement state
   const [reengageLoading, setReengageLoading] = useState(false);
@@ -131,17 +146,22 @@ export default function Home() {
     return names
   }, [accounts])
 
-  // Derive unique stages for filter dropdown
+  // Derive unique stages in pipeline order
   const uniqueStages = useMemo(() => {
-    return [...new Set(accounts.map(a => a.stage).filter(Boolean))].sort()
+    const present = new Set(accounts.map(a => a.stage).filter(Boolean))
+    return STAGE_ORDER.filter(s => present.has(s))
   }, [accounts])
 
   // Filter + search accounts
   const filteredAccounts = useMemo(() => {
     return accounts.filter(a => {
-      if (!showArchived && a.tier === 'archived') return false
-      if (filterTier && a.tier !== filterTier) return false
-      if (filterStage && a.stage !== filterStage) return false
+      // By default hide inactive + closed stages unless toggled or explicitly filtered
+      if (!filterStage) {
+        if (CLOSED_STAGES.has(a.stage)) return false
+        if (!showInactive && INACTIVE_STAGES.has(a.stage)) return false
+      } else {
+        if (a.stage !== filterStage) return false
+      }
       if (filterOwner && a.ownerName !== filterOwner) return false
       if (search) {
         const q = search.toLowerCase()
@@ -149,10 +169,10 @@ export default function Home() {
       }
       return true
     })
-  }, [accounts, search, filterStage, filterTier, filterOwner, showArchived])
+  }, [accounts, search, filterStage, filterOwner, showInactive])
 
-  const activeCount = useMemo(() => accounts.filter(a => a.tier !== 'archived').length, [accounts])
-  const hasFilters = search || filterStage || filterTier || filterOwner
+  const activeCount = filteredAccounts.length
+  const hasFilters = search || filterStage || filterOwner
 
   // Select account + load detail
   const handleSelectAccount = useCallback(async (account) => {
@@ -277,7 +297,6 @@ export default function Home() {
     }
   };
 
-  const tierCfg = selectedAccount ? (TIER_CONFIG[selectedAccount.tier] || TIER_CONFIG.active) : null
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -319,7 +338,7 @@ export default function Home() {
                 </h2>
                 {hasFilters && (
                   <button
-                    onClick={() => { setSearch(''); setFilterStage(''); setFilterTier(''); setFilterOwner('') }}
+                    onClick={() => { setSearch(''); setFilterStage(''); setFilterOwner('') }}
                     className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
                   >
                     <X className="w-3 h-3" /> Clear
@@ -346,21 +365,10 @@ export default function Home() {
                   onChange={e => setFilterStage(e.target.value)}
                   className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
                 >
-                  <option value="">Stage</option>
+                  <option value="">All stages</option>
                   {uniqueStages.map(s => (
                     <option key={s} value={s}>{STAGE_LABELS[s] || s}</option>
                   ))}
-                </select>
-                <select
-                  value={filterTier}
-                  onChange={e => setFilterTier(e.target.value)}
-                  className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                >
-                  <option value="">Tier</option>
-                  <option value="hot">Hot</option>
-                  <option value="active">Active</option>
-                  <option value="watching">Watching</option>
-                  <option value="archived">Archived</option>
                 </select>
                 {uniqueOwners.length > 0 && (
                   <select
@@ -386,7 +394,6 @@ export default function Home() {
               ) : (
                 <div className="space-y-1">
                   {filteredAccounts.map(account => {
-                    const tier = TIER_CONFIG[account.tier] || TIER_CONFIG.active
                     const stageColor = STAGE_COLORS[account.stage] || 'bg-gray-100 text-gray-600'
                     const stageLabel = STAGE_LABELS[account.stage] || account.stage || '—'
                     return (
@@ -399,10 +406,7 @@ export default function Home() {
                             : 'hover:bg-gray-50 border border-transparent'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-1">
-                          <span className="font-medium text-sm text-gray-900 leading-tight line-clamp-2">{account.name}</span>
-                          {tier.icon && <span className="flex-shrink-0 text-xs mt-0.5">{tier.icon}</span>}
-                        </div>
+                        <span className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 block">{account.name}</span>
                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                           <span className={`text-xs px-1.5 py-0.5 rounded ${stageColor}`}>{stageLabel}</span>
                           {account.ownerName && (
@@ -416,14 +420,14 @@ export default function Home() {
               )}
             </div>
 
-            {/* Show archived toggle */}
+            {/* Inactive accounts toggle */}
             <div className="p-3 border-t flex-shrink-0">
               <button
-                onClick={() => setShowArchived(v => !v)}
-                className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                onClick={() => setShowInactive(v => !v)}
+                className={`flex items-center gap-2 text-xs transition-colors ${showInactive ? 'text-gray-700 font-medium' : 'text-gray-400 hover:text-gray-600'}`}
               >
-                {showArchived ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                {showArchived ? 'Hide archived' : 'Show archived'}
+                {showInactive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showInactive ? 'Hide inactive' : 'Show inactive'}
               </button>
             </div>
           </div>
@@ -445,17 +449,11 @@ export default function Home() {
                     <div className="flex-1 min-w-0 mr-4">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h2 className="text-2xl font-bold">{selectedAccount.name}</h2>
-                        {/* Tier selector */}
-                        <select
-                          value={selectedAccount.tier || 'active'}
-                          onChange={e => store.updateAccount(selectedAccount.id, { tier: e.target.value })}
-                          className={`text-xs px-2 py-1 rounded border-0 font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 ${tierCfg?.classes || 'bg-blue-100 text-blue-700'}`}
-                        >
-                          <option value="hot">🔥 Hot</option>
-                          <option value="active">Active</option>
-                          <option value="watching">👁 Watching</option>
-                          <option value="archived">Archived</option>
-                        </select>
+                        {selectedAccount.stage && (
+                          <span className={`text-xs px-2 py-1 rounded font-medium ${STAGE_COLORS[selectedAccount.stage] || 'bg-gray-100 text-gray-600'}`}>
+                            {STAGE_LABELS[selectedAccount.stage] || selectedAccount.stage}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         {selectedAccount.url && (
