@@ -6,7 +6,7 @@ import {
   Sparkles, Send, Phone, TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertCircle, CheckCircle, Zap, Users,
   EyeOff, Eye, Info, Clock, Mail, Copy, BookOpen,
-  PlayCircle, Flag, FileText, Building2,
+  PlayCircle, Flag, FileText, Building2, MessageSquare, Loader2,
 } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
@@ -117,9 +117,12 @@ function ActionTypeChip({ type }) {
   )
 }
 
-function KPICard({ label, value, sub, valueColor = 'text-gray-900', delta }) {
+function KPICard({ label, value, sub, valueColor = 'text-gray-900', delta, onClick }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-1">
+    <div
+      className={`bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-1 ${onClick ? 'cursor-pointer hover:border-green-400 hover:shadow-sm transition-all' : ''}`}
+      onClick={onClick}
+    >
       <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">{label}</p>
       <div className="flex items-baseline gap-2">
         <p className={`text-2xl font-bold leading-tight ${valueColor}`}>{value}</p>
@@ -219,6 +222,11 @@ export default function CallIntelligence() {
   const [executedMap, setExecutedMap] = useState({}) // idx → { taskId, url }
   const [dealRisks, setDealRisks] = useState([])
   const [loadingRisks, setLoadingRisks] = useState(false)
+  const [signalBrief, setSignalBrief] = useState(null)
+  const [loadingSignalBrief, setLoadingSignalBrief] = useState(false)
+  const [metricDrillDown, setMetricDrillDown] = useState(null) // { metric, label, unit }
+  const [managerNoteText, setManagerNoteText] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
   const [queuedCallIds, setQueuedCallIds] = useState(() => {
     // Restore queued set from sessionStorage on mount (survives same-tab navigation)
     try { return new Set(JSON.parse(sessionStorage.getItem('banner_intel_queued') || '[]')) } catch { return new Set() }
@@ -249,9 +257,10 @@ export default function CallIntelligence() {
       setSalesReps(new Set(defaults))
       localStorage.setItem('banner_intel_sales_reps', JSON.stringify(defaults))
     }
-    fetchCalls(); fetchAggregate(); fetchSalesProcess(); fetchNarrativeHistory(); fetchRisks()
+    fetchCalls(); fetchAggregate(); fetchSalesProcess(); fetchNarrativeHistory(); fetchRisks(); fetchSignalBrief()
   }, [])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
+  useEffect(() => { setManagerNoteText('') }, [selectedCall?.gongCallId])
 
   // Restore polling if the user navigated away mid-analysis then came back
   useEffect(() => {
@@ -337,6 +346,54 @@ export default function CallIntelligence() {
       if (data.success) setDealRisks(data.risks || [])
     } catch { /* silent */ }
     finally { setLoadingRisks(false) }
+  }
+
+  async function fetchSignalBrief() {
+    try {
+      const cached = localStorage.getItem('banner_signal_brief')
+      if (cached) {
+        const { brief, cachedAt } = JSON.parse(cached)
+        if (Date.now() - cachedAt < 4 * 60 * 60 * 1000) { // 4h TTL
+          setSignalBrief(brief)
+          return
+        }
+      }
+    } catch { /* ignore */ }
+    // No fresh cache — generate
+    await generateSignalBrief(false)
+  }
+
+  async function generateSignalBrief(showLoading = true) {
+    if (showLoading) setLoadingSignalBrief(true)
+    try {
+      const res = await fetch('/api/gong/signal-brief', { method: 'POST' })
+      const data = await res.json()
+      if (data.success && data.signalBrief) {
+        setSignalBrief(data.signalBrief)
+        try {
+          localStorage.setItem('banner_signal_brief', JSON.stringify({ brief: data.signalBrief, cachedAt: Date.now() }))
+        } catch { /* ignore */ }
+      }
+    } catch { /* silent */ }
+    finally { setLoadingSignalBrief(false) }
+  }
+
+  async function saveManagerNote(callId, note) {
+    setSavingNote(true)
+    try {
+      const res = await fetch('/api/gong/manager-note', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId, note }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const updatedAnalysis = data.updatedAnalysis
+        setCalls(prev => prev.map(c => c.gongCallId === callId ? { ...c, analysis: updatedAnalysis } : c))
+        setSelectedCall(prev => prev ? { ...prev, analysis: updatedAnalysis } : prev)
+      }
+    } catch { /* silent */ }
+    finally { setSavingNote(false) }
   }
 
   async function fetchNarrativeHistory() {
@@ -1028,22 +1085,26 @@ export default function CallIntelligence() {
                     const tot = (prior.positive || 0) + (prior.neutral || 0) + (prior.negative || 0)
                     const priorPct = tot > 0 ? Math.round((prior.positive || 0) / tot * 100) : null
                     return <PeriodDelta current={positivePct} prior={priorPct} format="percent" direction="higher_better" />
-                  })() : null} />
+                  })() : null}
+                  onClick={() => setMetricDrillDown({ metric: 'sentiment', label: 'Positive Sentiment', unit: '%' })} />
                 <KPICard label="Avg ICP Fit"
                   value={aggregate.avg_icp_score ? `${aggregate.avg_icp_score}/10` : '—'}
                   sub={aggregate.avg_icp_score ? (aggregate.avg_icp_score >= 7 ? 'Strong pipeline fit' : aggregate.avg_icp_score >= 5 ? 'Mixed fit — review ICP' : 'Weak fit — off-ICP volume') : null}
                   valueColor={aggregate.avg_icp_score >= 7 ? 'text-green-600' : aggregate.avg_icp_score >= 5 ? 'text-amber-600' : 'text-red-600'}
-                  delta={priorAggregate?.avg_icp_score ? <PeriodDelta current={aggregate.avg_icp_score} prior={priorAggregate.avg_icp_score} format="score" direction="higher_better" /> : null} />
+                  delta={priorAggregate?.avg_icp_score ? <PeriodDelta current={aggregate.avg_icp_score} prior={priorAggregate.avg_icp_score} format="score" direction="higher_better" /> : null}
+                  onClick={() => setMetricDrillDown({ metric: 'icp_score', label: 'Avg ICP Fit', unit: '/10' })} />
                 <KPICard label="Avg Discovery"
                   value={aggregate.avg_discovery_score ? `${aggregate.avg_discovery_score}/10` : '—'}
                   sub={aggregate.avg_discovery_score ? (aggregate.avg_discovery_score >= 7 ? 'Solid MEDDICC coverage' : 'Discovery gaps present') : null}
                   valueColor={aggregate.avg_discovery_score >= 7 ? 'text-green-600' : aggregate.avg_discovery_score >= 5 ? 'text-amber-600' : 'text-red-600'}
-                  delta={priorAggregate?.avg_discovery_score ? <PeriodDelta current={aggregate.avg_discovery_score} prior={priorAggregate.avg_discovery_score} format="score" direction="higher_better" /> : null} />
+                  delta={priorAggregate?.avg_discovery_score ? <PeriodDelta current={aggregate.avg_discovery_score} prior={priorAggregate.avg_discovery_score} format="score" direction="higher_better" /> : null}
+                  onClick={() => setMetricDrillDown({ metric: 'discovery_score', label: 'Avg Discovery', unit: '/10' })} />
                 <KPICard label="Avg Talk Ratio"
                   value={aggregate.avg_rep_talk_ratio ? `${aggregate.avg_rep_talk_ratio}%` : '—'}
                   sub="rep speaking time"
                   valueColor={aggregate.avg_rep_talk_ratio <= 55 ? 'text-green-600' : aggregate.avg_rep_talk_ratio <= 65 ? 'text-amber-600' : 'text-red-600'}
-                  delta={priorAggregate?.avg_rep_talk_ratio ? <PeriodDelta current={aggregate.avg_rep_talk_ratio} prior={priorAggregate.avg_rep_talk_ratio} format="percent" direction="lower_better" /> : null} />
+                  delta={priorAggregate?.avg_rep_talk_ratio ? <PeriodDelta current={aggregate.avg_rep_talk_ratio} prior={priorAggregate.avg_rep_talk_ratio} format="percent" direction="lower_better" /> : null}
+                  onClick={() => setMetricDrillDown({ metric: 'rep_talk_ratio', label: 'Avg Talk Ratio', unit: '%' })} />
               </div>
             )}
 
@@ -1080,6 +1141,123 @@ export default function CallIntelligence() {
                   {/* ── Overview tab ── */}
                   {activeTab === 'overview' && aggregate && (
                     <div className="space-y-6">
+
+                      {/* Signal Brief */}
+                      {(signalBrief || loadingSignalBrief) && (
+                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-purple-50">
+                            <div className="flex items-center gap-2">
+                              <TrendingUp className="w-4 h-4 text-indigo-600" />
+                              <span className="text-sm font-semibold text-gray-800">Signal Brief</span>
+                              <span className="text-xs text-gray-400">AI trend analysis</span>
+                            </div>
+                            <button onClick={() => generateSignalBrief(true)} disabled={loadingSignalBrief}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-50">
+                              <RefreshCw className={`w-3 h-3 ${loadingSignalBrief ? 'animate-spin' : ''}`} />
+                              {loadingSignalBrief ? 'Generating…' : 'Refresh'}
+                            </button>
+                          </div>
+                          {loadingSignalBrief && !signalBrief && (
+                            <div className="flex items-center gap-2 px-5 py-6 text-sm text-gray-400">
+                              <Loader2 className="w-4 h-4 animate-spin" /> Analyzing trends across all calls…
+                            </div>
+                          )}
+                          {signalBrief && (
+                            <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+                              {/* Direction */}
+                              {signalBrief.direction?.length > 0 && (
+                                <div className="col-span-full">
+                                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Direction</p>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {signalBrief.direction.map((d, i) => (
+                                      <div key={i} className="bg-gray-50 rounded-lg p-3">
+                                        <p className="text-xs text-gray-500 mb-1">{d.metric}</p>
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                          <span className="text-base font-bold text-gray-900">{d.current_value}</span>
+                                          <span className={`text-xs font-medium flex items-center gap-0.5 ${d.trend === 'up' ? 'text-green-600' : d.trend === 'down' ? 'text-red-500' : 'text-gray-400'}`}>
+                                            {d.trend === 'up' ? '↑' : d.trend === 'down' ? '↓' : '→'} {d.change}
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-gray-400 leading-tight">{d.context}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Warning Signals */}
+                              {signalBrief.warning_signals?.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-2 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Warning Signals</p>
+                                  <ul className="space-y-1.5">
+                                    {signalBrief.warning_signals.map((w, i) => (
+                                      <li key={i} className="text-sm text-gray-700 flex items-start gap-2"><span className="text-red-400 mt-0.5 shrink-0">•</span>{w}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {/* Objection Themes */}
+                              {signalBrief.objection_themes?.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Objection Themes</p>
+                                  <div className="space-y-2">
+                                    {signalBrief.objection_themes.map((o, i) => (
+                                      <div key={i} className="flex items-start gap-2">
+                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 mt-0.5 ${o.trend === 'increasing' ? 'bg-red-100 text-red-700' : o.trend === 'decreasing' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                          {o.count} {o.trend === 'increasing' ? '↑' : o.trend === 'decreasing' ? '↓' : '→'}
+                                        </span>
+                                        <div>
+                                          <p className="text-sm font-medium text-gray-800">{o.theme}</p>
+                                          {o.note && <p className="text-xs text-gray-400">{o.note}</p>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {/* What's Working */}
+                              {signalBrief.what_working?.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2 flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> What's Working</p>
+                                  <ul className="space-y-1.5">
+                                    {signalBrief.what_working.map((w, i) => (
+                                      <li key={i} className="text-sm text-gray-700 flex items-start gap-2"><span className="text-green-500 mt-0.5 shrink-0">•</span>{w}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {/* Quick Hits */}
+                              {signalBrief.quick_hits?.length > 0 && (
+                                <div className="col-span-full border-t border-gray-100 pt-4">
+                                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Quick Hits</p>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    {signalBrief.quick_hits.map((h, i) => (
+                                      <div key={i} className={`rounded-lg p-3 border ${h.type === 'structural' ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
+                                        <span className={`text-xs font-semibold uppercase tracking-wide ${h.type === 'structural' ? 'text-purple-600' : 'text-blue-600'}`}>{h.type}</span>
+                                        <p className="text-sm font-medium text-gray-900 mt-1 mb-1">{h.action}</p>
+                                        <p className="text-xs text-gray-500">{h.impact}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!signalBrief && !loadingSignalBrief && (
+                        <div className="flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <TrendingUp className="w-4 h-4 text-indigo-600" />
+                            <span className="text-sm font-medium text-gray-800">Signal Brief</span>
+                            <span className="text-xs text-gray-400">AI trend analysis — direction, warnings, objection themes, quick hits</span>
+                          </div>
+                          <button onClick={() => generateSignalBrief(true)} disabled={loadingSignalBrief}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-indigo-700 bg-white border border-indigo-300 rounded-lg hover:bg-indigo-50 font-medium disabled:opacity-50">
+                            <Sparkles className="w-3.5 h-3.5" /> Generate
+                          </button>
+                        </div>
+                      )}
 
                       {/* Action cards */}
                       {aggregate.weekly_actions?.length > 0 && (
@@ -1895,6 +2073,170 @@ export default function CallIntelligence() {
         </div>
       )}
 
+      {/* Metric drill-down panel */}
+      {metricDrillDown && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setMetricDrillDown(null)} />
+          <div className="relative bg-white w-full max-w-xl h-full overflow-y-auto shadow-2xl flex flex-col">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+              <div>
+                <h2 className="font-bold text-gray-900">{metricDrillDown.label}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{analyzedCalls.length} calls · click any point to open call detail</p>
+              </div>
+              <button onClick={() => setMetricDrillDown(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-6 flex-1">
+              {(() => {
+                const metric = metricDrillDown.metric
+                const points = analyzedCalls
+                  .filter(c => {
+                    if (metric === 'sentiment') return c.analysis?.sentiment != null
+                    return c.analysis?.[metric] != null
+                  })
+                  .map(c => ({
+                    call: c,
+                    date: new Date(c.date || 0),
+                    value: metric === 'sentiment'
+                      ? (c.analysis.sentiment === 'positive' ? 1 : c.analysis.sentiment === 'neutral' ? 0.5 : 0)
+                      : c.analysis[metric],
+                  }))
+                  .sort((a, b) => a.date - b.date)
+
+                if (!points.length) return <p className="text-sm text-gray-400">No data for this metric yet.</p>
+
+                const minDate = points[0].date
+                const maxDate = points[points.length - 1].date
+                const dateRange = maxDate - minDate || 1
+                const allValues = points.map(p => p.value)
+                const minVal = Math.min(...allValues)
+                const maxVal = Math.max(...allValues)
+                const valRange = maxVal - minVal || 1
+                const W = 500, H = 180, PAD = 20
+
+                let buckets, bucketLabels
+                if (metric === 'sentiment') {
+                  buckets = [
+                    points.filter(p => p.call.analysis?.sentiment === 'positive').length,
+                    points.filter(p => p.call.analysis?.sentiment === 'neutral').length,
+                    points.filter(p => p.call.analysis?.sentiment === 'negative').length,
+                  ]
+                  bucketLabels = ['Positive', 'Neutral', 'Negative']
+                } else {
+                  buckets = [
+                    points.filter(p => p.value <= 3).length,
+                    points.filter(p => p.value > 3 && p.value <= 6).length,
+                    points.filter(p => p.value > 6).length,
+                  ]
+                  bucketLabels = ['1–3', '4–6', '7–10']
+                }
+                const maxBucket = Math.max(...buckets, 1)
+
+                const bucketColors = metric === 'sentiment'
+                  ? ['bg-green-400', 'bg-gray-300', 'bg-red-400']
+                  : ['bg-red-400', 'bg-amber-400', 'bg-green-400']
+
+                const avg = metric === 'sentiment'
+                  ? `${Math.round(buckets[0] / points.length * 100)}% positive`
+                  : (allValues.reduce((a, b) => a + b, 0) / allValues.length).toFixed(1) + (metricDrillDown.unit || '')
+
+                return (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trend over time</p>
+                        <span className="text-xs text-gray-500">Avg: <span className="font-semibold text-gray-800">{avg}</span></span>
+                      </div>
+                      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
+                        {[0, 0.25, 0.5, 0.75, 1].map(t => (
+                          <line key={t} x1={PAD} y1={PAD + (1 - t) * (H - 2 * PAD)} x2={W - PAD} y2={PAD + (1 - t) * (H - 2 * PAD)} stroke="#f3f4f6" strokeWidth="1" />
+                        ))}
+                        {points.length > 1 && (
+                          <polyline
+                            points={points.map(p => {
+                              const x = PAD + ((p.date - minDate) / dateRange) * (W - 2 * PAD)
+                              const y = PAD + (1 - (p.value - minVal) / valRange) * (H - 2 * PAD)
+                              return `${x},${y}`
+                            }).join(' ')}
+                            fill="none" stroke="#d1fae5" strokeWidth="2"
+                          />
+                        )}
+                        {points.map((p, i) => {
+                          const x = PAD + ((p.date - minDate) / dateRange) * (W - 2 * PAD)
+                          const y = PAD + (1 - (p.value - minVal) / valRange) * (H - 2 * PAD)
+                          const color = metric === 'sentiment'
+                            ? p.call.analysis?.sentiment === 'positive' ? '#16a34a'
+                              : p.call.analysis?.sentiment === 'neutral' ? '#9ca3af' : '#ef4444'
+                            : p.value >= 7 ? '#16a34a' : p.value >= 4 ? '#f59e0b' : '#ef4444'
+                          return (
+                            <circle
+                              key={i} cx={x} cy={y} r="5"
+                              fill={color} fillOpacity="0.85" stroke="white" strokeWidth="1.5"
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => { setSelectedCall(p.call); setMetricDrillDown(null) }}
+                            >
+                              <title>{p.call.title} · {p.date.toLocaleDateString()} · {metric === 'sentiment' ? p.call.analysis?.sentiment : p.value}</title>
+                            </circle>
+                          )
+                        })}
+                      </svg>
+                      <div className="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>{minDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span>{maxDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Distribution</p>
+                      <div className="space-y-2">
+                        {bucketLabels.map((label, i) => (
+                          <div key={i} className="flex items-center gap-3">
+                            <span className="text-xs text-gray-600 w-16 shrink-0">{label}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2">
+                              <div className={`${bucketColors[i]} h-2 rounded-full`} style={{ width: `${maxBucket > 0 ? (buckets[i] / maxBucket) * 100 : 0}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-500 w-6 text-right">{buckets[i]}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">All calls (click to open)</p>
+                      <div className="space-y-1">
+                        {[...points].sort((a, b) => b.value - a.value).map((p, i) => (
+                          <button
+                            key={i}
+                            onClick={() => { setSelectedCall(p.call); setMetricDrillDown(null) }}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-green-50 text-left"
+                          >
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded shrink-0 ${
+                              metric === 'sentiment'
+                                ? p.call.analysis?.sentiment === 'positive' ? 'bg-green-100 text-green-700'
+                                  : p.call.analysis?.sentiment === 'neutral' ? 'bg-gray-100 text-gray-600'
+                                  : 'bg-red-100 text-red-700'
+                                : p.value >= 7 ? 'bg-green-100 text-green-700'
+                                  : p.value >= 4 ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-red-100 text-red-700'
+                            }`}>
+                              {metric === 'sentiment' ? p.call.analysis?.sentiment : p.value}
+                            </span>
+                            <span className="flex-1 text-sm text-gray-800 truncate">{p.call.title}</span>
+                            <span className="text-xs text-gray-400 shrink-0">{p.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            {p.call.analysis?.manager_note && (
+                              <MessageSquare className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Call detail drawer */}
       {selectedCall && (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -2075,6 +2417,51 @@ export default function CallIntelligence() {
                     <p className="text-xs text-gray-400 italic">Click "Get Coaching" to generate specific feedback for this call.</p>
                   )}
                 </div>
+
+                {/* Manager Note — manager-only */}
+                {user?.role === 'manager' && (
+                  <div className="border-t border-gray-100 pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" /> Manager Note
+                      </h3>
+                    </div>
+                    {selectedCall.analysis?.manager_note && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                        <p className="text-xs text-amber-700 font-semibold mb-1">Override note</p>
+                        <p className="text-sm text-amber-900 leading-relaxed">{selectedCall.analysis.manager_note}</p>
+                        {selectedCall.analysis.manager_note_at && (
+                          <p className="text-xs text-amber-500 mt-1">{new Date(selectedCall.analysis.manager_note_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                        )}
+                      </div>
+                    )}
+                    <textarea
+                      value={managerNoteText || selectedCall.analysis?.manager_note || ''}
+                      onChange={e => setManagerNoteText(e.target.value)}
+                      onFocus={e => { if (!managerNoteText) setManagerNoteText(selectedCall.analysis?.manager_note || '') }}
+                      placeholder="Add context that overrides or annotates the AI analysis…"
+                      rows={3}
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                    />
+                    <div className="flex items-center justify-between mt-2">
+                      {selectedCall.analysis?.manager_note && (
+                        <button
+                          onClick={() => { setManagerNoteText(''); saveManagerNote(selectedCall.gongCallId, '') }}
+                          className="text-xs text-gray-400 hover:text-red-500"
+                        >
+                          Clear note
+                        </button>
+                      )}
+                      <button
+                        onClick={() => saveManagerNote(selectedCall.gongCallId, managerNoteText)}
+                        disabled={savingNote || !managerNoteText?.trim()}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        {savingNote ? 'Saving…' : 'Save Note'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
