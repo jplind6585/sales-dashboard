@@ -5,6 +5,9 @@
     },
     "pages/api/cron/enrich-calls-bulk.js": {
       "maxDuration": 300
+    },
+    "pages/api/cron/nightly-intel.js": {
+      "maxDuration": 300
     }
   },
   "crons": [

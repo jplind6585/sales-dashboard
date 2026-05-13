@@ -19,6 +19,31 @@ const PRIORITY_COLORS = {
 }
 
 const BLOCKLIST_KEY = 'email_sender_blocklist'
+const SUGGESTIONS_CACHE_KEY = 'smart_suggestions_cache'
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
+
+function loadSuggestionsCache() {
+  try {
+    const raw = localStorage.getItem(SUGGESTIONS_CACHE_KEY)
+    if (!raw) return null
+    const cached = JSON.parse(raw)
+    if (Date.now() - cached.cachedAt > CACHE_TTL_MS) return null
+    return cached
+  } catch {
+    return null
+  }
+}
+
+function saveSuggestionsCache(suggestions, calendarEvents, responseMetrics) {
+  try {
+    localStorage.setItem(SUGGESTIONS_CACHE_KEY, JSON.stringify({
+      suggestions,
+      calendarEvents,
+      responseMetrics,
+      cachedAt: Date.now(),
+    }))
+  } catch {}
+}
 
 function loadBlocklist() {
   try {
@@ -336,13 +361,18 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
       if (!emailRes.ok) throw new Error(emailData.error || 'Gmail sync failed')
       if (!calRes.ok) throw new Error(calData.error || 'Calendar sync failed')
 
-      setEmailSuggestions(emailData.suggestions || [])
-      setResponseMetrics(emailData.responseMetrics || null)
-      setCalendarEvents(calData.salesMeetings || [])
+      const suggestions = emailData.suggestions || []
+      const meetings = calData.salesMeetings || []
+      const metrics = emailData.responseMetrics || null
+
+      setEmailSuggestions(suggestions)
+      setResponseMetrics(metrics)
+      setCalendarEvents(meetings)
       setDismissedEmails(new Set())
       setAddedEmails(new Set())
       setAddedCalendar(new Set())
       setExpandedEmailIndex(null)
+      saveSuggestionsCache(suggestions, meetings, metrics)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -354,7 +384,15 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
     if (providerToken && !hasSyncedRef.current) {
       hasSyncedRef.current = true
       setOpen(true)
-      sync()
+
+      const cached = loadSuggestionsCache()
+      if (cached) {
+        setEmailSuggestions(cached.suggestions)
+        setCalendarEvents(cached.calendarEvents)
+        setResponseMetrics(cached.responseMetrics)
+      } else {
+        sync()
+      }
     }
   }, [providerToken])
 

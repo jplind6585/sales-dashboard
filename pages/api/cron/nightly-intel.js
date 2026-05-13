@@ -41,8 +41,8 @@ export default async function handler(req, res) {
 
   // Quick mode (?quick=1): short lookback for frequent intraday runs
   const isQuick = req.query.quick === '1';
-  const lookbackHours = isQuick ? 8 : 30 * 24;
-  const callCap = isQuick ? 5 : 10;
+  const lookbackHours = isQuick ? 8 : 90 * 24;
+  const callCap = isQuick ? 10 : 150;
 
   // 1. Fetch recent calls from Gong
   const toDate = new Date();
