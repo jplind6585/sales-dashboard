@@ -10,23 +10,23 @@ const HS_API_BASE = 'https://api.hubapi.com';
 const SALES_PIPELINE_ID = '663206213';
 
 const STAGE_MAP = {
-  '973866334':  'qualifying',           // Pre Pursuit
-  '1268649029': 'qualifying',           // Inactive Pursuit - SDR Follow Up
-  '973866335':  'qualifying',           // Inactive Pursuit - AE Follow Up
-  '973866336':  'qualifying',           // Active Pursuit
-  '973866337':  'qualifying',           // Qualify
-  '973866339':  'solution_validation',  // Solution Validation
-  '973818959':  'proposal',             // Proposal
-  '973818960':  'legal',               // Legal
-  '973818961':  'won',                  // Close Won
-  '973818962':  'lost',                 // Closed Lost - DQ
-  '974622038':  'lost',                 // Churned
-  'closedlost': 'lost',                 // Closed Lost - Remarketing
-  '159786509':  'lost',                 // Closed Lost - AE Follow Up
-  '133539465':  'lost',                 // Disqualified - Will Never Be a Deal
-  '147472456':  'qualifying',           // Intro Call - No Show/Rescheduling
-  '1176174939': 'qualifying',           // Connected - Re-engage
-  '1176174940': 'lost',                 // Connected - DQ
+  '973866334':  'qualifying',              // Pre Pursuit
+  '1268649029': 'inactive_sdr_follow_up', // Inactive Pursuit - SDR Follow Up
+  '973866335':  'inactive_ae_follow_up',  // Inactive Pursuit - AE Follow Up
+  '973866336':  'active_pursuit',         // Active Pursuit
+  '973866337':  'qualifying',             // Qualify
+  '973866339':  'solution_validation',    // Solution Validation
+  '973818959':  'proposal',               // Proposal
+  '973818960':  'legal',                  // Legal
+  '973818961':  'closed_won',             // Close Won
+  '973818962':  'closed_lost',            // Closed Lost - DQ
+  '974622038':  'closed_lost',            // Churned
+  'closedlost': 'closed_lost',            // Closed Lost - Remarketing
+  '159786509':  'closed_lost',            // Closed Lost - AE Follow Up
+  '133539465':  'closed_lost',            // Disqualified - Will Never Be a Deal
+  '147472456':  'qualifying',             // Intro Call - No Show/Rescheduling
+  '1176174939': 'inactive_sdr_follow_up', // Connected - Re-engage
+  '1176174940': 'closed_lost',            // Connected - DQ
 };
 
 // Add entries here as reps sign up to the platform
