@@ -165,6 +165,116 @@ const TASK_PLAYBOOKS = [
       return lines.join('\n')
     },
   },
+  {
+    id: 'sdr_intro_booked',
+    match: task => /intro|book/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1000,
+    buildIntro(task) {
+      const account = task.account?.name || 'this account'
+      const lines = [`You booked an intro with **${account}**. Here's what to do before and after.\n`]
+      lines.push(`**Before the meeting:**\n• Send confirmation email with agenda (I can draft this)\n• Research the company — pull any prior call history\n• Identify potential decision-maker and champion hypothesis\n• Confirm internal attendees`)
+      lines.push(`\n**After the meeting:**\n• Send follow-up within 2 hours (I can draft this)\n• Log call notes and update deal stage\n• Confirm next step is on calendar\n• Tag AE if this is a handoff`)
+      lines.push(`\nWhat do you need? I can draft the email, prep the talking points, or run through objections.`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'sdr_no_show',
+    match: task => /no.?show|missed/i.test(task.title || ''),
+    fetchContext: null,
+    maxTokens: 1000,
+    buildIntro(task) {
+      const account = task.account?.name || 'this account'
+      const lines = [`Looks like **${account}** didn't show. Here's how to recover fast.\n`]
+      lines.push(`• Send a "missed you" email within 1 hour (I can draft this)\n• Try calling if you have a mobile\n• Re-send calendar invite with 3 new time slots\n• If 2nd no-show, flag for escalation`)
+      lines.push(`\nWhat do you need? I can draft the email, prep the talking points, or run through objections.`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'ae_intro',
+    match: task => /intro/i.test(task.title || '') && !/book/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1000,
+    buildIntro(task, calls) {
+      const account = task.account?.name || 'this account'
+      const lines = [`You just completed an intro with **${account}**. Time to lock in next steps.\n`]
+      if (calls?.length) {
+        const latest = calls[0]
+        const a = latest?.analysis || {}
+        if (a.next_steps_mentioned?.length) lines.push(`**Next steps from the call:** ${a.next_steps_mentioned.slice(0,3).join(' | ')}`)
+      }
+      lines.push(`\n• Review SDR handoff notes if available\n• Send personalized follow-up within 4 hours (I can draft this)\n• Fill in MEDDICC: Metrics and Identify Pain at minimum\n• Book discovery call with agenda\n• Update deal stage in HubSpot`)
+      lines.push(`\nWhat do you need? I can draft the email, prep the talking points, or run through objections.`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'ae_demo',
+    match: task => /demo/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1200,
+    buildIntro(task, calls) {
+      const account = task.account?.name || 'this account'
+      const lines = [`Demo with **${account}** — let's make sure you're set up to win.\n`]
+      if (calls?.length) {
+        const painPoints = []
+        calls.forEach(c => {
+          const a = c.analysis || {}
+          if (a.pain_points_identified) painPoints.push(...(Array.isArray(a.pain_points_identified) ? a.pain_points_identified : [a.pain_points_identified]))
+        })
+        if (painPoints.length) lines.push(`**Known pain points:** ${[...new Set(painPoints)].slice(0,3).join(' | ')}`)
+      }
+      lines.push(`\n**Pre-demo:**\n• Customize demo flow for their stated pain points\n• Confirm all key stakeholders are on the invite\n• Send pre-read 24h before (I can draft this)\n• Internal dry-run if new features involved`)
+      lines.push(`\n**Post-demo:**\n• Send recap and tailored follow-up within 2 hours (I can draft this)\n• Attach relevant case study or reference customer\n• Book evaluation/next-step call before leaving the demo\n• Update MEDDICC: Decision Criteria, Economic Buyer\n• Advance stage to solution_validation`)
+      lines.push(`\nWhat do you need? I can draft the email, prep the talking points, or run through objections.`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'ae_evaluation',
+    match: task => /eval(uation)?|proof|validation/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1000,
+    buildIntro(task, calls) {
+      const account = task.account?.name || 'this account'
+      const lines = [`Evaluation call with **${account}** — this is where deals are won or lost.\n`]
+      if (calls?.length) {
+        const objections = []
+        calls.forEach(c => {
+          const a = c.analysis || {}
+          if (a.red_flags?.length) objections.push(...a.red_flags)
+        })
+        if (objections.length) lines.push(`**Objections to address:** ${[...new Set(objections)].slice(0,3).join(' | ')}`)
+      }
+      lines.push(`\n• Confirm champion will be on the call\n• Map the decision process: who signs, what's the procurement path\n• Address top 3 objections from prior calls (I can pull these)\n• Set a firm next step with a date before ending the call\n• Update MEDDICC: Decision Process, Champion`)
+      lines.push(`\nWhat do you need? I can draft the email, prep the talking points, or run through objections.`)
+      return lines.join('\n')
+    },
+  },
+  {
+    id: 'ae_proposal',
+    match: task => /pricing|proposal|price/i.test(task.title || ''),
+    fetchContext: 'calls',
+    maxTokens: 1000,
+    buildIntro(task, calls) {
+      const account = task.account?.name || 'this account'
+      const lines = [`Pricing conversation with **${account}** — here's how to navigate it.\n`]
+      if (calls?.length) {
+        const metrics = []
+        calls.forEach(c => {
+          const a = c.analysis || {}
+          const m = a.meddicc || {}
+          if (m.metrics && !/unknown|not identified|not mentioned/i.test(m.metrics)) metrics.push(m.metrics)
+        })
+        if (metrics.length) lines.push(`**Known ROI/metrics context:** ${metrics.slice(0,2).join(' | ')}`)
+      }
+      lines.push(`\n• Draft business case tying price to their stated ROI/metrics (I can draft this)\n• Confirm champion will present internally\n• Identify all objections from call analysis and address each\n• Legal/finance loop-in if deal size warrants it\n• Set firm next step date`)
+      lines.push(`\nWhat do you need? I can draft the email, prep the talking points, or run through objections.`)
+      return lines.join('\n')
+    },
+  },
 ]
 
 function getPlaybook(task) {
