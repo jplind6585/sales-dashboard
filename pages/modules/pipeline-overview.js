@@ -68,6 +68,60 @@ function HealthDot({ value, warn = 1, danger = 3 }) {
   return <span className="text-gray-700">{value}</span>
 }
 
+function ActivityDot({ lastCallDays }) {
+  let bg, title
+  if (lastCallDays == null) {
+    bg = '#ef4444'
+    title = 'No calls on record'
+  } else if (lastCallDays < 7) {
+    bg = '#22c55e'
+    title = `Last call: ${lastCallDays} day${lastCallDays === 1 ? '' : 's'} ago`
+  } else if (lastCallDays <= 14) {
+    bg = '#eab308'
+    title = `Last call: ${lastCallDays} days ago`
+  } else {
+    bg = '#ef4444'
+    title = `Last call: ${lastCallDays} days ago`
+  }
+  return (
+    <span
+      title={title}
+      style={{
+        display: 'inline-block',
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        backgroundColor: bg,
+        flexShrink: 0,
+        cursor: 'default',
+      }}
+    />
+  )
+}
+
+function TrendArrow({ trend }) {
+  if (!trend) return null
+  if (trend.direction === 'up') {
+    return (
+      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, marginLeft: 4 }}>
+        ↑ +{trend.delta}%
+      </span>
+    )
+  }
+  if (trend.direction === 'down') {
+    return (
+      <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, marginLeft: 4 }}>
+        ↓ {trend.delta}%
+      </span>
+    )
+  }
+  return (
+    <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, marginLeft: 4 }}>
+      →
+    </span>
+  )
+}
+
 export default function PipelineOverview() {
   const router = useRouter()
   const [data, setData] = useState(null)
@@ -440,7 +494,14 @@ export default function PipelineOverview() {
                       <div className="w-5 text-gray-400">
                         {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </div>
-                      <div className="flex-1 font-medium text-gray-800">{rep.name}</div>
+                      <div className="flex-1 flex items-center gap-3">
+                        <span className="font-medium text-gray-800">{rep.name}</span>
+                        {rep.activeAccounts > 0 && (
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                            {rep.hotCount} hot · {rep.coldCount} cold
+                          </span>
+                        )}
+                      </div>
                       <div className="grid grid-cols-7 gap-6 text-sm text-center">
                         <div>
                           <div className="text-xs text-gray-400 mb-0.5">Pipeline</div>
@@ -452,8 +513,9 @@ export default function PipelineOverview() {
                         </div>
                         <div>
                           <div className="text-xs text-gray-400 mb-0.5">Confidence</div>
-                          <div className={`font-semibold ${rep.pipelineConfidence >= 50 ? 'text-green-600' : rep.pipelineConfidence >= 25 ? 'text-yellow-600' : 'text-gray-700'}`}>
+                          <div className={`font-semibold flex items-center ${rep.pipelineConfidence >= 50 ? 'text-green-600' : rep.pipelineConfidence >= 25 ? 'text-yellow-600' : 'text-gray-700'}`}>
                             {rep.pipelineConfidence != null ? `${rep.pipelineConfidence}%` : '—'}
+                            <TrendArrow trend={rep.confidenceTrend} />
                           </div>
                         </div>
                         <div>
@@ -480,6 +542,25 @@ export default function PipelineOverview() {
 
                     {isExpanded && (
                       <div className="px-14 pb-4 bg-gray-50">
+                        {/* Account activity density */}
+                        {rep.accountList?.length > 0 && (
+                          <div className="mb-3">
+                            <div className="text-xs font-medium text-gray-500 mb-2">Active Accounts</div>
+                            <div className="flex flex-wrap gap-2">
+                              {rep.accountList.map(a => (
+                                <button
+                                  key={a.id}
+                                  onClick={() => router.push(`/modules/account-pipeline?account=${a.id}`)}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700 hover:bg-gray-50"
+                                >
+                                  <ActivityDot lastCallDays={a.lastCallDays} />
+                                  {a.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Stage breakdown mini-bars */}
                         <div className="mb-3">
                           <div className="text-xs font-medium text-gray-500 mb-2">Stage Distribution</div>
