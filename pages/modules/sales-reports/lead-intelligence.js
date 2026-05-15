@@ -101,6 +101,7 @@ export default function LeadIntelligence() {
   const [syncResult, setSyncResult] = useState(null)
   const [tab, setTab] = useState('overview')
   const [year, setYear] = useState(2026)
+  const [syncingAll, setSyncingAll] = useState(false)
   const [activityFilter, setActivityFilter] = useState('all')
   const [sortSDR, setSortSDR] = useState('booked')
 
@@ -119,19 +120,30 @@ export default function LeadIntelligence() {
 
   useEffect(() => { load() }, [load])
 
-  const syncNow = async () => {
-    setSyncing(true)
+  const runSync = async (yearArg) => {
+    const isAll = !yearArg
+    if (isAll) setSyncingAll(true)
+    else setSyncing(true)
     setSyncResult(null)
     try {
+      const body = isAll ? {} : { year: yearArg }
       const r = await fetch('/api/sheets/sync-leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year }),
+        body: JSON.stringify(body),
       })
       const j = await r.json()
       if (j.success) {
-        setSyncResult({ ok: true, msg: `Synced ${j.data.synced} leads from Google Sheets` })
-        await load()
+        const results = j.results || []
+        const totalSynced = results.reduce((s, r) => s + (r.synced || 0), 0)
+        const errored = results.filter(r => r.error)
+        if (errored.length && !totalSynced) {
+          setSyncResult({ ok: false, msg: errored.map(r => `${r.year}: ${r.error}`).join(' | ') })
+        } else {
+          const parts = results.filter(r => r.synced).map(r => `${r.year}: ${r.synced}`)
+          setSyncResult({ ok: true, msg: `Synced ${totalSynced} leads${parts.length > 1 ? ` (${parts.join(', ')})` : ''}` })
+          await load()
+        }
       } else {
         setSyncResult({ ok: false, msg: j.error || 'Sync failed' })
       }
@@ -139,8 +151,11 @@ export default function LeadIntelligence() {
       setSyncResult({ ok: false, msg: e.message })
     } finally {
       setSyncing(false)
+      setSyncingAll(false)
     }
   }
+
+  const syncNow = () => runSync(year)
 
   const meta = data?.meta || {}
   const funnel = data?.funnel || []
@@ -193,14 +208,23 @@ export default function LeadIntelligence() {
             >
               <option value={2026}>2026</option>
               <option value={2025}>2025</option>
+              <option value={2024}>2024</option>
             </select>
             <button
+              onClick={() => runSync(null)}
+              disabled={syncing || syncingAll}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw size={13} className={syncingAll ? 'animate-spin' : ''} />
+              {syncingAll ? 'Syncing…' : 'Sync All'}
+            </button>
+            <button
               onClick={syncNow}
-              disabled={syncing}
+              disabled={syncing || syncingAll}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
               <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Syncing…' : 'Sync Now'}
+              {syncing ? 'Syncing…' : `Sync ${year}`}
             </button>
             <UserMenu user={user} />
           </div>

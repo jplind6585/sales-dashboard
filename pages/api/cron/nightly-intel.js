@@ -119,7 +119,11 @@ export default async function handler(req, res) {
   }
 
   // 4. Analyze each call via intel-analyze (with CRON_SECRET auth)
-  const baseUrl = process.env.VERCEL_URL
+  // VERCEL_PROJECT_PRODUCTION_URL is the stable production domain (no per-deploy suffix).
+  // VERCEL_URL changes every deploy and may point to a non-production deployment.
+  const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
     : 'http://localhost:3000';
 

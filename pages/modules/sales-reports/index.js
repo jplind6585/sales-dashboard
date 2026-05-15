@@ -1,9 +1,20 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
 const REPORTS = [
+  {
+    id: 'team-dashboard',
+    name: 'Team Dashboard',
+    description: 'Executive view of the full sales org. Pipeline by stage, rep scorecards with AI-scored call quality, at-risk deals, top objections and buying signals across all Gong calls, and multi-year lead funnel.',
+    icon: LayoutDashboard,
+    href: '/modules/sales-reports/team-dashboard',
+    color: 'from-violet-500 to-purple-600',
+    available: true,
+    status: 'live',
+    tags: ['Gong', 'HubSpot', 'Pipeline', 'Multi-year'],
+  },
   {
     id: 'call-intelligence',
     name: 'Call Intelligence',

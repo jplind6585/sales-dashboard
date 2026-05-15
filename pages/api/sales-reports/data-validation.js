@@ -143,11 +143,13 @@ export default async function handler(req, res) {
   };
 
   return apiSuccess(res, {
-    summary,
-    unmatchedLeads,
-    duplicateAccounts,
-    multiYearCompanies,
-    dataGaps,
-    lowConfidence,
+    data: {
+      summary,
+      unmatchedLeads,
+      duplicateAccounts,
+      multiYearCompanies,
+      dataGaps,
+      lowConfidence,
+    }
   });
 }

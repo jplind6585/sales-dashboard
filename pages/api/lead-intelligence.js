@@ -171,14 +171,16 @@ export default async function handler(req, res) {
     }));
 
   return apiSuccess(res, {
-    meta: { year, total: booked, showed, qualified, presented, won, lost, open, arrWon, arrOpen, lastSynced },
-    funnel,
-    bySDR,
-    byAE,
-    bySource,
-    byVertical,
-    bySize,
-    lostReasons,
-    recent,
+    data: {
+      meta: { year, total: booked, showed, qualified, presented, won, lost, open, arrWon, arrOpen, lastSynced },
+      funnel,
+      bySDR,
+      byAE,
+      bySource,
+      byVertical,
+      bySize,
+      lostReasons,
+      recent,
+    }
   });
 }
