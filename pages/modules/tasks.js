@@ -6,8 +6,9 @@ import {
   Calendar, Building2, BarChart3, X, ChevronRight,
   LayoutGrid, TrendingUp, Send, ChevronUp, Sparkles,
   Target, BanIcon, Info, Star, MessageSquare, ArrowRight,
-  Loader2, CornerDownLeft, Phone
+  Loader2, CornerDownLeft, Phone, Mic, Square, CheckCheck
 } from 'lucide-react';
+import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
@@ -202,6 +203,7 @@ function WorkInClaude({ task, onClose }) {
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  const { listening: micListening, transcript: micTranscript, start: micStart, stop: micStop, supported: micSupported } = useSpeechInput()
 
   // For playbooks that need call context: fetch account calls once on open (skip if thread already has history)
   useEffect(() => {
@@ -227,6 +229,17 @@ function WorkInClaude({ task, onClose }) {
 
   const persistMessages = (msgs) => {
     try { localStorage.setItem(storageKey, JSON.stringify(msgs.slice(-20))) } catch {}
+  }
+
+  const toggleWicMic = () => {
+    if (micListening) {
+      micStop()
+    } else {
+      micStart(
+        (final) => setInput(prev => prev ? `${prev} ${final}` : final),
+        () => {}
+      )
+    }
   }
 
   const send = async () => {
@@ -354,19 +367,33 @@ function WorkInClaude({ task, onClose }) {
         {/* Input */}
         <div className="px-4 pb-4 pt-2 border-t border-gray-200">
           <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask Claude to draft an email, prep talking points, handle objections…"
-              rows={2}
-              className="flex-1 resize-none border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-400"
-              style={{ minHeight: '60px', maxHeight: '120px' }}
-            />
+            <div className="flex-1 relative">
+              <textarea
+                ref={inputRef}
+                value={micListening ? (input + (micTranscript ? ` ${micTranscript}` : '')) : input}
+                onChange={e => { if (!micListening) setInput(e.target.value) }}
+                onKeyDown={handleKeyDown}
+                placeholder={micListening ? 'Listening…' : 'Ask Claude to draft an email, prep talking points, handle objections…'}
+                rows={2}
+                className="w-full resize-none border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-400"
+                style={{ minHeight: '60px', maxHeight: '120px', fontStyle: micListening ? 'italic' : 'normal' }}
+              />
+              {micListening && (
+                <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              )}
+            </div>
+            {micSupported && (
+              <button
+                onClick={toggleWicMic}
+                title={micListening ? 'Stop recording' : 'Voice input'}
+                className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${micListening ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-100 hover:bg-violet-100 text-gray-500 hover:text-violet-600'}`}
+              >
+                {micListening ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-4 h-4" />}
+              </button>
+            )}
             <button
               onClick={send}
-              disabled={!input.trim() || loading}
+              disabled={!input.trim() || loading || micListening}
               className="flex-shrink-0 w-10 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-colors"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
@@ -383,11 +410,50 @@ function WorkInClaude({ task, onClose }) {
 
 // ─── NL Task Bar ──────────────────────────────────────────────────────────────
 
-function NLTaskBar({ onCreate }) {
+function NLTaskBar({ onCreate, onVoiceCreated }) {
   const [text, setText] = useState('')
   const [parsing, setParsing] = useState(false)
-  const [preview, setPreview] = useState(null) // parsed task fields
+  const [preview, setPreview] = useState(null)
   const [creating, setCreating] = useState(false)
+
+  // Voice state
+  const [voiceResult, setVoiceResult] = useState(null) // { created: [], error: null }
+  const [voiceProcessing, setVoiceProcessing] = useState(false)
+  const { listening, transcript, start, stop, supported } = useSpeechInput()
+
+  const handleVoiceDone = async (finalTranscript) => {
+    setVoiceProcessing(true)
+    setVoiceResult(null)
+    try {
+      const r = await fetch('/api/tasks/voice-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: finalTranscript }),
+      })
+      const j = await r.json()
+      if (j.success) {
+        setVoiceResult({ created: j.data.created, error: null })
+        onVoiceCreated?.()
+      } else {
+        setVoiceResult({ created: [], error: j.error || 'Failed to parse tasks from voice' })
+      }
+    } catch (e) {
+      setVoiceResult({ created: [], error: e.message })
+    } finally {
+      setVoiceProcessing(false)
+    }
+  }
+
+  const toggleMic = () => {
+    if (listening) {
+      stop()
+    } else {
+      setVoiceResult(null)
+      setPreview(null)
+      setText('')
+      start(handleVoiceDone, (err) => setVoiceResult({ created: [], error: err }))
+    }
+  }
 
   const handleParse = async () => {
     if (!text.trim() || parsing) return
@@ -426,37 +492,116 @@ function NLTaskBar({ onCreate }) {
     { value: 3, label: 'Low', cls: 'text-gray-500 bg-gray-50 border-gray-200' },
   ]
 
+  const isBusy = parsing || voiceProcessing
+
   return (
     <div className="mb-4">
       {/* Input row */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-indigo-400 focus-within:ring-1 focus-within:ring-indigo-300 transition-all">
-          <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+        <div className={`flex-1 flex items-center gap-2 bg-white border rounded-xl px-3 py-2.5 transition-all ${
+          listening
+            ? 'border-red-400 ring-1 ring-red-200'
+            : 'border-gray-200 focus-within:border-indigo-400 focus-within:ring-1 focus-within:ring-indigo-300'
+        }`}>
+          {listening
+            ? <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+            : <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+          }
           <input
             type="text"
-            value={text}
-            onChange={e => { setText(e.target.value); setPreview(null) }}
-            onKeyDown={e => { if (e.key === 'Enter') handleParse() }}
-            placeholder='Quick add — "Send deck to Coastal Ridge tomorrow" or "Call John at Preiss"'
-            className="flex-1 text-sm bg-transparent outline-none text-gray-800 placeholder-gray-400"
+            value={listening ? (transcript || '') : text}
+            onChange={e => { if (!listening) { setText(e.target.value); setPreview(null) } }}
+            onKeyDown={e => { if (e.key === 'Enter' && !listening) handleParse() }}
+            readOnly={listening}
+            placeholder={listening ? 'Listening… speak your tasks' : 'Quick add — "Send deck to Coastal Ridge tomorrow"'}
+            className={`flex-1 text-sm bg-transparent outline-none placeholder-gray-400 ${listening ? 'text-gray-600 italic' : 'text-gray-800'}`}
           />
-          {text && (
+          {!listening && text && (
             <button onClick={() => { setText(''); setPreview(null) }} className="text-gray-300 hover:text-gray-500">
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
-        <button
-          onClick={handleParse}
-          disabled={!text.trim() || parsing}
-          className="flex items-center gap-1.5 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors"
-        >
-          {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CornerDownLeft className="w-3.5 h-3.5" />}
-          {parsing ? 'Parsing…' : 'Add'}
-        </button>
+
+        {/* Mic button */}
+        {supported && (
+          <button
+            onClick={toggleMic}
+            disabled={isBusy && !listening}
+            title={listening ? 'Stop recording' : 'Voice tasks — speak multiple tasks at once'}
+            className={`flex-shrink-0 p-2.5 rounded-xl transition-all ${
+              listening
+                ? 'bg-red-500 text-white hover:bg-red-600 shadow-md ring-2 ring-red-200'
+                : voiceProcessing
+                ? 'bg-violet-100 text-violet-400 cursor-wait'
+                : 'bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-600'
+            }`}
+          >
+            {voiceProcessing
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : listening
+              ? <Square className="w-4 h-4" />
+              : <Mic className="w-4 h-4" />
+            }
+          </button>
+        )}
+
+        {/* Text Add button — hidden while recording */}
+        {!listening && (
+          <button
+            onClick={handleParse}
+            disabled={!text.trim() || isBusy}
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors"
+          >
+            {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CornerDownLeft className="w-3.5 h-3.5" />}
+            {parsing ? 'Parsing…' : 'Add'}
+          </button>
+        )}
       </div>
 
-      {/* Preview card */}
+      {/* Voice error */}
+      {voiceResult?.error && (
+        <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          <X className="w-3 h-3 shrink-0" />
+          {voiceResult.error}
+        </div>
+      )}
+
+      {/* Voice result — tasks created from voice */}
+      {voiceResult?.created?.length > 0 && (
+        <div className="mt-3 bg-white border border-violet-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CheckCheck className="w-4 h-4 text-violet-600" />
+              <span className="text-sm font-semibold text-gray-900">
+                {voiceResult.created.length} task{voiceResult.created.length !== 1 ? 's' : ''} added
+              </span>
+            </div>
+            <button onClick={() => setVoiceResult(null)} className="text-gray-300 hover:text-gray-500">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {voiceResult.created.map(t => (
+              <div key={t.id} className="flex items-start gap-2.5 py-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-violet-500 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-800 leading-snug">{t.title}</p>
+                  {t.accountName && (
+                    <span className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                      <Building2 className="w-2.5 h-2.5" />{t.accountName}
+                      {t.accountStage && <span className="text-gray-400">· {t.accountStage}</span>}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">Tasks added to your list. Click the chat icon on any to work through it with AI.</p>
+        </div>
+      )}
+
+      {/* Single-task preview card */}
       {preview && (
         <div className="mt-2 bg-white border border-indigo-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between gap-2 mb-3">
@@ -1685,7 +1830,7 @@ export default function TasksPage() {
             </div>
 
             {/* NL Quick-Add bar */}
-            <NLTaskBar onCreate={handleCreate} />
+            <NLTaskBar onCreate={handleCreate} onVoiceCreated={fetchTasks} />
 
             {/* Today's Focus morning brief */}
             <TodaysFocus />
