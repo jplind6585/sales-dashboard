@@ -58,10 +58,6 @@
       "schedule": "0 22 * * 1-5"
     },
     {
-      "path": "/api/cron/process-recent-calls",
-      "schedule": "*/30 * * * *"
-    },
-    {
       "path": "/api/sheets/sync-leads",
       "schedule": "0 4 * * *"
     }

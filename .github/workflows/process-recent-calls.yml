@@ -1,0 +1,23 @@
+name: Process Recent Gong Calls
+
+on:
+  schedule:
+    # Every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:  # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger post-call processing
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${{ secrets.PRODUCTION_URL }}/api/cron/process-recent-calls" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+          echo "Response: $response"
+          if [ "$response" != "200" ]; then
+            echo "Unexpected status code: $response"
+            exit 1
+          fi
