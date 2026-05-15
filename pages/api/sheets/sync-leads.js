@@ -7,8 +7,11 @@ import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 
 const SHEET_ID = '1F6onXjGTKe10gBReKklDZLLR2wYioSXXWnibJFHWEp4';
-const SHEET_GIDS = {
-  2026: '1977870589',
+// Tab names (not GIDs) — use the gviz ?sheet= parameter for reliable tab lookup
+const SHEET_TABS = {
+  2026: '2026- New Intros',
+  2023: '2023 - New Intros',
+  2022: '2022 - New Intros',
 };
 
 function parseCSV(text) {
@@ -125,10 +128,10 @@ export default async function handler(req, res) {
   }
 
   const year = parseInt(req.body?.year || '2026');
-  const gid = SHEET_GIDS[year];
-  if (!gid) return apiError(res, 400, `No sheet configured for year ${year}`);
+  const tabName = SHEET_TABS[year];
+  if (!tabName) return apiError(res, 400, `No sheet configured for year ${year}`);
 
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
 
   let csvText;
   try {
