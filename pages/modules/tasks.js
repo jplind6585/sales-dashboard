@@ -1359,7 +1359,7 @@ function NewTaskModal({ onClose, onCreate, currentUserId, users }) {
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude }) {
+function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, selected, onToggleSelect, bulkMode }) {
   const [expanded, setExpanded] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const overdue = isOverdue(task)
@@ -1367,11 +1367,23 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude }) 
   const isGong = task.source === 'gong'
 
   return (
-    <div className={`border rounded-xl transition-all ${
+    <div className={`group border rounded-xl transition-all ${
       task._justCompleted ? 'border-green-300 bg-green-50' :
+      selected ? 'border-blue-300 bg-blue-50/30' :
       overdue ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'
     } hover:shadow-sm`}>
       <div className="flex items-start gap-3 p-4">
+        {/* Checkbox — visible on hover or in bulk mode */}
+        <div className={`mt-0.5 flex-shrink-0 ${bulkMode ? '' : 'opacity-0 group-hover:opacity-100'}`} style={{ width: '16px' }}>
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={() => onToggleSelect?.(task.id)}
+            onClick={e => e.stopPropagation()}
+            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#2563eb' }}
+          />
+        </div>
+
         {/* Complete toggle */}
         <button
           onClick={() => onStatusChange(task.id, task.status === 'complete' ? 'open' : 'complete')}
@@ -1499,7 +1511,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude }) 
 
 // ─── Rep View ─────────────────────────────────────────────────────────────────
 
-function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onNewTask }) {
+function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onNewTask, selectedTaskIds, onToggleSelect, bulkMode }) {
   const grouped = TYPE_ORDER.reduce((acc, type) => {
     const items = tasks
       .filter(t => t.type === type)
@@ -1556,7 +1568,7 @@ function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, o
             </div>
             <div className="space-y-2">
               {grouped[type].map(task => (
-                <TaskRow key={task.id} task={task} onStatusChange={onStatusChange} onDelete={onDelete} onDismiss={onDismiss} onWorkInClaude={onWorkInClaude} />
+                <TaskRow key={task.id} task={task} onStatusChange={onStatusChange} onDelete={onDelete} onDismiss={onDismiss} onWorkInClaude={onWorkInClaude} selected={selectedTaskIds?.has(task.id)} onToggleSelect={onToggleSelect} bulkMode={bulkMode} />
               ))}
             </div>
           </div>
@@ -1787,7 +1799,15 @@ export default function TasksPage() {
   const [workTask, setWorkTask] = useState(null) // task open in Work in Claude panel
   const [showSearch, setShowSearch] = useState(false)
   const [users, setUsers] = useState([])
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set())
+  const [filterStage, setFilterStage] = useState('all')
+  const [filterAssignee, setFilterAssignee] = useState('mine')
+  const [filterSource, setFilterSource] = useState('all')
+  const [filterDue, setFilterDue] = useState('all')
+  const [filterTier, setFilterTier] = useState('all')
   const demoSeeded = useRef(false)
+
+  const bulkMode = selectedTaskIds.size > 0
 
   // Auth check — AuthGuard handles redirects; we just need the user + provider token
   useEffect(() => {
@@ -1974,6 +1994,44 @@ export default function TasksPage() {
     }
   }
 
+  const handleBulkComplete = async () => {
+    const ids = [...selectedTaskIds]
+    await Promise.all(ids.map(id =>
+      fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'complete' }),
+      })
+    ))
+    setSelectedTaskIds(new Set())
+    fetchTasks()
+  }
+
+  const handleBulkSnooze = async () => {
+    const ids = [...selectedTaskIds]
+    const twodays = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
+    await Promise.all(ids.map(id =>
+      fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueDate: twodays }),
+      })
+    ))
+    setSelectedTaskIds(new Set())
+    fetchTasks()
+  }
+
+  const toggleTaskSelected = (taskId) => {
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  const currentUserId = user?.id
+
   // Filter tasks for rep view
   const filteredTasks = tasks.filter(t => {
     if (filterStatus === 'active') return t.status !== 'complete'
@@ -1984,6 +2042,47 @@ export default function TasksPage() {
     if (sdrViewTab === 'campaigns') return task.source_type === 'campaign'
     if (sdrViewTab === 'top50') return task.source_type === 'pursuit'
     if (sdrViewTab === 'standard') return task.source_type !== 'campaign' && task.source_type !== 'pursuit'
+    return true
+  }).filter(task => {
+    if (filterStage !== 'all' && task.account?.stage !== filterStage) return false
+
+    if (filterAssignee === 'mine') {
+      if (currentUserId && task.ownerId !== currentUserId) return false
+    } else if (filterAssignee !== 'everyone') {
+      const ownerUser = users.find(u => u.id === task.ownerId)
+      const ownerName = ownerUser?.full_name || ownerUser?.email || ''
+      if (ownerName !== filterAssignee) return false
+    }
+
+    if (filterSource !== 'all') {
+      const src = (task.source || '').toLowerCase()
+      const srcType = (task.sourceType || '').toLowerCase()
+      if (filterSource === 'voice' && !srcType.includes('voice') && src !== 'voice') return false
+      if (filterSource === 'manual' && src !== 'manual') return false
+      if (filterSource === 'gong' && src !== 'gong' && !srcType.startsWith('gong')) return false
+      if (filterSource === 'gmail' && src !== 'email' && src !== 'gmail') return false
+      if (filterSource === 'calendar' && src !== 'calendar') return false
+      if (filterSource === 'playbook' && src !== 'playbook' && src !== 'stage_change') return false
+    }
+
+    if (filterDue !== 'all') {
+      const today = new Date(); today.setHours(0,0,0,0)
+      const todayStr = today.toISOString().split('T')[0]
+      if (filterDue === 'overdue') {
+        if (!task.dueDate || task.dueDate >= todayStr || task.status === 'complete') return false
+      } else if (filterDue === 'today') {
+        if (task.dueDate !== todayStr) return false
+      } else if (filterDue === 'this_week') {
+        const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7)
+        const weekEndStr = weekEnd.toISOString().split('T')[0]
+        if (!task.dueDate || task.dueDate < todayStr || task.dueDate > weekEndStr) return false
+      } else if (filterDue === 'no_due') {
+        if (task.dueDate) return false
+      }
+    }
+
+    if (filterTier !== 'all' && task.account?.tier !== filterTier) return false
+
     return true
   })
 
@@ -2091,8 +2190,8 @@ export default function TasksPage() {
               </div>
             )}
 
-            {/* Filter bar */}
-            <div className="flex items-center gap-2 mb-6">
+            {/* Filter bar — row 1: status tabs + select-all */}
+            <div className="flex items-center gap-2 mb-2">
               <Filter className="w-4 h-4 text-gray-400" />
               {['active', 'all', 'complete'].map(f => (
                 <button
@@ -2107,8 +2206,91 @@ export default function TasksPage() {
                   {f}
                 </button>
               ))}
-              <span className="ml-auto text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
+              <div className="ml-auto flex items-center gap-3">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#6b7280' }}>
+                  <input
+                    type="checkbox"
+                    checked={filteredTasks.length > 0 && filteredTasks.every(t => selectedTaskIds.has(t.id))}
+                    onChange={e => {
+                      if (e.target.checked) setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)))
+                      else setSelectedTaskIds(new Set())
+                    }}
+                    style={{ width: '14px', height: '14px', accentColor: '#2563eb' }}
+                  />
+                  Select all
+                </label>
+                <span className="text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
+              </div>
             </div>
+
+            {/* Filter bar — row 2: additional dropdowns */}
+            {(() => {
+              const STAGE_OPTIONS = [
+                { value: 'all', label: 'All Stages' },
+                { value: 'qualifying', label: 'Qualifying' },
+                { value: 'intro_scheduled', label: 'Intro Scheduled' },
+                { value: 'active_pursuit', label: 'Active Pursuit' },
+                { value: 'demo', label: 'Demo' },
+                { value: 'solution_validation', label: 'Solution Validation' },
+                { value: 'proposal', label: 'Proposal' },
+                { value: 'legal', label: 'Legal' },
+              ]
+              const distinctOwners = [...new Map(
+                tasks
+                  .map(t => {
+                    const u = users.find(u => u.id === t.ownerId)
+                    return u ? [u.full_name || u.email, u.full_name || u.email] : null
+                  })
+                  .filter(Boolean)
+              ).entries()].map(([k]) => k)
+              const anyNonDefault = filterStage !== 'all' || filterAssignee !== 'mine' || filterSource !== 'all' || filterDue !== 'all' || filterTier !== 'all'
+              const selectStyle = { fontSize: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '4px 8px', background: '#fff', color: '#374151', outline: 'none', cursor: 'pointer' }
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                  <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={selectStyle}>
+                    {STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={selectStyle}>
+                    <option value="mine">Mine</option>
+                    {distinctOwners.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                    <option value="everyone">Everyone</option>
+                  </select>
+                  <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={selectStyle}>
+                    <option value="all">All Sources</option>
+                    <option value="voice">Voice</option>
+                    <option value="manual">Manual</option>
+                    <option value="gong">Gong</option>
+                    <option value="gmail">Gmail</option>
+                    <option value="calendar">Calendar</option>
+                    <option value="playbook">Playbook</option>
+                  </select>
+                  <select value={filterDue} onChange={e => setFilterDue(e.target.value)} style={selectStyle}>
+                    <option value="all">All</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="today">Today</option>
+                    <option value="this_week">This week</option>
+                    <option value="no_due">No due date</option>
+                  </select>
+                  <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={selectStyle}>
+                    <option value="all">All Tiers</option>
+                    <option value="hot">Hot</option>
+                    <option value="active">Active</option>
+                    <option value="watching">Watching</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                  {anyNonDefault && (
+                    <button
+                      onClick={() => { setFilterStage('all'); setFilterAssignee('mine'); setFilterSource('all'); setFilterDue('all'); setFilterTier('all') }}
+                      style={{ fontSize: '12px', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '4px 0' }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* NL Quick-Add bar */}
             <NLTaskBar onCreate={handleCreate} onVoiceCreated={fetchTasks} />
@@ -2126,6 +2308,34 @@ export default function TasksPage() {
                 onAddTask={handleCreate}
               />
             </div>
+
+            {/* Bulk action bar */}
+            {bulkMode && (
+              <div style={{ position: 'sticky', bottom: '24px', zIndex: 20, display: 'flex', justifyContent: 'center', pointerEvents: 'none', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: '10px 16px', pointerEvents: 'all' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>{selectedTaskIds.size} selected</span>
+                  <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
+                  <button
+                    onClick={handleBulkComplete}
+                    style={{ fontSize: '13px', fontWeight: 500, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}
+                  >
+                    Complete
+                  </button>
+                  <button
+                    onClick={handleBulkSnooze}
+                    style={{ fontSize: '13px', fontWeight: 500, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}
+                  >
+                    Snooze 2 days
+                  </button>
+                  <button
+                    onClick={() => setSelectedTaskIds(new Set())}
+                    style={{ fontSize: '13px', fontWeight: 500, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
 
             {repType === 'sdr' && sdrViewTab === 'campaigns' ? (
               (() => {
@@ -2173,7 +2383,7 @@ export default function TasksPage() {
                           </div>
                           <div className="space-y-2">
                             {group.map(task => (
-                              <TaskRow key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} onDismiss={task => setDismissTask(task)} onWorkInClaude={task => setWorkTask(task)} />
+                              <TaskRow key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} onDismiss={task => setDismissTask(task)} onWorkInClaude={task => setWorkTask(task)} selected={selectedTaskIds.has(task.id)} onToggleSelect={toggleTaskSelected} bulkMode={bulkMode} />
                             ))}
                           </div>
                         </div>
@@ -2190,6 +2400,9 @@ export default function TasksPage() {
                 onDismiss={task => setDismissTask(task)}
                 onWorkInClaude={task => setWorkTask(task)}
                 onNewTask={() => setShowNewTask(true)}
+                selectedTaskIds={selectedTaskIds}
+                onToggleSelect={toggleTaskSelected}
+                bulkMode={bulkMode}
               />
             )}
           </>
