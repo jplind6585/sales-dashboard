@@ -50,6 +50,10 @@
     {
       "path": "/api/cron/rep-pulse",
       "schedule": "0 22 * * 1-5"
+    },
+    {
+      "path": "/api/sheets/sync-leads",
+      "schedule": "0 4 * * *"
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, Rocket } from 'lucide-react'
+import { ArrowLeft, PhoneCall, Rocket, BarChart2 } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
@@ -14,6 +14,17 @@ const REPORTS = [
     available: true,
     status: 'live',
     tags: ['Gong', '6 months', 'Intro & Demo'],
+  },
+  {
+    id: 'lead-intelligence',
+    name: 'Lead Intelligence',
+    description: 'Full-funnel lead analytics synced from your master tracking sheet. Who books the most leads, which sources convert best, show rates by SDR, win rates by vertical, and open pipeline by rep.',
+    icon: BarChart2,
+    href: '/modules/sales-reports/lead-intelligence',
+    color: 'from-blue-500 to-indigo-600',
+    available: true,
+    status: 'live',
+    tags: ['Google Sheets', '2026 YTD', 'SDR + AE'],
   },
 ]
 
