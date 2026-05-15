@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight, X, Sparkles, Swords, Play, ChevronDown } from 'lucide-react';
+import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight, X, Sparkles, Swords, Play, ChevronDown, Clock } from 'lucide-react';
+import { getSupabase } from '../../lib/supabase';
 import {
   VERTICALS,
   OWNERSHIP_TYPES,
@@ -710,6 +711,9 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
       {/* Competitor Intel */}
       <CompetitorIntel account={account} />
 
+      {/* Stage History */}
+      <StageHistory account={account} />
+
       {/* Run Playbook */}
       <RunPlaybook account={account} />
     </div>
@@ -806,6 +810,99 @@ function CompetitorIntel({ account }) {
       )}
     </div>
   );
+}
+
+// ─── Stage History ────────────────────────────────────────────────────────────
+
+const STAGE_LABELS_MAP = {
+  active_pursuit: 'Active Pursuit',
+  qualifying: 'Qualifying',
+  intro_scheduled: 'Intro Sched.',
+  demo: 'Demo',
+  solution_validation: 'Sol. Val.',
+  proposal: 'Proposal',
+  legal: 'Legal',
+  inactive_sdr_follow_up: 'Inactive SDR',
+  inactive_ae_follow_up: 'Inactive AE',
+  won: 'Won',
+  lost: 'Lost',
+  closed_won: 'Won',
+  closed_lost: 'Lost',
+}
+
+function StageHistory({ account }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!account?.id || !expanded) return
+    setLoading(true)
+    const supabase = getSupabase()
+    supabase
+      .from('account_stage_history')
+      .select('*')
+      .eq('account_id', account.id)
+      .order('changed_at', { ascending: false })
+      .then(({ data }) => {
+        setRows(data || [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [account?.id, expanded])
+
+  return (
+    <div className="bg-white border rounded-xl overflow-hidden">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-blue-500" />
+          <span className="text-sm font-semibold text-gray-800">Stage History</span>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      {expanded && (
+        <div className="border-t px-4 py-3">
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-gray-400 py-1">No stage changes recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {rows.map(row => (
+                <div key={row.id} className="flex items-center gap-2 text-xs text-gray-600">
+                  <span className="font-medium text-gray-800 shrink-0">
+                    {STAGE_LABELS_MAP[row.from_stage] || row.from_stage || '—'}
+                  </span>
+                  <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
+                  <span className="font-medium text-gray-800 shrink-0">
+                    {STAGE_LABELS_MAP[row.to_stage] || row.to_stage}
+                  </span>
+                  <span className="text-gray-400">·</span>
+                  <span className="text-gray-500 shrink-0">{row.changed_by_name || '—'}</span>
+                  <span className="text-gray-400">·</span>
+                  <span className="text-gray-400 shrink-0">
+                    {row.changed_at ? new Date(row.changed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                  </span>
+                  {row.days_in_prior_stage != null && (
+                    <>
+                      <span className="text-gray-400">·</span>
+                      <span className="text-gray-400 shrink-0">{row.days_in_prior_stage}d in prior stage</span>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── Run Playbook ─────────────────────────────────────────────────────────────

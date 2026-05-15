@@ -15,16 +15,29 @@ function TrendIcon({ direction }) {
   return <Minus className="w-3.5 h-3.5 text-gray-400" />
 }
 
-function MetricCard({ label, value, unit = '', trend, description, invert = false }) {
-  const trendDir = invert && trend ? (trend === 'up' ? 'down' : trend === 'down' ? 'up' : 'neutral') : trend
+function MetricCard({ label, value, unit = '', trendObj, description, invert = false }) {
+  let displayDir = trendObj?.direction
+  if (invert && displayDir) {
+    displayDir = displayDir === 'up' ? 'down' : displayDir === 'down' ? 'up' : 'neutral'
+  }
+  const improving = invert ? (displayDir === 'down') : (displayDir === 'up')
+  const iconColor = !displayDir || displayDir === 'neutral'
+    ? 'text-gray-400'
+    : improving ? 'text-green-500' : 'text-red-500'
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">{label}</div>
       <div className="flex items-end gap-1.5">
         <span className="text-3xl font-bold text-gray-900">{value ?? '—'}</span>
         {value != null && unit && <span className="text-sm text-gray-500 mb-1">{unit}</span>}
-        {trendDir && value != null && (
-          <span className="mb-1 ml-1"><TrendIcon direction={trendDir} /></span>
+        {displayDir && value != null && displayDir !== 'neutral' && (
+          <span className={`mb-1 ml-1 ${iconColor}`}>
+            {displayDir === 'up' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+          </span>
+        )}
+        {displayDir === 'neutral' && value != null && trendObj?.delta != null && (
+          <span className="mb-1 ml-1"><Minus className="w-3.5 h-3.5 text-gray-400" /></span>
         )}
       </div>
       {description && <p className="text-xs text-gray-400 mt-1">{description}</p>}
@@ -112,6 +125,12 @@ export default function CoachingDashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [currentFocus, setCurrentFocus] = useState(null)
+
+  useEffect(() => {
+    const stored = localStorage.getItem(`coaching_focus_${selectedRep}`)
+    setCurrentFocus(stored || null)
+  }, [selectedRep])
 
   async function load(rep = selectedRep, d = days) {
     setLoading(true)
@@ -221,24 +240,23 @@ export default function CoachingDashboard() {
         {!loading && metrics && (
           <>
             {/* Metric cards */}
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
               <MetricCard
                 label="Calls Analyzed"
                 value={metrics.callCount}
-                trend={metrics.trends?.callCount}
               />
               <MetricCard
                 label="Discovery Score"
                 value={metrics.avgDiscoveryScore}
                 unit="/10"
-                trend={metrics.trends?.discoveryScore}
+                trendObj={metrics.trends?.discoveryScore}
                 description="Higher is better (10 = fully qualified)"
               />
               <MetricCard
                 label="Talk Ratio"
                 value={metrics.avgTalkRatio}
                 unit="%"
-                trend={metrics.trends?.talkRatio}
+                trendObj={metrics.trends?.talkRatio}
                 invert={true}
                 description="Rep's share of call time. Target: 30–45%"
               />
@@ -246,7 +264,7 @@ export default function CoachingDashboard() {
                 label="Next-Step Rate"
                 value={metrics.nextStepRate}
                 unit="%"
-                trend={metrics.trends?.nextStepRate}
+                trendObj={metrics.trends?.nextStepRate}
                 description="% of calls with defined next step"
               />
               <MetricCard
@@ -255,7 +273,61 @@ export default function CoachingDashboard() {
                 unit="%"
                 description="% of calls with risk signals"
               />
+              <MetricCard
+                label="Filler Words/Min"
+                value={metrics.avgFillerWordsPerMin}
+                trendObj={metrics.trends?.fillerWordsPerMin}
+                invert={true}
+                description="Lower is better. Avg filler words per minute"
+              />
             </div>
+
+            {/* Currently Working On */}
+            {(currentFocus || card?.focus_area) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Currently Working On</p>
+                {currentFocus ? (
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-amber-900 font-medium flex-1">{currentFocus}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => {
+                          localStorage.removeItem(`coaching_focus_${selectedRep}`)
+                          setCurrentFocus(null)
+                        }}
+                        className="text-xs px-2.5 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                      >
+                        Mark as Improved
+                      </button>
+                      {card?.focus_area && card.focus_area !== currentFocus && (
+                        <button
+                          onClick={() => {
+                            localStorage.setItem(`coaching_focus_${selectedRep}`, card.focus_area)
+                            setCurrentFocus(card.focus_area)
+                          }}
+                          className="text-xs px-2.5 py-1 bg-amber-200 text-amber-800 rounded-lg hover:bg-amber-300 transition-colors"
+                        >
+                          Set new focus
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : card?.focus_area ? (
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-amber-700 italic flex-1">No active focus set for {selectedRep}</p>
+                    <button
+                      onClick={() => {
+                        localStorage.setItem(`coaching_focus_${selectedRep}`, card.focus_area)
+                        setCurrentFocus(card.focus_area)
+                      }}
+                      className="text-xs px-2.5 py-1 bg-amber-200 text-amber-800 rounded-lg hover:bg-amber-300 transition-colors shrink-0"
+                    >
+                      Set current focus
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
 
             {card && (
               <>
@@ -304,8 +376,23 @@ export default function CoachingDashboard() {
                   {/* Focus area */}
                   {card.focus_area && (
                     <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-                      <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1">30-Day Focus Area</p>
-                      <p className="text-sm text-indigo-900 font-medium">{card.focus_area}</p>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1">30-Day Focus Area</p>
+                          <p className="text-sm text-indigo-900 font-medium">{card.focus_area}</p>
+                        </div>
+                        {card.focus_area !== currentFocus && (
+                          <button
+                            onClick={() => {
+                              localStorage.setItem(`coaching_focus_${selectedRep}`, card.focus_area)
+                              setCurrentFocus(card.focus_area)
+                            }}
+                            className="text-xs px-2.5 py-1 bg-indigo-200 text-indigo-800 rounded-lg hover:bg-indigo-300 transition-colors shrink-0 whitespace-nowrap"
+                          >
+                            Set as focus
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 

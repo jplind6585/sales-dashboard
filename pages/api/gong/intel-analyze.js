@@ -338,8 +338,21 @@ Return ONLY valid JSON:
   "pain_depth_notes": "one sentence — what pain was surfaced and how well it was developed (quantified, stakeholder-tied, urgency established)",
   "champion_health_score": 5,
   "champion_health_notes": "one sentence — who the potential champion is and how engaged they are (passive interest vs actively mobilizing internally)",
-  "commitments": ["Verbatim or near-verbatim rep statement where they promised to do something. Only include first-person promises starting with I'll, I will, I can, I'm going to, etc. Example: 'I'll send the deck over today'"]
-}`;
+  "commitments": ["Verbatim or near-verbatim rep statement where they promised to do something. Only include first-person promises starting with I'll, I will, I can, I'm going to, etc. Example: 'I'll send the deck over today'"],
+  "filler_words": {
+    "um": 0,
+    "uh": 0,
+    "like": 0,
+    "you_know": 0,
+    "literally": 0,
+    "basically": 0,
+    "actually": 0,
+    "total": 0,
+    "per_minute": null
+  }
+}
+
+Count filler words in the rep's speech only (not the customer's). Be accurate — count every occurrence. For "like", only count conversational filler uses ("it was, like, really good"), not legitimate uses ("it looks like", "something like that"). For "per_minute", divide the total by the call duration in minutes (${durationMin} minutes); set to null if duration is 0.`;
 
     const rawAnalysis = await callAnthropic(apiKey, {
       model: 'claude-haiku-4-5-20251001',
@@ -368,6 +381,7 @@ Return ONLY valid JSON:
       champion_health_score: null,
       champion_health_notes: null,
       commitments: [],
+      filler_words: null,
     });
 
     // Persist to Supabase — this is the source of truth across sessions

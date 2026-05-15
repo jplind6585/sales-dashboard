@@ -5,6 +5,7 @@ import * as stakeholdersDb from '../lib/db/stakeholders'
 import * as gapsDb from '../lib/db/gaps'
 import * as notesDb from '../lib/db/notes'
 import { createTasks, getStageChangeTasks } from '../lib/db/tasks'
+import { getSupabase } from '../lib/supabase'
 
 export const useAccountStore = create((set, get) => ({
   // State
@@ -86,6 +87,42 @@ export const useAccountStore = create((set, get) => ({
           : state.accountDetails,
         isSaving: false
       }))
+
+      // Record stage change in audit log
+      if (newStage && newStage !== previousStage && process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false') {
+        ;(async () => {
+          try {
+            const supabase = getSupabase()
+            const { useAuthStore } = await import('./useAuthStore')
+            const authState = useAuthStore.getState()
+            const changedByName = authState.getUserName()
+            const changedById = authState.getUserId()
+
+            // Calculate days in prior stage from last history entry
+            let daysInPriorStage = null
+            const { data: lastEntry } = await supabase
+              .from('account_stage_history')
+              .select('changed_at')
+              .eq('account_id', accountId)
+              .order('changed_at', { ascending: false })
+              .limit(1)
+              .single()
+            if (lastEntry?.changed_at) {
+              const ms = Date.now() - new Date(lastEntry.changed_at).getTime()
+              daysInPriorStage = Math.floor(ms / (1000 * 60 * 60 * 24))
+            }
+
+            await supabase.from('account_stage_history').insert({
+              account_id: accountId,
+              from_stage: previousStage || null,
+              to_stage: newStage,
+              changed_by: changedById || null,
+              changed_by_name: changedByName || null,
+              days_in_prior_stage: daysInPriorStage,
+            })
+          } catch { /* non-fatal */ }
+        })()
+      }
 
       // Fire stage-change task checklist (non-fatal, runs after state is updated)
       if (newStage && newStage !== previousStage && userId && process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false') {

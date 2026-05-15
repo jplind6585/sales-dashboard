@@ -56,10 +56,11 @@ export default async function handler(req, res) {
   function computeMetrics(calls) {
     if (!calls.length) return null;
     const withDiscovery = calls.filter(c => c.analysis?.discovery_score != null);
-    const withTalkRatio = calls.filter(c => c.analysis?.talk_ratio != null);
+    const withTalkRatio = calls.filter(c => c.analysis?.rep_talk_ratio != null);
     const withNextSteps = calls.filter(c => (c.analysis?.next_steps_mentioned || []).length > 0);
     const withCommitments = calls.filter(c => (c.analysis?.commitments || []).length > 0);
     const withRedFlags = calls.filter(c => (c.analysis?.red_flags || []).length > 0);
+    const withFillerWords = calls.filter(c => c.analysis?.filler_words?.per_minute != null);
 
     return {
       callCount: calls.length,
@@ -67,32 +68,40 @@ export default async function handler(req, res) {
         ? Math.round((withDiscovery.reduce((s, c) => s + c.analysis.discovery_score, 0) / withDiscovery.length) * 10) / 10
         : null,
       avgTalkRatio: withTalkRatio.length
-        ? Math.round(withTalkRatio.reduce((s, c) => s + c.analysis.talk_ratio, 0) / withTalkRatio.length)
+        ? Math.round(withTalkRatio.reduce((s, c) => s + c.analysis.rep_talk_ratio, 0) / withTalkRatio.length)
         : null,
       nextStepRate: Math.round((withNextSteps.length / calls.length) * 100),
       commitmentRate: Math.round((withCommitments.length / calls.length) * 100),
       redFlagRate: Math.round((withRedFlags.length / calls.length) * 100),
+      avgFillerWordsPerMin: withFillerWords.length
+        ? Math.round((withFillerWords.reduce((s, c) => s + c.analysis.filler_words.per_minute, 0) / withFillerWords.length) * 10) / 10
+        : null,
     };
   }
 
   const current = computeMetrics(currentCalls);
   const prev = computeMetrics(prevCalls);
 
-  function trend(curr, prv) {
-    if (curr == null || prv == null) return 'neutral';
-    if (curr > prv + 0.5) return 'up';
-    if (curr < prv - 0.5) return 'down';
-    return 'neutral';
+  function trendObj(curr, prv, threshold = 0.05) {
+    if (curr == null || prv == null) return { delta: null, direction: 'neutral' };
+    const delta = Math.round((curr - prv) * 100) / 100;
+    const pctChange = prv !== 0 ? Math.abs(delta / prv) : (delta !== 0 ? 1 : 0);
+    if (pctChange < threshold) return { delta, direction: 'neutral' };
+    return { delta, direction: delta > 0 ? 'up' : 'down' };
   }
+
+  const trends = {
+    discoveryScore: trendObj(current.avgDiscoveryScore, prev?.avgDiscoveryScore),
+    talkRatio: trendObj(current.avgTalkRatio, prev?.avgTalkRatio),
+    nextStepRate: trendObj(current.nextStepRate, prev?.nextStepRate),
+    fillerWordsPerMin: trendObj(current.avgFillerWordsPerMin, prev?.avgFillerWordsPerMin),
+  };
 
   const metrics = {
     ...current,
-    trends: {
-      discoveryScore: trend(current.avgDiscoveryScore, prev?.avgDiscoveryScore),
-      talkRatio: trend(current.avgTalkRatio, prev?.avgTalkRatio),
-      nextStepRate: trend(current.nextStepRate, prev?.nextStepRate),
-    },
-    prevPeriod: prev,
+    trends,
+    currentPeriod: current,
+    priorPeriod: prev,
   };
 
   // Build call evidence for the coaching prompt
@@ -120,14 +129,15 @@ ${processContext}
 
 PERFORMANCE METRICS (current ${daysNum} days):
 - Calls analyzed: ${metrics.callCount}
-- Avg discovery score: ${metrics.avgDiscoveryScore ?? 'N/A'}/10 (trend: ${metrics.trends.discoveryScore})
-- Avg talk ratio: ${metrics.avgTalkRatio ?? 'N/A'}% — reps should aim for 30-45% (trend: ${metrics.trends.talkRatio})
-- Next-step rate: ${metrics.nextStepRate}% of calls ended with a defined next step (trend: ${metrics.trends.nextStepRate})
+- Avg discovery score: ${metrics.avgDiscoveryScore ?? 'N/A'}/10 (trend: ${trends.discoveryScore.direction}, delta: ${trends.discoveryScore.delta ?? 'N/A'})
+- Avg talk ratio: ${metrics.avgTalkRatio ?? 'N/A'}% — reps should aim for 30-45% (trend: ${trends.talkRatio.direction}, delta: ${trends.talkRatio.delta ?? 'N/A'})
+- Next-step rate: ${metrics.nextStepRate}% of calls ended with a defined next step (trend: ${trends.nextStepRate.direction}, delta: ${trends.nextStepRate.delta ?? 'N/A'})
 - Commitment rate: ${metrics.commitmentRate}% of calls had rep commitments
 - Red flag rate: ${metrics.redFlagRate}% of calls had red flags
+- Avg filler words/min: ${metrics.avgFillerWordsPerMin ?? 'N/A'} (trend: ${trends.fillerWordsPerMin.direction}, delta: ${trends.fillerWordsPerMin.delta ?? 'N/A'})
 
 PREVIOUS PERIOD COMPARISON:
-${prev ? `Discovery: ${prev.avgDiscoveryScore ?? 'N/A'} | Talk ratio: ${prev.avgTalkRatio ?? 'N/A'}% | Next-step rate: ${prev.nextStepRate}%` : 'No prior period data'}
+${prev ? `Discovery: ${prev.avgDiscoveryScore ?? 'N/A'} | Talk ratio: ${prev.avgTalkRatio ?? 'N/A'}% | Next-step rate: ${prev.nextStepRate}% | Filler words/min: ${prev.avgFillerWordsPerMin ?? 'N/A'}` : 'No prior period data'}
 
 CALL EVIDENCE:
 ${callEvidence}

@@ -82,6 +82,57 @@ const STAGE_COLORS = {
   closed_lost: 'bg-red-100 text-red-500',
 }
 
+function CompetitorTags({ account, onSave }) {
+  const [c1, setC1] = useState(account?.competitor1 || '')
+  const [c2, setC2] = useState(account?.competitor2 || '')
+
+  useEffect(() => {
+    setC1(account?.competitor1 || '')
+    setC2(account?.competitor2 || '')
+  }, [account?.id, account?.competitor1, account?.competitor2])
+
+  const save1 = () => onSave({ competitor1: c1.trim() || null })
+  const save2 = () => onSave({ competitor2: c2.trim() || null })
+
+  return (
+    <div className="flex items-center gap-2 mt-2 flex-wrap">
+      <span className="text-xs text-gray-400 font-medium">vs.</span>
+      <div className="flex items-center gap-0.5 bg-gray-100 rounded-full px-2 py-0.5 border border-gray-200">
+        <input
+          type="text"
+          value={c1}
+          onChange={e => setC1(e.target.value)}
+          onBlur={save1}
+          onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+          placeholder="Competitor 1"
+          className="text-xs bg-transparent outline-none text-gray-700 placeholder-gray-400 w-24"
+        />
+        {c1 && (
+          <button onClick={() => { setC1(''); onSave({ competitor1: null }) }} className="text-gray-400 hover:text-gray-600 ml-0.5">
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-0.5 bg-gray-100 rounded-full px-2 py-0.5 border border-gray-200">
+        <input
+          type="text"
+          value={c2}
+          onChange={e => setC2(e.target.value)}
+          onBlur={save2}
+          onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+          placeholder="Competitor 2"
+          className="text-xs bg-transparent outline-none text-gray-700 placeholder-gray-400 w-24"
+        />
+        {c2 && (
+          <button onClick={() => { setC2(''); onSave({ competitor2: null }) }} className="text-gray-400 hover:text-gray-600 ml-0.5">
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Home() {
   const router = useRouter();
   const store = useAccountStore();
@@ -115,6 +166,7 @@ export default function Home() {
   const [search, setSearch] = useState('');
   const [filterStage, setFilterStage] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
+  const [filterCompetitor, setFilterCompetitor] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
   // Campaign builder state
@@ -165,6 +217,16 @@ export default function Home() {
     return names
   }, [accounts])
 
+  // Derive unique competitors for filter dropdown
+  const uniqueCompetitors = useMemo(() => {
+    const names = new Set()
+    accounts.forEach(a => {
+      if (a.competitor1) names.add(a.competitor1)
+      if (a.competitor2) names.add(a.competitor2)
+    })
+    return [...names].sort()
+  }, [accounts])
+
   // Derive unique stages in pipeline order
   const uniqueStages = useMemo(() => {
     const present = new Set(accounts.map(a => a.stage).filter(Boolean))
@@ -182,6 +244,7 @@ export default function Home() {
         if (a.stage !== filterStage) return false
       }
       if (filterOwner && a.ownerName !== filterOwner) return false
+      if (filterCompetitor && a.competitor1 !== filterCompetitor && a.competitor2 !== filterCompetitor) return false
       if (search) {
         const q = search.toLowerCase()
         return a.name?.toLowerCase().includes(q) || a.ownerName?.toLowerCase().includes(q) || a.stage?.toLowerCase().includes(q)
@@ -191,7 +254,7 @@ export default function Home() {
   }, [accounts, search, filterStage, filterOwner, showInactive])
 
   const activeCount = filteredAccounts.length
-  const hasFilters = search || filterStage || filterOwner
+  const hasFilters = search || filterStage || filterOwner || filterCompetitor
 
   // Select account + load detail
   const handleSelectAccount = useCallback(async (account) => {
@@ -443,7 +506,7 @@ export default function Home() {
                 </h2>
                 {hasFilters && (
                   <button
-                    onClick={() => { setSearch(''); setFilterStage(''); setFilterOwner('') }}
+                    onClick={() => { setSearch(''); setFilterStage(''); setFilterOwner(''); setFilterCompetitor('') }}
                     className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
                   >
                     <X className="w-3 h-3" /> Clear
@@ -488,6 +551,20 @@ export default function Home() {
                   </select>
                 )}
               </div>
+              {uniqueCompetitors.length > 0 && (
+                <div className="mt-1.5">
+                  <select
+                    value={filterCompetitor}
+                    onChange={e => setFilterCompetitor(e.target.value)}
+                    className="w-full text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  >
+                    <option value="">All competitors</option>
+                    {uniqueCompetitors.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Account list */}
@@ -613,6 +690,8 @@ export default function Home() {
                           <span className="text-sm text-gray-500">${selectedAccount.dealValue.toLocaleString()}</span>
                         )}
                       </div>
+                      {/* Competitor tags */}
+                      <CompetitorTags account={selectedAccount} onSave={updateAccountField} />
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {/* Quick note button */}
