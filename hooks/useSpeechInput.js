@@ -5,6 +5,9 @@ export function useSpeechInput() {
   const [transcript, setTranscript] = useState('')
   const recognitionRef = useRef(null)
   const finalRef = useRef('')
+  // Tracks the most recent combined (final + interim) text so onend has it even
+  // if the browser never promoted the last interim chunk to a final result.
+  const latestRef = useRef('')
 
   const supported = typeof window !== 'undefined'
     && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
@@ -15,6 +18,7 @@ export function useSpeechInput() {
       return
     }
     finalRef.current = ''
+    latestRef.current = ''
     setTranscript('')
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -32,7 +36,9 @@ export function useSpeechInput() {
           interim = e.results[i][0].transcript
         }
       }
-      setTranscript((finalRef.current + interim).trim())
+      const combined = (finalRef.current + interim).trim()
+      latestRef.current = combined
+      setTranscript(combined)
     }
 
     r.onerror = (e) => {
@@ -49,7 +55,9 @@ export function useSpeechInput() {
     r.onend = () => {
       setListening(false)
       recognitionRef.current = null
-      const final = finalRef.current.trim()
+      // Use latestRef (final + any unfinalised interim) so we don't lose words
+      // that Chrome never promoted before stop() was called.
+      const final = latestRef.current || finalRef.current.trim()
       if (final) onResult?.(final)
     }
 

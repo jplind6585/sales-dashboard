@@ -432,8 +432,14 @@ function NLTaskBar({ onCreate, onVoiceCreated }) {
       })
       const j = await r.json()
       if (j.success) {
-        setVoiceResult({ created: j.data.created, error: null })
-        onVoiceCreated?.()
+        const created = j.data?.created || []
+        setVoiceResult({
+          created,
+          error: created.length === 0
+            ? `Heard ${j.data?.parsed || 0} task${j.data?.parsed !== 1 ? 's' : ''} but couldn't save them. Check that you're logged in and try again.`
+            : null,
+        })
+        if (created.length > 0) onVoiceCreated?.()
       } else {
         setVoiceResult({ created: [], error: j.error || 'Failed to parse tasks from voice' })
       }
