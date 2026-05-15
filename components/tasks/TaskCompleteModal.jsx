@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, CheckCircle2, Loader2, Sparkles } from 'lucide-react'
+import { X, Send, CheckCircle2, Loader2, Sparkles, Copy } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 /**
@@ -19,6 +19,7 @@ export default function TaskCompleteModal({ task, onComplete, onClose }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [completing, setCompleting] = useState(false)
+  const [copiedIdx, setCopiedIdx] = useState(null)
   const bottomRef = useRef(null)
 
   // Auto-generate first draft on open
@@ -107,10 +108,28 @@ export default function TaskCompleteModal({ task, onComplete, onClose }) {
               className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {m.role === 'assistant' ? (
-                <div className="max-w-full bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-                  <div className="prose prose-sm max-w-none text-gray-800 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-headings:my-2 prose-hr:my-3">
-                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                <div className="group relative max-w-full">
+                  <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+                    <div className="prose prose-sm max-w-none text-gray-800 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-headings:my-2 prose-hr:my-3">
+                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(m.content).then(() => {
+                        setCopiedIdx(i)
+                        setTimeout(() => setCopiedIdx(null), 1500)
+                      })
+                    }}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-white/90 hover:bg-white shadow-sm border border-gray-100"
+                    title="Copy"
+                  >
+                    {copiedIdx === i ? (
+                      <span className="text-xs text-gray-400 px-1">Copied</span>
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                  </button>
                 </div>
               ) : (
                 <div className="max-w-[80%] bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm">

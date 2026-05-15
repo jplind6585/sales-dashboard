@@ -6,7 +6,8 @@ import {
   Calendar, Building2, BarChart3, X, ChevronRight,
   LayoutGrid, TrendingUp, Send, ChevronUp, Sparkles,
   Target, BanIcon, Info, Star, MessageSquare, ArrowRight,
-  Loader2, CornerDownLeft, Phone, Mic, Square, CheckCheck
+  Loader2, CornerDownLeft, Phone, Mic, Square, CheckCheck,
+  Copy, Search
 } from 'lucide-react';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -191,6 +192,7 @@ function WorkInClaude({ task, onClose }) {
   const needsFetch = playbook?.fetchContext === 'calls' && task.accountId
   const [accountCalls, setAccountCalls] = useState([])
   const [callsLoading, setCallsLoading] = useState(!!needsFetch)
+  const [copiedId, setCopiedId] = useState(null)
   const [messages, setMessages] = useState(() => {
     try {
       const saved = localStorage.getItem(storageKey)
@@ -345,13 +347,33 @@ function WorkInClaude({ task, onClose }) {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                msg.role === 'user'
-                  ? 'bg-indigo-600 text-white rounded-br-sm'
-                  : 'bg-gray-100 text-gray-800 rounded-bl-sm'
-              }`}>
-                {msg.content}
-              </div>
+              {msg.role === 'assistant' ? (
+                <div className="group relative max-w-[85%]">
+                  <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+                    {msg.content}
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(msg.content).then(() => {
+                        setCopiedId(msg.ts ?? i)
+                        setTimeout(() => setCopiedId(null), 1500)
+                      })
+                    }}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-white/80 hover:bg-white shadow-sm"
+                    title="Copy"
+                  >
+                    {copiedId === (msg.ts ?? i) ? (
+                      <span className="text-xs text-gray-400 px-1">Copied</span>
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap bg-indigo-600 text-white rounded-br-sm">
+                  {msg.content}
+                </div>
+              )}
             </div>
           ))}
           {loading && (
@@ -1235,7 +1257,10 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude }) 
   const isGong = task.source === 'gong'
 
   return (
-    <div className={`border rounded-xl transition-all ${overdue ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'} hover:shadow-sm`}>
+    <div className={`border rounded-xl transition-all ${
+      task._justCompleted ? 'border-green-300 bg-green-50' :
+      overdue ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'
+    } hover:shadow-sm`}>
       <div className="flex items-start gap-3 p-4">
         {/* Complete toggle */}
         <button
@@ -1368,7 +1393,12 @@ function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, o
   const grouped = TYPE_ORDER.reduce((acc, type) => {
     const items = tasks
       .filter(t => t.type === type)
-      .sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a))
+      .sort((a, b) => {
+        const aOver = isOverdue(a) ? 1 : 0
+        const bOver = isOverdue(b) ? 1 : 0
+        if (bOver !== aOver) return bOver - aOver
+        return computeTaskPriority(b) - computeTaskPriority(a)
+      })
     if (items.length) acc[type] = items
     return acc
   }, {})
@@ -1520,6 +1550,112 @@ function ManagerView({ summary, allTasks, onStatusChange, onDelete }) {
   )
 }
 
+// ─── Global Search (Cmd+K) ────────────────────────────────────────────────────
+
+function GlobalSearch({ tasks, onClose, router }) {
+  const [query, setQuery] = useState('')
+  const [accounts, setAccounts] = useState([])
+  const [selectedIdx, setSelectedIdx] = useState(0)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    // Build unique accounts from loaded tasks
+    const seen = new Set()
+    const fromTasks = []
+    tasks.forEach(t => {
+      if (t.account?.id && !seen.has(t.account.id)) {
+        seen.add(t.account.id)
+        fromTasks.push({ id: t.account.id, name: t.account.name, stage: t.account.stage })
+      }
+    })
+    setAccounts(fromTasks)
+  }, [tasks])
+
+  const q = query.toLowerCase().trim()
+
+  const taskResults = q
+    ? tasks.filter(t => t.title?.toLowerCase().includes(q) || t.account?.name?.toLowerCase().includes(q)).slice(0, 5).map(t => ({
+        type: 'task', id: t.id, label: t.title, sub: t.account?.name || '', data: t,
+      }))
+    : []
+
+  const accountResults = q
+    ? accounts.filter(a => a.name?.toLowerCase().includes(q)).slice(0, 5).map(a => ({
+        type: 'account', id: a.id, label: a.name, sub: a.stage || '', data: a,
+      }))
+    : []
+
+  const results = [...accountResults, ...taskResults]
+
+  useEffect(() => { setSelectedIdx(0) }, [query])
+
+  const handleSelect = (item) => {
+    if (item.type === 'account') {
+      router.push(`/modules/account-pipeline?account=${item.id}`)
+    } else {
+      router.push(`/modules/tasks`)
+    }
+    onClose()
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') { onClose(); return }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => Math.min(i + 1, results.length - 1)) }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIdx(i => Math.max(i - 1, 0)) }
+    if (e.key === 'Enter' && results[selectedIdx]) handleSelect(results[selectedIdx])
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-24 px-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+          <Search className="w-4 h-4 text-gray-400 shrink-0" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Search accounts and tasks..."
+            className="flex-1 text-sm text-gray-900 outline-none bg-transparent placeholder-gray-400"
+          />
+          <kbd className="text-xs text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">Esc</kbd>
+        </div>
+        {query && (
+          <div className="max-h-80 overflow-y-auto py-1">
+            {results.length === 0 ? (
+              <p className="text-sm text-gray-400 px-4 py-3">No results</p>
+            ) : (
+              results.map((item, idx) => (
+                <button
+                  key={`${item.type}-${item.id}`}
+                  onClick={() => handleSelect(item)}
+                  onMouseEnter={() => setSelectedIdx(idx)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${idx === selectedIdx ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                >
+                  <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${item.type === 'account' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                    {item.type === 'account' ? 'Account' : 'Task'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 truncate">{item.label}</p>
+                    {item.sub && <p className="text-xs text-gray-400 truncate">{item.sub}</p>}
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                </button>
+              ))
+            )}
+          </div>
+        )}
+        {!query && (
+          <div className="px-4 py-3 text-xs text-gray-400">
+            Type to search accounts and tasks
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TasksPage() {
@@ -1539,6 +1675,7 @@ export default function TasksPage() {
   const [completeTask, setCompleteTask] = useState(null) // task being completed via AI modal
   const [dismissTask, setDismissTask] = useState(null) // task being dismissed
   const [workTask, setWorkTask] = useState(null) // task open in Work in Claude panel
+  const [showSearch, setShowSearch] = useState(false)
   const [users, setUsers] = useState([])
   const demoSeeded = useRef(false)
 
@@ -1561,6 +1698,17 @@ export default function TasksPage() {
 
   useEffect(() => {
     try { setRepType(localStorage.getItem('user_rep_type') || null) } catch {}
+  }, [])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowSearch(s => !s)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
   }, [])
 
   const seedDemoTasks = useCallback(async () => {
@@ -1613,12 +1761,29 @@ export default function TasksPage() {
   }, [isReady, fetchTasks])
 
   const handleStatusChange = async (taskId, newStatus) => {
-    // Completing a task → open AI assistant modal first
     if (newStatus === 'complete') {
       const task = tasks.find(t => t.id === taskId)
-      if (task) { setCompleteTask(task); return }
+      if (task) {
+        const isSimple = !task.primaryAction || (task.type === 'triggered' && task.source === 'manual')
+        if (isSimple) {
+          setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'complete', _justCompleted: true } : t))
+          setTimeout(() => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, _justCompleted: false } : t)), 1000)
+          try {
+            await fetch(`/api/tasks/${taskId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'complete' }),
+            })
+          } catch (err) {
+            console.error('Failed to complete task:', err)
+            fetchTasks()
+          }
+          return
+        }
+        setCompleteTask(task)
+        return
+      }
     }
-    // Optimistic update for non-complete status changes
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -1954,6 +2119,15 @@ export default function TasksPage() {
         <WorkInClaude
           task={workTask}
           onClose={() => setWorkTask(null)}
+        />
+      )}
+
+      {/* Cmd+K Global Search */}
+      {showSearch && (
+        <GlobalSearch
+          tasks={tasks}
+          onClose={() => setShowSearch(false)}
+          router={router}
         />
       )}
     </div>

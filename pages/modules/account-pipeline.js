@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { Building2, AlertCircle, Sparkles, ArrowLeft, Search, Filter, X, ChevronDown, Flame, Archive, Eye, EyeOff, RefreshCw, CheckCircle } from 'lucide-react';
+import { Building2, AlertCircle, Sparkles, ArrowLeft, Search, Filter, X, ChevronDown, Flame, Archive, Eye, EyeOff, RefreshCw, CheckCircle, MessageSquare, Check } from 'lucide-react';
 
 // Hooks
 import { useAccounts } from '../../hooks/useAccounts';
@@ -133,6 +133,13 @@ export default function Home() {
   const [reengageLoading, setReengageLoading] = useState(false);
   const [reengageBrief, setReengageBrief] = useState(null);
   const [showReengage, setShowReengage] = useState(false);
+
+  // Quick note state
+  const [showQuickNote, setShowQuickNote] = useState(false);
+  const [quickNoteText, setQuickNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
+  const quickNoteRef = useRef(null);
 
   // Form state
   const [accountName, setAccountName] = useState('');
@@ -330,6 +337,31 @@ export default function Home() {
       setReengageLoading(false)
     }
   }, [selectedAccount])
+
+  useEffect(() => {
+    if (showQuickNote && quickNoteRef.current) quickNoteRef.current.focus()
+  }, [showQuickNote])
+
+  useEffect(() => {
+    setShowQuickNote(false)
+    setQuickNoteText('')
+    setNoteSaved(false)
+  }, [selectedAccount?.id])
+
+  const handleSaveQuickNote = async () => {
+    if (!quickNoteText.trim() || !selectedAccount) return
+    setSavingNote(true)
+    try {
+      await store.addNote(selectedAccount.id, { content: quickNoteText.trim(), category: 'General' })
+      setNoteSaved(true)
+      setQuickNoteText('')
+      setTimeout(() => { setNoteSaved(false); setShowQuickNote(false) }, 1200)
+    } catch {
+      /* silent */
+    } finally {
+      setSavingNote(false)
+    }
+  }
 
   // Render tab content
   const renderTabContent = () => {
@@ -583,6 +615,15 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Quick note button */}
+                      <button
+                        onClick={() => setShowQuickNote(v => !v)}
+                        className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm transition-all ${showQuickNote ? 'bg-gray-100 border-gray-300 text-gray-700' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'}`}
+                        title="Quick note"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        Note
+                      </button>
                       {/* Reengagement button */}
                       <button
                         onClick={handleReengage}
@@ -614,6 +655,35 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Quick note inline editor */}
+                  {showQuickNote && (
+                    <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                      <textarea
+                        ref={quickNoteRef}
+                        value={quickNoteText}
+                        onChange={e => setQuickNoteText(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSaveQuickNote() }}
+                        placeholder="Add a quick note..."
+                        rows={2}
+                        className="w-full text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 placeholder-gray-400"
+                        disabled={savingNote}
+                      />
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs text-gray-400">⌘+Enter to save</span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => { setShowQuickNote(false); setQuickNoteText('') }} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Cancel</button>
+                          <button
+                            onClick={handleSaveQuickNote}
+                            disabled={!quickNoteText.trim() || savingNote}
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                          >
+                            {noteSaved ? <><Check className="w-3 h-3" /> Saved</> : savingNote ? 'Saving…' : 'Save note'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Tab navigation */}
                   <div className="flex gap-4 border-b">
