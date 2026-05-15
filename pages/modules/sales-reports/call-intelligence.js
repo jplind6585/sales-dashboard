@@ -205,6 +205,30 @@ export default function CallIntelligence() {
   const [showClosedWon, setShowClosedWon] = useState(false)
 
   const [reengagingId, setReengagingId] = useState(null)
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchResults, setSearchResults] = useState(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  const runSearch = async (q) => {
+    if (!q?.trim()) return
+    setSearchLoading(true)
+    setSearchResults(null)
+    setSearchQuery(q.trim())
+    try {
+      const r = await fetch(`/api/gong/call-search?q=${encodeURIComponent(q.trim())}`)
+      const j = await r.json()
+      setSearchResults(j.results || [])
+    } catch { setSearchResults([]) }
+    finally { setSearchLoading(false) }
+  }
+
+  const clearSearch = () => {
+    setSearchQuery('')
+    setSearchInput('')
+    setSearchResults(null)
+  }
   const [reengagementEmails, setReengagementEmails] = useState({})
   const [selectedCallIds, setSelectedCallIds] = useState(new Set())
 
@@ -235,6 +259,11 @@ export default function CallIntelligence() {
   const [callSearch, setCallSearch] = useState('')
   const [disqualFilter, setDisqualFilter] = useState(false)
   const pollRef = useRef(null)
+
+  const [keywordQuery, setKeywordQuery] = useState('')
+  const [keywordResults, setKeywordResults] = useState(null)
+  const [keywordLoading, setKeywordLoading] = useState(false)
+  const [keywordError, setKeywordError] = useState(null)
 
   const chatEndRef = useRef(null)
   const repFilterRef = useRef(null)
@@ -377,6 +406,40 @@ export default function CallIntelligence() {
       }
     } catch { /* silent */ }
     finally { setLoadingSignalBrief(false) }
+  }
+
+  async function runKeywordSearch(query) {
+    const q = (query || keywordQuery).trim()
+    if (!q || q.length < 2) return
+    setKeywordLoading(true)
+    setKeywordError(null)
+    setKeywordResults(null)
+    try {
+      const res = await fetch(`/api/gong/call-search?q=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error || 'Search failed')
+      setKeywordResults(data.results || [])
+    } catch (e) {
+      setKeywordError(e.message)
+    } finally {
+      setKeywordLoading(false)
+    }
+  }
+
+  function clearKeywordSearch() {
+    setKeywordQuery('')
+    setKeywordResults(null)
+    setKeywordError(null)
+  }
+
+  function highlightKeyword(text, keyword) {
+    if (!text || !keyword) return text || ''
+    const parts = text.split(new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
+    return parts.map((part, i) =>
+      part.toLowerCase() === keyword.toLowerCase()
+        ? <mark key={i} style={{ background: '#fef08a', borderRadius: '2px', padding: '0 1px' }}>{part}</mark>
+        : part
+    )
   }
 
   async function saveManagerNote(callId, note) {
@@ -1035,6 +1098,71 @@ export default function CallIntelligence() {
         </div>
       )}
 
+      {/* Call keyword search */}
+      <div className="bg-white border-b border-gray-200 px-6 py-3 shrink-0">
+        <div className="max-w-[1400px] mx-auto">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 max-w-lg">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') runSearch(searchInput); if (e.key === 'Escape') clearSearch() }}
+                placeholder="Search calls — 'budget', 'Procore', 'feature request', 'no-show'…"
+                className="w-full text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 placeholder-gray-400"
+              />
+              <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" /></svg>
+            </div>
+            <button onClick={() => runSearch(searchInput)} disabled={!searchInput.trim() || searchLoading} className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-lg flex items-center gap-1.5">
+              {searchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Search
+            </button>
+            {searchQuery && <button onClick={clearSearch} className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1"><X className="w-3.5 h-3.5" />Clear</button>}
+          </div>
+
+          {/* Search results */}
+          {searchQuery && (
+            <div className="mt-3">
+              {searchLoading && <p className="text-sm text-gray-500">Searching…</p>}
+              {!searchLoading && searchResults !== null && (
+                <>
+                  <p className="text-xs text-gray-400 mb-2">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for <strong>"{searchQuery}"</strong></p>
+                  {searchResults.length === 0 && <p className="text-sm text-gray-500">No calls matched. Try a different keyword.</p>}
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {searchResults.map(r => (
+                      <div key={r.id} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{r.callTitle || 'Untitled call'}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {r.accountName && <span className="text-xs text-gray-500">{r.accountName}</span>}
+                              {r.callDate && <span className="text-xs text-gray-400">{new Date(r.callDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${r.matchType === 'transcript' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-700'}`}>
+                                {r.matchType === 'transcript' ? 'transcript' : r.analysisFields?.[0]?.replace(/_/g, ' ') || 'analysis'}
+                              </span>
+                            </div>
+                            {r.snippet && (
+                              <p className="text-xs text-gray-600 mt-1.5 leading-relaxed" dangerouslySetInnerHTML={{
+                                __html: r.snippet.replace(new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark class="bg-yellow-100 text-yellow-900 rounded px-0.5">$1</mark>')
+                              }} />
+                            )}
+                          </div>
+                          {r.gongUrl && (
+                            <a href={r.gongUrl} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 shrink-0">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {loadError && (
         <div className="px-6 py-4 shrink-0 border-b border-red-100">
           <div className="max-w-[1400px] mx-auto">
@@ -1062,6 +1190,113 @@ export default function CallIntelligence() {
 
         {!loadingCalls && (
           <>
+            {/* Keyword search bar */}
+            <div className="mb-5">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 max-w-lg">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={keywordQuery}
+                    onChange={e => setKeywordQuery(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') runKeywordSearch() }}
+                    placeholder="Search calls — 'budget', 'Procore', 'feature request'…"
+                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                  />
+                </div>
+                <button
+                  onClick={() => runKeywordSearch()}
+                  disabled={keywordLoading || keywordQuery.trim().length < 2}
+                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 disabled:opacity-40 shrink-0"
+                >
+                  {keywordLoading ? 'Searching…' : 'Search'}
+                </button>
+                {keywordResults !== null && (
+                  <button onClick={clearKeywordSearch} className="text-sm text-gray-400 hover:text-gray-600 shrink-0">
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {keywordError && (
+                <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+                  {keywordError}
+                </div>
+              )}
+
+              {keywordResults !== null && !keywordLoading && (
+                <div className="mt-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">
+                      {keywordResults.length === 0
+                        ? `No results for "${keywordQuery}"`
+                        : `${keywordResults.length} result${keywordResults.length !== 1 ? 's' : ''} for "${keywordQuery}"`}
+                    </span>
+                    <span className="text-xs text-gray-400">Searching analysis + transcripts</span>
+                  </div>
+                  {keywordResults.length > 0 && (
+                    <div className="divide-y divide-gray-50">
+                      {keywordResults.map((result, i) => (
+                        <div
+                          key={`${result.id}-${i}`}
+                          className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => {
+                            const match = calls.find(c => c.gongCallId === result.id)
+                            if (match) setSelectedCall(match)
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                {result.accountName && (
+                                  <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                                    {result.accountName}
+                                  </span>
+                                )}
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${result.matchType === 'transcript' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                  {result.matchType === 'transcript' ? 'transcript' : 'analysis'}
+                                </span>
+                                {result.analysisFields.length > 0 && result.analysisFields.map(f => (
+                                  <span key={f} className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                    {f.replace(/_/g, ' ')}
+                                  </span>
+                                ))}
+                              </div>
+                              <p className="text-sm font-medium text-gray-800 truncate">{result.callTitle || 'Untitled call'}</p>
+                              <p className="text-xs text-gray-400 mb-1.5">
+                                {result.repName && `${result.repName} · `}
+                                {result.callDate ? new Date(result.callDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date unknown'}
+                              </p>
+                              {result.snippet && (
+                                <p className="text-sm text-gray-600 leading-relaxed">
+                                  {highlightKeyword(result.snippet, keywordQuery)}
+                                </p>
+                              )}
+                            </div>
+                            {result.gongUrl && (
+                              <a
+                                href={result.gongUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="text-gray-400 hover:text-green-600 shrink-0 mt-0.5"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Executive summary hero */}
             {aggregate?.executive_summary && (
               <div className="bg-gradient-to-r from-gray-900 to-gray-700 rounded-xl p-5 mb-5 text-white">
