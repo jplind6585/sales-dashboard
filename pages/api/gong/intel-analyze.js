@@ -60,9 +60,40 @@ async function tryMatchCallToAccount(callId, callTitle, db) {
         match_method: 'title_fuzzy_inline',
       }).eq('gong_call_id', callId);
       console.log(`[intel-analyze] matched "${callTitle}" → "${best.name}" (score ${bestScore})`);
+      return best.id;
     }
   } catch (e) {
     console.error('[intel-analyze] tryMatchCallToAccount error:', e.message);
+  }
+  return null;
+}
+
+async function autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db }) {
+  if (!accountId) return;
+  try {
+    // Skip if already exists
+    const { data: existing } = await db
+      .from('transcripts')
+      .select('id')
+      .eq('gong_call_id', callId)
+      .maybeSingle();
+    if (existing) return;
+
+    const dateStr = date ? date.split('T')[0] : null;
+    await db.from('transcripts').insert({
+      account_id: accountId,
+      gong_call_id: callId,
+      text: transcriptText?.trim() || '[Transcript from Gong — full text not stored]',
+      date: dateStr,
+      call_type: callType || 'other',
+      summary: analysis?.summary || null,
+      raw_analysis: analysis,
+      source: 'gong',
+      gong_url: gongUrl || null,
+    });
+    console.log(`[intel-analyze] inserted transcript for call ${callId} → account ${accountId}`);
+  } catch (e) {
+    console.error('[intel-analyze] autoInsertTranscript error:', e.message);
   }
 }
 
@@ -362,13 +393,14 @@ Return ONLY valid JSON:
     if (upsertError) {
       console.error('intel-analyze: Supabase write failed for', callId, upsertError.message, upsertError.code, upsertError.details);
     } else {
-      // Auto-create tasks and match to account — both non-blocking
+      // Auto-create tasks — non-blocking
       autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, durationSeconds, db }).catch(e =>
         console.error('[intel-analyze] autoCreateTasksFromAnalysis error:', e.message)
       );
-      tryMatchCallToAccount(callId, title, db).catch(e =>
-        console.error('[intel-analyze] tryMatchCallToAccount error:', e.message)
-      );
+      // Match to account, then insert transcript row so Account Management shows it automatically
+      tryMatchCallToAccount(callId, title, db)
+        .then(accountId => autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db }))
+        .catch(e => console.error('[intel-analyze] match+transcript chain error:', e.message));
     }
 
     // Always return the analysis even if the DB write failed —

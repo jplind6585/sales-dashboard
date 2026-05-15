@@ -186,6 +186,12 @@ export default async function handler(req, res) {
       continue;
     }
 
+    // Detect HTML response (login redirect)
+    if (csvText.trimStart().startsWith('<!') || csvText.trimStart().startsWith('<html')) {
+      results.push({ year, error: 'Sheet not publicly accessible — share as "Anyone with link can view"' });
+      continue;
+    }
+
     const rows = parseCSV(csvText);
     if (!rows.length) { results.push({ year, error: 'Empty CSV' }); continue; }
 
@@ -199,10 +205,14 @@ export default async function handler(req, res) {
       if (lead) leads.push(lead);
     }
 
-    if (!leads.length) { results.push({ year, error: 'No valid leads parsed' }); continue; }
+    if (!leads.length) {
+      results.push({ year, error: `No valid leads parsed (${rows.length - 1} data rows, headers: ${rawHeaders.slice(0, 6).join(', ')})` });
+      continue;
+    }
 
     const db = getSupabase();
     let synced = 0, errors = 0;
+    let firstError = null;
 
     for (let i = 0; i < leads.length; i += 50) {
       const batch = leads.slice(i, i + 50);
@@ -211,6 +221,7 @@ export default async function handler(req, res) {
         .upsert(batch, { onConflict: 'year,seq' });
       if (error) {
         console.error(`[sheets/sync-leads] year=${year} upsert error:`, error.message);
+        if (!firstError) firstError = error.message;
         errors++;
       } else {
         synced += batch.length;
@@ -218,7 +229,10 @@ export default async function handler(req, res) {
     }
 
     console.log(`[sheets/sync-leads] year=${year} synced=${synced} total=${leads.length} errors=${errors}`);
-    results.push({ year, synced, total: leads.length, errors });
+    const result = { year, synced, total: leads.length, errors };
+    if (firstError) result.error = firstError;
+    if (leads.length > 0) result.sampleCols = headers.slice(0, 8);
+    results.push(result);
   }
 
   return apiSuccess(res, { results });

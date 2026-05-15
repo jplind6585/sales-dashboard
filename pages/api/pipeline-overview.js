@@ -49,7 +49,7 @@ export default async function handler(req, res) {
         id, name, stage, vertical, user_id, updated_at,
         deal_value, close_date, hubspot_stage, hubspot_synced_at,
         stakeholders ( id, role ),
-        transcripts ( id, date, added_at )
+        transcripts ( id, date, created_at )
       `)
       .order('updated_at', { ascending: false })
 

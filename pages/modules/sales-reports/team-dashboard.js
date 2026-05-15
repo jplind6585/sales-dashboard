@@ -159,6 +159,7 @@ export default function TeamDashboard() {
   const [days, setDays] = useState(90)
   const [creatingTasks, setCreatingTasks] = useState(false)
   const [taskResult, setTaskResult] = useState(null)
+  const [backfilling, setBackfilling] = useState(false)
   const [section, setSection] = useState('overview')
 
   const load = useCallback(async () => {
@@ -193,6 +194,25 @@ export default function TeamDashboard() {
       setTaskResult({ ok: false, msg: e.message })
     } finally {
       setCreatingTasks(false)
+    }
+  }
+
+  const backfillTranscripts = async () => {
+    setBackfilling(true)
+    setTaskResult(null)
+    try {
+      const r = await fetch('/api/gong/backfill-transcripts', { method: 'POST' })
+      const j = await r.json()
+      if (j.success) {
+        const d = j.data
+        setTaskResult({ ok: true, msg: `Backfill done: ${d.inserted} transcripts added to Account Management (${d.skipped} already linked)` })
+      } else {
+        setTaskResult({ ok: false, msg: j.error || 'Backfill failed' })
+      }
+    } catch (e) {
+      setTaskResult({ ok: false, msg: e.message })
+    } finally {
+      setBackfilling(false)
     }
   }
 
@@ -237,6 +257,14 @@ export default function TeamDashboard() {
               <option value={60}>Last 60 days</option>
               <option value={90}>Last 90 days</option>
             </select>
+            <button
+              onClick={backfillTranscripts}
+              disabled={backfilling}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw size={13} className={backfilling ? 'animate-spin text-blue-500' : 'text-blue-500'} />
+              {backfilling ? 'Linking…' : 'Link Calls to Accounts'}
+            </button>
             <button
               onClick={createTasksFromCalls}
               disabled={creatingTasks}
