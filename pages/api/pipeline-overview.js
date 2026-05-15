@@ -68,13 +68,15 @@ export default async function handler(req, res) {
     // ── Profiles ─────────────────────────────────────────────────────────────
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role')
+      .select('id, full_name, email, role, last_active_at')
 
     if (profilesError) throw profilesError
 
     // ── Task health ───────────────────────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0]
     const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const twoDaysAgo = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString()
+    const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString()
 
     const { data: openTasks } = await supabase
       .from('tasks')
@@ -86,6 +88,19 @@ export default async function handler(req, res) {
       .select('owner_id, completed_at')
       .eq('status', 'complete')
       .gte('completed_at', weekAgo)
+
+    const { data: allOpenTasksForPerf } = await supabase
+      .from('tasks')
+      .select('owner_id, created_at, status')
+      .in('status', ['open', 'in_progress'])
+      .lt('created_at', twoDaysAgo)
+
+    const { data: recentCompletedTasks } = await supabase
+      .from('tasks')
+      .select('owner_id, created_at, completed_at')
+      .eq('status', 'complete')
+      .gte('completed_at', thirtyDaysAgo)
+      .not('completed_at', 'is', null)
 
     // ── Last week's confidence snapshots ─────────────────────────────────────
     const lastWeekDate = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -112,6 +127,17 @@ export default async function handler(req, res) {
       const repTasks = (openTasks || []).filter(t => t.owner_id === rep.id)
       const overdue = repTasks.filter(t => t.due_date && t.due_date < today)
       const doneThisWeek = (completedTasks || []).filter(t => t.owner_id === rep.id).length
+
+      const tasksCompletedThisWeek = doneThisWeek
+      const tasksOpenOver2Days = (allOpenTasksForPerf || []).filter(t => t.owner_id === rep.id).length
+      const repRecentCompleted = (recentCompletedTasks || []).filter(t => t.owner_id === rep.id)
+      let avgCloseHours = null
+      if (repRecentCompleted.length > 0) {
+        const totalHours = repRecentCompleted.reduce((sum, t) => {
+          return sum + (new Date(t.completed_at) - new Date(t.created_at)) / (1000 * 60 * 60)
+        }, 0)
+        avgCloseHours = Math.round((totalHours / repRecentCompleted.length) * 10) / 10
+      }
 
       const stageCounts = {}
       for (const acct of repAccounts) {
@@ -181,11 +207,15 @@ export default async function handler(req, res) {
       return {
         id: rep.id,
         name: rep.full_name || rep.email || 'Rep',
+        lastActiveAt: rep.last_active_at || null,
         totalAccounts: repAccounts.length,
         activeAccounts: activeAccounts.length,
         openTasks: repTasks.length,
         overdueTasks: overdue.length,
         doneThisWeek,
+        tasksCompletedThisWeek,
+        tasksOpenOver2Days,
+        avgCloseHours,
         stageCounts,
         staleAccounts,
         pipelineConfidence: repConfidence,

@@ -26,6 +26,17 @@ function fmt$(n) {
   return `$${n.toLocaleString()}`
 }
 
+function fmtLastActive(ts) {
+  if (!ts) return null
+  const days = Math.floor((Date.now() - new Date(ts)) / (1000 * 60 * 60 * 24))
+  if (days < 1) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days <= 14) return `${days} days ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks <= 8) return `${weeks} week${weeks === 1 ? '' : 's'} ago`
+  return `${Math.floor(days / 30)} months ago`
+}
+
 const STAGE_COLORS = {
   qualifying: 'bg-gray-100 text-gray-700 border-gray-300',
   active_pursuit: 'bg-blue-100 text-blue-700 border-blue-300',
@@ -501,6 +512,11 @@ export default function PipelineOverview() {
                             {rep.hotCount} hot · {rep.coldCount} cold
                           </span>
                         )}
+                        {fmtLastActive(rep.lastActiveAt) && (
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                            Last active: {fmtLastActive(rep.lastActiveAt)}
+                          </span>
+                        )}
                       </div>
                       <div className="grid grid-cols-7 gap-6 text-sm text-center">
                         <div>
@@ -573,6 +589,44 @@ export default function PipelineOverview() {
                             {Object.keys(rep.stageCounts).length === 0 && (
                               <span className="text-xs text-gray-400">No accounts</span>
                             )}
+                          </div>
+                        </div>
+
+                        {/* Task Execution metrics strip */}
+                        <div className="mb-3">
+                          <div className="text-xs font-medium text-gray-500 mb-2">Task Execution</div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 500, padding: '3px 8px', borderRadius: 6,
+                              background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb',
+                            }}>
+                              Done this week: {rep.tasksCompletedThisWeek ?? 0}
+                            </span>
+                            <span style={{
+                              fontSize: 11, fontWeight: 500, padding: '3px 8px', borderRadius: 6,
+                              background: rep.tasksOpenOver2Days > 3 ? '#fee2e2' : '#f3f4f6',
+                              color: rep.tasksOpenOver2Days > 3 ? '#dc2626' : '#374151',
+                              border: `1px solid ${rep.tasksOpenOver2Days > 3 ? '#fca5a5' : '#e5e7eb'}`,
+                            }}>
+                              Overdue open: {rep.tasksOpenOver2Days ?? 0}
+                            </span>
+                            <span style={{
+                              fontSize: 11, fontWeight: 500, padding: '3px 8px', borderRadius: 6,
+                              background: rep.avgCloseHours == null ? '#f3f4f6'
+                                : rep.avgCloseHours < 24 ? '#dcfce7'
+                                : rep.avgCloseHours <= 72 ? '#fef9c3'
+                                : '#fee2e2',
+                              color: rep.avgCloseHours == null ? '#6b7280'
+                                : rep.avgCloseHours < 24 ? '#16a34a'
+                                : rep.avgCloseHours <= 72 ? '#ca8a04'
+                                : '#dc2626',
+                              border: `1px solid ${rep.avgCloseHours == null ? '#e5e7eb'
+                                : rep.avgCloseHours < 24 ? '#86efac'
+                                : rep.avgCloseHours <= 72 ? '#fde047'
+                                : '#fca5a5'}`,
+                            }}>
+                              Avg close: {rep.avgCloseHours != null ? `${rep.avgCloseHours}h` : '—'}
+                            </span>
                           </div>
                         </div>
 

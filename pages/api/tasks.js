@@ -1,5 +1,5 @@
 import { getTasks, createTask } from '../../lib/db/tasks'
-import { createServerSupabaseClient } from '../../lib/supabase'
+import { createServerSupabaseClient, getSupabase } from '../../lib/supabase'
 
 export default async function handler(req, res) {
   // Resolve the current user from the session cookie
@@ -11,6 +11,10 @@ export default async function handler(req, res) {
 
   if (!currentUser) {
     return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  if (currentUser.id !== 'local-user') {
+    getSupabase().from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', currentUser.id).then(() => {})
   }
 
   // ── GET /api/tasks ──────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { createClient } from '../../lib/supabase'
+import { createClient, getSupabase } from '../../lib/supabase'
 
 /**
  * GET  /api/me — return current user's profile
@@ -8,6 +8,8 @@ export default async function handler(req, res) {
   const supabase = createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
+
+  getSupabase().from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id).then(() => {})
 
   if (req.method === 'GET') {
     const { data, error } = await supabase
