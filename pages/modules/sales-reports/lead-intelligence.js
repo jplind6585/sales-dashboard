@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { ArrowLeft, RefreshCw, TrendingUp, Users, Target, DollarSign, ChevronDown, ChevronUp } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
+import ApiError from '../../../components/common/ApiError'
 
 const SDR_LABELS = { KW: 'Kristin', TA: 'Tony', NB: 'Nash', SD: 'Stephen', LK: 'Logan', JL: 'James', JA: 'Jovan', MM: 'Mark' }
 const AE_LABELS  = { JL: 'James', LK: 'Logan', JA: 'Jovan', MM: 'Mark' }
@@ -97,6 +98,7 @@ export default function LeadIntelligence() {
   const { user } = useAuthStore()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
   const [tab, setTab] = useState('overview')
@@ -107,12 +109,17 @@ export default function LeadIntelligence() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const r = await fetch(`/api/lead-intelligence?year=${year}`)
       const j = await r.json()
-      if (j.success) setData(j.data)
+      if (j.success) {
+        setData(j.data)
+      } else {
+        setLoadError({ message: j.error || 'Failed to load lead data', status: r.status, source: `GET /api/lead-intelligence?year=${year}` })
+      }
     } catch (e) {
-      console.error(e)
+      setLoadError({ message: e.message, source: `GET /api/lead-intelligence?year=${year}` })
     } finally {
       setLoading(false)
     }
@@ -246,7 +253,11 @@ export default function LeadIntelligence() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        {loading ? (
+        {loadError ? (
+          <div className="py-12 max-w-lg mx-auto">
+            <ApiError error={loadError} onRetry={load} />
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center py-24 text-gray-400">Loading…</div>
         ) : !data || meta.total === 0 ? (
           <div className="text-center py-24">

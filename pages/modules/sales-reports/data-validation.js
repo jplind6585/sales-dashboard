@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { ArrowLeft, RefreshCw, AlertTriangle, Link2Off, Copy, Clock, TrendingDown, Play } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
+import ApiError from '../../../components/common/ApiError'
 
 function SummaryBadge({ label, count, color, icon: Icon }) {
   return (
@@ -360,18 +361,24 @@ export default function DataValidation() {
   const { user } = useAuthStore()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [tab, setTab] = useState('unmatched')
   const [matching, setMatching] = useState(false)
   const [matchResult, setMatchResult] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const r = await fetch('/api/sales-reports/data-validation')
       const j = await r.json()
-      if (j.success) setData(j.data)
+      if (j.success) {
+        setData(j.data)
+      } else {
+        setLoadError({ message: j.error || 'Failed to load validation data', status: r.status, source: 'GET /api/sales-reports/data-validation' })
+      }
     } catch (e) {
-      console.error(e)
+      setLoadError({ message: e.message, source: 'GET /api/sales-reports/data-validation' })
     } finally {
       setLoading(false)
     }
@@ -446,7 +453,11 @@ export default function DataValidation() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        {loading && !data ? (
+        {loadError ? (
+          <div className="py-12 max-w-lg mx-auto">
+            <ApiError error={loadError} onRetry={load} />
+          </div>
+        ) : loading && !data ? (
           <div className="flex items-center justify-center py-24 text-gray-400">Loading…</div>
         ) : (
           <>

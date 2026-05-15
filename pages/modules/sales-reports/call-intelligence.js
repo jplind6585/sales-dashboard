@@ -11,6 +11,7 @@ import {
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import PeriodDelta from '../../../components/common/PeriodDelta'
+import ApiError from '../../../components/common/ApiError'
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
@@ -299,7 +300,7 @@ export default function CallIntelligence() {
       if (!data.success) throw new Error(data.error || 'Failed to load calls')
       setCalls(data.calls || [])
       if (data.allUsers?.length) setAllUsers(data.allUsers)
-    } catch (e) { setLoadError(e.message) }
+    } catch (e) { setLoadError({ message: e.message, source: 'GET /api/gong/intel-calls' }) }
     finally { setLoadingCalls(false) }
   }
 
@@ -1035,10 +1036,9 @@ export default function CallIntelligence() {
       )}
 
       {loadError && (
-        <div className="bg-red-50 border-b border-red-200 px-6 py-3 shrink-0">
-          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-            <span className="text-sm text-red-700">{loadError}</span>
-            <button onClick={fetchCalls} className="text-sm text-red-600 underline">Retry</button>
+        <div className="px-6 py-4 shrink-0 border-b border-red-100">
+          <div className="max-w-[1400px] mx-auto">
+            <ApiError error={loadError} onRetry={fetchCalls} compact />
           </div>
         </div>
       )}
