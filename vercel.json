@@ -59,7 +59,7 @@
     },
     {
       "path": "/api/cron/process-recent-calls",
-      "schedule": "0 */2 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/sheets/sync-leads",
