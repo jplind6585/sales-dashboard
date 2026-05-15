@@ -1,50 +1,79 @@
 // POST /api/sheets/sync-leads
-// Fetches the Google Sheet CSV and upserts all leads to lead_pipeline table.
-// Requires the Google Sheet to be shared as "Anyone with link can view".
-// Sheet: 2026 New Interest (gid=1977870589) inside the master leads tracker.
+// Syncs lead tracking data from Google Sheets into lead_pipeline table.
+// Supports 2024, 2025, 2026. Each year lives in a different spreadsheet.
+// Requires sheets shared as "Anyone with link can view".
+// Column schemas differ by year — normalized to 2026 canonical names.
 
 import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 
-const SHEET_ID = '1F6onXjGTKe10gBReKklDZLLR2wYioSXXWnibJFHWEp4';
-// Tab names (not GIDs) — use the gviz ?sheet= parameter for reliable tab lookup
-const SHEET_TABS = {
-  2026: '2026- New Intros',
-  2023: '2023 - New Intros',
-  2022: '2022 - New Intros',
+// Per-year sheet config. Tab names used (more robust than GIDs).
+// Note: 2024 tab is in the sheet that appears to say "2025" externally — confirmed by tab inspection.
+const SHEET_CONFIGS = {
+  2026: { sheetId: '1F6onXjGTKe10gBReKklDZLLR2wYioSXXWnibJFHWEp4', tab: '2026- New Intros' },
+  2025: { sheetId: '1XmerLdO1DZZ-v4kJrchiFgQUwGxrVqbj1SrvLJJSa50', tab: '2025- New Intros' },
+  2024: { sheetId: '1ylzPFUGUrK1qvOhIAwpK9NAG8q7j4cmtTnukb-63FuQ', tab: '2024 - New Intros' },
 };
 
+// Map older column names → canonical 2026 names so parseLead stays uniform
+const COLUMN_REMAP = {
+  'AE':                    'AE (Deal Owner)',
+  'Demo':                  'Qualify',
+  'Present Business Case': 'Present Evaluation',
+  'Sent Contract':         'Sent Proposal / Contract',
+  'Value':                 'ARR Value',
+};
+
+// 2024/2025 use X = Showed, O = No Show; 2026 uses full words
+function normalizeStatus(val, year) {
+  if (!val) return null;
+  const v = val.trim();
+  if (year < 2026) {
+    if (v === 'X') return 'Showed';
+    if (v === 'O') return 'No Show';
+  }
+  return v || null;
+}
+
+// Proper RFC-4180 CSV parser — handles multi-line quoted fields (transcript columns)
 function parseCSV(text) {
   const rows = [];
-  const lines = text.split('\n');
-  for (const line of lines) {
-    if (!line.trim()) { rows.push([]); continue; }
-    const row = [];
-    let inQuotes = false;
-    let cell = '';
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') { cell += '"'; i++; }
-        else inQuotes = !inQuotes;
-      } else if (ch === ',' && !inQuotes) {
-        row.push(cell.trim());
-        cell = '';
-      } else {
-        cell += ch;
-      }
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (ch === '"') {
+      if (inQuotes && next === '"') { cell += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      row.push(cell.trim());
+      cell = '';
+    } else if (ch === '\n' && !inQuotes) {
+      row.push(cell.trim());
+      if (row.some(c => c)) rows.push(row);
+      row = [];
+      cell = '';
+    } else if (ch === '\r') {
+      // skip
+    } else {
+      cell += ch;
     }
+  }
+  if (cell || row.length) {
     row.push(cell.trim());
-    rows.push(row);
+    if (row.some(c => c)) rows.push(row);
   }
   return rows;
 }
 
 function parseDate(str, year = 2026) {
   if (!str) return null;
-  str = str.trim().replace(/["""]/g, '');
+  str = String(str).trim().replace(/["""]/g, '');
   if (!str || str === '-' || str.toLowerCase() === 'tbd') return null;
-  // Full date with year (M/D/YYYY or YYYY-MM-DD)
   if (str.match(/\d{4}/)) {
     const parts = str.split('/');
     if (parts.length === 3) {
@@ -54,7 +83,6 @@ function parseDate(str, year = 2026) {
     const d = new Date(str);
     return isNaN(d) ? null : d.toISOString().split('T')[0];
   }
-  // M/D — assume the given year
   const parts = str.split('/');
   if (parts.length === 2) {
     const m = parseInt(parts[0]);
@@ -73,46 +101,51 @@ function parseMoney(str) {
   return isNaN(val) || val === 0 ? null : val;
 }
 
-function parseLead(row, headers, year) {
+function parseLead(row, headers, year, rowIdx) {
   const get = (key) => {
-    const idx = headers.findIndex(h => h.trim() === key);
+    const idx = headers.findIndex(h => h === key);
     return idx >= 0 ? (row[idx] || '').trim() : '';
   };
-  const seq = parseInt(get('SEQ'));
-  if (isNaN(seq) || seq <= 0) return null;
+
+  // 2026 has explicit SEQ; 2024/2025 use 1-based row index
+  const seqRaw = year === 2026 ? parseInt(get('SEQ')) : rowIdx;
+  if (!seqRaw || isNaN(seqRaw) || seqRaw <= 0) return null;
+
   const company = get('Company');
-  if (!company) return null;
+  if (!company || company.length < 2) return null;
 
   return {
     year,
-    seq,
+    seq:               seqRaw,
     company,
-    company_size:       get('Company Size') || null,
-    vertical:           get('Vertical') || null,
-    contact_dept:       get('Contact - Dept') || null,
-    contact_seniority:  get('Contact - Seniority') || null,
-    booked_via:         get('Booked Via') || null,
-    sdr:                get('SDR') || null,
-    ae:                 get('AE (Deal Owner)') || null,
-    date_booked:        parseDate(get('Date Booked'), year),
-    date_demo:          parseDate(get('Date Demo'), year),
-    intro_status:       get('Intro') || null,
-    qualify_status:     get('Qualify') || null,
-    evaluation_status:  get('Present Evaluation') || null,
-    proposal_status:    get('Sent Proposal / Contract') || null,
-    closed_status:      get('Closed') || null,
-    date_closed:        parseDate(get('Date Closed'), year),
-    arr_value:          parseMoney(get('ARR Value')),
-    reason_not_closed:  get('Reason Not Closed') || null,
-    lost_tags:          get('Lost Tags') || null,
-    lost_stage:         get('Lost Stage') || null,
-    next_action:        get('Next Action') || null,
-    next_action_date:   parseDate(get('Next Action Date'), year),
-    arr_estimate_open:  parseMoney(get('ARR Estimate (Open)')),
-    forecast_category:  get('Forecast Category') || null,
-    days_since_booked:  parseInt(get('Days Since Booked')) || null,
-    pipeline_age_flag:  get('Pipeline Age Flag') || null,
-    synced_at:          new Date().toISOString(),
+    company_size:      get('Company Size') || null,
+    vertical:          get('Vertical') || null,
+    contact_dept:      get('Contact - Dept') || null,
+    contact_seniority: get('Contact - Seniority') || null,
+    booked_via:        get('Booked Via') || null,
+    sdr:               get('SDR') || null,
+    ae:                get('AE (Deal Owner)') || null,
+    grade:             get('Grade') || null,
+    date_booked:       parseDate(get('Date Booked'), year),
+    date_demo:         parseDate(year === 2026 ? get('Date Demo') : get('Qualify'), year),
+    intro_status:      normalizeStatus(get('Intro'), year),
+    qualify_status:    normalizeStatus(get('Qualify'), year),
+    evaluation_status: get('Present Evaluation') || null,
+    proposal_status:   get('Sent Proposal / Contract') || null,
+    closed_status:     get('Closed') || null,
+    date_closed:       parseDate(get('Date Closed'), year),
+    arr_value:         parseMoney(get('ARR Value')),
+    reason_not_closed: get('Reason Not Closed') || null,
+    lost_tags:         get('Lost Tags') || null,
+    lost_stage:        get('Lost Stage') || null,
+    next_action:       get('Next Action') || null,
+    next_action_date:  parseDate(get('Next Action Date'), year),
+    arr_estimate_open: parseMoney(get('ARR Estimate (Open)')),
+    forecast_category: get('Forecast Category') || null,
+    days_since_booked: parseInt(get('Days Since Booked')) || null,
+    pipeline_age_flag: get('Pipeline Age Flag') || null,
+    source_sheet:      SHEET_CONFIGS[year]?.sheetId || null,
+    synced_at:         new Date().toISOString(),
   };
 }
 
@@ -127,66 +160,66 @@ export default async function handler(req, res) {
     if (!user) return apiError(res, 401, 'Unauthorized');
   }
 
-  const year = parseInt(req.body?.year || '2026');
-  const tabName = SHEET_TABS[year];
-  if (!tabName) return apiError(res, 400, `No sheet configured for year ${year}`);
+  // Allow syncing a specific year, or all years at once
+  const yearParam = req.body?.year;
+  const years = yearParam ? [parseInt(yearParam)] : [2024, 2025, 2026];
 
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+  const results = [];
 
-  let csvText;
-  try {
-    const r = await fetch(csvUrl, { headers: { 'User-Agent': 'BannerSalesDashboard/1.0' } });
-    if (r.status === 401 || r.status === 403) {
-      return apiError(res, 403, 'Google Sheets access denied. Share the sheet as "Anyone with link can view" to enable sync.');
+  for (const year of years) {
+    const config = SHEET_CONFIGS[year];
+    if (!config) { results.push({ year, error: 'No config' }); continue; }
+
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${config.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(config.tab)}`;
+
+    let csvText;
+    try {
+      const r = await fetch(csvUrl, { headers: { 'User-Agent': 'BannerSalesDashboard/1.0' } });
+      if (r.status === 401 || r.status === 403) {
+        results.push({ year, error: 'Access denied — share sheet as "Anyone with link can view"' });
+        continue;
+      }
+      if (!r.ok) { results.push({ year, error: `HTTP ${r.status}` }); continue; }
+      csvText = await r.text();
+    } catch (e) {
+      results.push({ year, error: e.message });
+      continue;
     }
-    if (!r.ok) return apiError(res, 502, `Google Sheets returned ${r.status}`);
-    csvText = await r.text();
-  } catch (e) {
-    return apiError(res, 502, `Failed to fetch sheet: ${e.message}`);
-  }
 
-  const rows = parseCSV(csvText);
+    const rows = parseCSV(csvText);
+    if (!rows.length) { results.push({ year, error: 'Empty CSV' }); continue; }
 
-  // Find the lead table — the row where col[0] === 'SEQ'
-  let headerIdx = -1;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i][0]?.trim() === 'SEQ') { headerIdx = i; break; }
-  }
-  if (headerIdx === -1) {
-    return apiError(res, 422, 'Could not find lead table (SEQ header) in sheet CSV. Check that the sheet format has not changed.');
-  }
+    // Normalize headers — remap older column names to 2026 canonical names
+    const rawHeaders = rows[0];
+    const headers = rawHeaders.map(h => COLUMN_REMAP[h] || h);
 
-  const headers = rows[headerIdx].map(h => h.trim());
-  const leads = [];
-
-  for (let i = headerIdx + 1; i < rows.length; i++) {
-    const row = rows[i];
-    // Stop at blank row (end of lead table)
-    if (!row[0] && !row[1]) break;
-    const lead = parseLead(row, headers, year);
-    if (lead) leads.push(lead);
-  }
-
-  if (!leads.length) {
-    return apiError(res, 422, `No valid leads parsed from sheet (found header at row ${headerIdx}, but no data rows)`);
-  }
-
-  const db = getSupabase();
-  let synced = 0, errors = 0;
-
-  for (let i = 0; i < leads.length; i += 50) {
-    const batch = leads.slice(i, i + 50);
-    const { error } = await db
-      .from('lead_pipeline')
-      .upsert(batch, { onConflict: 'year,seq' });
-    if (error) {
-      console.error('[sheets/sync-leads] upsert error:', error.message);
-      errors++;
-    } else {
-      synced += batch.length;
+    const leads = [];
+    for (let i = 1; i < rows.length; i++) {
+      const lead = parseLead(rows[i], headers, year, i);
+      if (lead) leads.push(lead);
     }
+
+    if (!leads.length) { results.push({ year, error: 'No valid leads parsed' }); continue; }
+
+    const db = getSupabase();
+    let synced = 0, errors = 0;
+
+    for (let i = 0; i < leads.length; i += 50) {
+      const batch = leads.slice(i, i + 50);
+      const { error } = await db
+        .from('lead_pipeline')
+        .upsert(batch, { onConflict: 'year,seq' });
+      if (error) {
+        console.error(`[sheets/sync-leads] year=${year} upsert error:`, error.message);
+        errors++;
+      } else {
+        synced += batch.length;
+      }
+    }
+
+    console.log(`[sheets/sync-leads] year=${year} synced=${synced} total=${leads.length} errors=${errors}`);
+    results.push({ year, synced, total: leads.length, errors });
   }
 
-  console.log(`[sheets/sync-leads] year=${year} synced=${synced} total=${leads.length} errors=${errors}`);
-  return apiSuccess(res, { year, synced, total: leads.length, errors });
+  return apiSuccess(res, { results });
 }

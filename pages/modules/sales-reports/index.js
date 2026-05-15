@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, Rocket, BarChart2 } from 'lucide-react'
+import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
@@ -25,6 +25,17 @@ const REPORTS = [
     available: true,
     status: 'live',
     tags: ['Google Sheets', '2026 YTD', 'SDR + AE'],
+  },
+  {
+    id: 'data-validation',
+    name: 'Data Validation',
+    description: 'Admin queue for uncertain data — unmatched leads, duplicate accounts, multi-year companies, missing fields, and low-confidence HubSpot links. Run this to keep reporting clean.',
+    icon: ShieldAlert,
+    href: '/modules/sales-reports/data-validation',
+    color: 'from-orange-500 to-red-500',
+    available: true,
+    status: 'live',
+    tags: ['Admin', 'Data Quality', 'HubSpot'],
   },
 ]
 
