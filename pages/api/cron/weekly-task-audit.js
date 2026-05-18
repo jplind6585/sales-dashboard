@@ -1,8 +1,6 @@
+import { callAnthropic } from '../../../lib/apiUtils';
 import { getSupabase } from '../../../lib/supabase';
 import { sendSlackMessage } from '../../../lib/slack';
-import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic();
 
 export default async function handler(req, res) {
   const isCron = req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
@@ -59,9 +57,9 @@ export default async function handler(req, res) {
 
     let aiText = '';
     try {
-      const msg = await client.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 400,
+      aiText = await callAnthropic(process.env.ANTHROPIC_API_KEY, {
+        model: 'claude-haiku-4-5-20251001',
+        maxTokens: 400,
         messages: [{
           role: 'user',
           content: `Sales rep ${rep.full_name || rep.email} has ${repTasks.length} open tasks. Generate a brief Monday morning Slack message (3-4 sentences max) that:
@@ -74,8 +72,7 @@ ${taskSummary}
 
 Return just the message text, no headers or formatting.`,
         }],
-      });
-      aiText = msg.content[0]?.text || '';
+      }) || '';
     } catch (e) {
       aiText = `You have ${repTasks.length} open tasks this week: ${overdue.length} overdue, ${dueThisWeek.length} due this week. Time to clear the deck.`;
     }

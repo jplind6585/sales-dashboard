@@ -1,8 +1,5 @@
-import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
+import { apiError, apiSuccess, logRequest, callAnthropic } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
-import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic();
 
 export default async function handler(req, res) {
   logRequest(req, 'tasks/debrief');
@@ -47,13 +44,11 @@ Return ONLY valid JSON, no explanation. Example:
 [{"title":"Review JSP proposal","description":null,"accountName":"JSP","accountId":"uuid-here","priority":2,"dueDate":null}]`;
 
   try {
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 1000,
+    const content = await callAnthropic(process.env.ANTHROPIC_API_KEY, {
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 1000,
       messages: [{ role: 'user', content: prompt }],
-    });
-
-    const content = message.content[0]?.text || '[]';
+    }) || '[]';
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return apiSuccess(res, { tasks: [] });
 
