@@ -79,6 +79,23 @@ function HealthDot({ value, warn = 1, danger = 3 }) {
   return <span className="text-gray-700">{value}</span>
 }
 
+function RiskBadge({ score, factors }) {
+  if (score == null) return null
+  let cls
+  if (score >= 60) cls = 'bg-red-100 text-red-700 border border-red-200'
+  else if (score >= 30) cls = 'bg-amber-100 text-amber-700 border border-amber-200'
+  else cls = 'bg-green-100 text-green-700 border border-green-200'
+  const tooltip = Array.isArray(factors) && factors.length ? factors.join(' · ') : undefined
+  return (
+    <span
+      className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${cls}`}
+      title={tooltip}
+    >
+      {score}
+    </span>
+  )
+}
+
 function ActivityDot({ lastCallDays }) {
   let bg, title
   if (lastCallDays == null) {
@@ -211,7 +228,7 @@ export default function PipelineOverview() {
     )
   }
 
-  const { repSummaries = [], stageCounts = {}, totalAccounts, totalOpenTasks, totalOverdue, pipelineConfidence, activeAccounts, totalPipeline, weightedPipeline, accountsWithValue, hubspotSynced } = data || {}
+  const { repSummaries = [], stageCounts = {}, totalAccounts, totalOpenTasks, totalOverdue, pipelineConfidence, activeAccounts, totalPipeline, weightedPipeline, accountsWithValue, hubspotSynced, atRiskAccounts = [] } = data || {}
 
   // Pipeline funnel — ordered by stage
   const orderedStages = [
@@ -411,6 +428,39 @@ export default function PipelineOverview() {
           </div>
         </div>
 
+        {/* At-Risk Deals panel — only shown when any account has score ≥ 60 */}
+        {atRiskAccounts.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-5 border-l-4 border-red-500">
+            <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              At-Risk Deals
+              <span className="text-xs font-normal text-gray-400">({atRiskAccounts.length} account{atRiskAccounts.length === 1 ? '' : 's'} with score 60+)</span>
+            </h2>
+            <div className="space-y-2">
+              {atRiskAccounts.map(a => (
+                <div
+                  key={a.id}
+                  className="flex items-start justify-between gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                  onClick={() => router.push(`/modules/account-pipeline?account=${a.id}`)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800 truncate">{a.name}</span>
+                      <StageLabel stage={a.stage} />
+                    </div>
+                    {Array.isArray(a.riskFactors) && a.riskFactors.length > 0 && (
+                      <div className="text-xs text-gray-500 mt-0.5 truncate">
+                        {a.riskFactors.slice(0, 2).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                  <RiskBadge score={a.riskScore} factors={a.riskFactors} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-6">
           {/* Pipeline funnel */}
           <div className="col-span-2 bg-white rounded-lg shadow p-5">
@@ -571,6 +621,7 @@ export default function PipelineOverview() {
                                 >
                                   <ActivityDot lastCallDays={a.lastCallDays} />
                                   {a.name}
+                                  <RiskBadge score={a.riskScore} factors={a.riskFactors} />
                                 </button>
                               ))}
                             </div>

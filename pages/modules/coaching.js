@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import {
   ArrowLeft, RefreshCw, TrendingUp, TrendingDown, Minus,
-  AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Zap, Users,
+  AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Zap, Users, MessageSquare,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -117,6 +117,56 @@ function EvidenceCallRow({ call }) {
   )
 }
 
+function CoachingCardRow({ card }) {
+  const [expanded, setExpanded] = useState(false)
+  const date = card.call_date || card.sent_at
+    ? new Date(card.call_date || card.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—'
+  return (
+    <div className="border border-gray-100 rounded-lg overflow-hidden">
+      <button
+        className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50"
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-gray-800 truncate">{card.account_name || 'Unknown account'}</span>
+            <span className="text-xs text-gray-400">{date}</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5 truncate">✅ {card.strength}</p>
+          <p className="text-xs text-gray-500 truncate">🔧 {card.fix}</p>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0 mt-1" /> : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0 mt-1" />}
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4 space-y-2 border-t border-gray-100 pt-3">
+          <div className="flex items-start gap-2">
+            <span className="text-base shrink-0">✅</span>
+            <div>
+              <p className="text-xs font-semibold text-green-700 mb-0.5">What worked</p>
+              <p className="text-sm text-gray-700">{card.strength}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-base shrink-0">🔧</span>
+            <div>
+              <p className="text-xs font-semibold text-orange-700 mb-0.5">One fix</p>
+              <p className="text-sm text-gray-700">{card.fix}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-base shrink-0">📌</span>
+            <div>
+              <p className="text-xs font-semibold text-indigo-700 mb-0.5">Next call focus</p>
+              <p className="text-sm text-gray-700">{card.next_focus}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CoachingDashboard() {
   const router = useRouter()
   const { user } = useAuthStore()
@@ -126,6 +176,8 @@ export default function CoachingDashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [currentFocus, setCurrentFocus] = useState(null)
+  const [recentCards, setRecentCards] = useState(null)
+  const [cardsOpen, setCardsOpen] = useState(true)
 
   useEffect(() => {
     const stored = localStorage.getItem(`coaching_focus_${selectedRep}`)
@@ -145,7 +197,13 @@ export default function CoachingDashboard() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    fetch('/api/gong/coaching-cards')
+      .then(r => r.json())
+      .then(json => { if (json.success) setRecentCards(json.cards) })
+      .catch(() => {})
+  }, [])
 
   function handleRepChange(rep) {
     setSelectedRep(rep)
@@ -234,6 +292,42 @@ export default function CoachingDashboard() {
         {!loading && data?.message && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
             <p className="text-gray-500">{data.message}</p>
+          </div>
+        )}
+
+        {/* Recent Call Coaching */}
+        {recentCards !== null && (
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <button
+              className="w-full text-left px-5 py-4 flex items-center justify-between gap-3 hover:bg-gray-50"
+              onClick={() => setCardsOpen(o => !o)}
+            >
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-sm font-semibold text-gray-800">Recent Call Coaching</h3>
+                {recentCards.length > 0 && (
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                    {recentCards.length}
+                  </span>
+                )}
+              </div>
+              {cardsOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </button>
+            {cardsOpen && (
+              <div className="px-5 pb-5 border-t border-gray-100">
+                {recentCards.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">
+                    Coaching cards will appear here after your next analyzed call.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 mt-3">
+                    {recentCards.map(card => (
+                      <CoachingCardRow key={card.id} card={card} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -193,6 +193,27 @@ export default function Home() {
   const [noteSaved, setNoteSaved] = useState(false);
   const quickNoteRef = useRef(null);
 
+  // Risk score state (optimistic updates after rescore)
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreResult, setRescoreResult] = useState(null);
+
+  const handleRescore = useCallback(async () => {
+    if (!selectedAccount?.id || rescoring) return;
+    setRescoring(true);
+    try {
+      const r = await fetch(`/api/accounts/${selectedAccount.id}/rescore`, { method: 'POST' });
+      const d = await r.json();
+      if (d.risk_score != null) {
+        setRescoreResult({ riskScore: d.risk_score, riskFactors: d.risk_factors });
+      }
+    } catch { /* silent */ }
+    finally { setRescoring(false); }
+  }, [selectedAccount?.id, rescoring]);
+
+  useEffect(() => {
+    setRescoreResult(null);
+  }, [selectedAccount?.id]);
+
   // Form state
   const [accountName, setAccountName] = useState('');
   const [companyUrl, setCompanyUrl] = useState('');
@@ -676,6 +697,31 @@ export default function Home() {
                             {STAGE_LABELS[selectedAccount.stage] || selectedAccount.stage}
                           </span>
                         )}
+                        {/* Risk chip — shown when score is known */}
+                        {(() => {
+                          const score = rescoreResult?.riskScore ?? selectedAccount.riskScore;
+                          const factors = rescoreResult?.riskFactors ?? selectedAccount.riskFactors;
+                          if (score == null) return null;
+                          let dotColor, chipClass;
+                          if (score >= 60) { dotColor = '#ef4444'; chipClass = 'text-red-700'; }
+                          else if (score >= 30) { dotColor = '#f59e0b'; chipClass = 'text-amber-700'; }
+                          else { dotColor = '#22c55e'; chipClass = 'text-green-700'; }
+                          const tooltip = Array.isArray(factors) && factors.length ? factors.join('\n') : undefined;
+                          return (
+                            <span className={`flex items-center gap-1 text-xs font-semibold ${chipClass}`} title={tooltip} style={{ cursor: 'default' }}>
+                              <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: dotColor, display: 'inline-block', flexShrink: 0 }} />
+                              Risk {score}
+                              <button
+                                onClick={handleRescore}
+                                disabled={rescoring}
+                                title="Rescore this account"
+                                style={{ marginLeft: 2, cursor: 'pointer', color: 'inherit', opacity: rescoring ? 0.5 : 0.7, fontSize: 13, lineHeight: 1, background: 'none', border: 'none', padding: 0 }}
+                              >
+                                {rescoring ? '…' : '↻'}
+                              </button>
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         {selectedAccount.url && (

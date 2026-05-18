@@ -1,5 +1,6 @@
 import { createGongHeaders } from '../../../lib/apiUtils';
 import { getSupabase } from '../../../lib/supabase';
+import { sendCallCoachingDM } from '../../../lib/coaching';
 
 const GONG_API_BASE = 'https://api.gong.io';
 const AUTO_ANALYZE_REPS = ['James Lindberg'];
@@ -129,6 +130,16 @@ export default async function handler(req, res) {
       if (data.analysis) {
         processed++;
         console.log(`[process-recent-calls] Analyzed: ${call.title}`);
+        if (user?.email) {
+          sendCallCoachingDM({
+            analysis: data.analysis,
+            callTitle: call.title || 'Untitled',
+            callDate: call.started || null,
+            accountName: data.analysis?.account_name || null,
+            repEmail: user.email,
+            gongCallId: call.id,
+          }).catch(e => console.error('[coaching-dm]', e.message));
+        }
       } else {
         errors.push({ callId: call.id, title: call.title, error: data.error || 'No analysis returned' });
         console.error(`[process-recent-calls] Failed: ${call.title}`, data.error);

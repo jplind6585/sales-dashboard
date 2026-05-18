@@ -37,6 +37,7 @@ export default async function handler(req, res) {
       .select(`
         id, name, stage, vertical, user_id, updated_at,
         deal_value, close_date, hubspot_stage, hubspot_synced_at,
+        risk_score, risk_factors,
         stakeholders ( id, role ),
         transcripts ( id, date, created_at )
       `)
@@ -198,6 +199,8 @@ export default async function handler(req, res) {
         name: a.name,
         stage: a.stage,
         lastCallDays: lastCallDays(a.id),
+        riskScore: a.risk_score ?? null,
+        riskFactors: a.risk_factors ?? null,
       }))
 
       // Activity density summary: hot (<7d), warm (7-14d), cold (>14d or no calls)
@@ -256,6 +259,17 @@ export default async function handler(req, res) {
     const accountsWithValue = activeAccounts.filter(a => a.deal_value).length
     const hubspotSynced = accounts.some(a => a.hubspot_synced_at)
 
+    const atRiskAccounts = activeAccounts
+      .filter(a => (a.risk_score ?? 0) >= 60)
+      .sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0))
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        stage: a.stage,
+        riskScore: a.risk_score,
+        riskFactors: a.risk_factors ?? [],
+      }))
+
     return res.status(200).json({
       repSummaries,
       stageCounts,
@@ -268,6 +282,7 @@ export default async function handler(req, res) {
       weightedPipeline: Math.round(weightedPipeline),
       accountsWithValue,
       hubspotSynced,
+      atRiskAccounts,
     })
   } catch (err) {
     console.error('Pipeline overview error:', err)
