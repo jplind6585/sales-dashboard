@@ -102,14 +102,21 @@ const AUTO_TASK_REP_USER_IDS = {
   'james@withbanner.com': '8c969178-4d4e-494f-a8d7-752276fb683c',
 };
 
-const REP_STEP_PREFIXES = [
-  'rep to ', 'rep will ', 'schedule ', 'follow up', 'send ', 'demo ',
-  'obtain ', 'collect ', 'loop ', 'contact ', 'book ', 'prepare ', 'reach out',
+const PROSPECT_STEP_PREFIXES = [
+  'prospect to ', 'customer to ', 'client to ', 'they will ', 'they to ',
+  'implied:', 'implicit:', 'no explicit', 'conditional on', 'if ',
 ];
 
-function isRepOwnedStep(step) {
+function isProspectStep(step) {
   const lower = step.toLowerCase().trim();
-  return REP_STEP_PREFIXES.some(p => lower.startsWith(p));
+  if (PROSPECT_STEP_PREFIXES.some(p => lower.startsWith(p))) return true;
+  if (/^[a-z]+ (to |will )/.test(lower) && !lower.startsWith('rep ')) return true;
+  return false;
+}
+
+function isRepOwnedStep(step) {
+  if (!step || step.trim().length < 10) return false;
+  return !isProspectStep(step);
 }
 
 async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, durationSeconds, db }) {

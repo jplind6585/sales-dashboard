@@ -164,6 +164,8 @@ export default function TeamDashboard() {
   const [backfilling, setBackfilling] = useState(false)
   const [backfillingCalls, setBackfillingCalls] = useState(false)
   const [backfillCallsResult, setBackfillCallsResult] = useState(null)
+  const [backfillingTasks, setBackfillingTasks] = useState(false)
+  const [backfillTasksResult, setBackfillTasksResult] = useState(null)
   const [section, setSection] = useState('overview')
 
   const load = useCallback(async () => {
@@ -254,6 +256,25 @@ export default function TeamDashboard() {
     }
   }
 
+  const backfillTasksFromCalls = async () => {
+    setBackfillingTasks(true)
+    setBackfillTasksResult(null)
+    try {
+      const r = await fetch('/api/gong/backfill-tasks', { method: 'POST' })
+      const j = await r.json()
+      if (j.success) {
+        const d = j.data
+        setBackfillTasksResult({ ok: true, msg: `Backfill done: ${d.tasksCreated} tasks created from ${d.processed} calls (${d.skipped} already had tasks)` })
+      } else {
+        setBackfillTasksResult({ ok: false, msg: j.error || 'Backfill failed' })
+      }
+    } catch (e) {
+      setBackfillTasksResult({ ok: false, msg: e.message })
+    } finally {
+      setBackfillingTasks(false)
+    }
+  }
+
   const summary = data?.summary || {}
   const repCards = data?.repCards || []
   const pipelineByStage = data?.pipelineByStage || []
@@ -309,7 +330,15 @@ export default function TeamDashboard() {
               className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
               <RefreshCw size={13} className={backfillingCalls ? 'animate-spin text-violet-500' : 'text-violet-500'} />
-              {backfillingCalls ? 'Backfilling…' : 'Backfill Historical Calls'}
+              {backfillingCalls ? 'Backfilling…' : 'Backfill Calls (4 weeks)'}
+            </button>
+            <button
+              onClick={backfillTasksFromCalls}
+              disabled={backfillingTasks}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              <Zap size={13} className={backfillingTasks ? 'animate-pulse text-emerald-500' : 'text-emerald-500'} />
+              {backfillingTasks ? 'Backfilling…' : 'Backfill Tasks from Calls'}
             </button>
             <button
               onClick={createTasksFromCalls}
@@ -355,6 +384,21 @@ export default function TeamDashboard() {
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <span>{backfillCallsResult.ok ? '✓' : '✗'} {backfillCallsResult.msg}</span>
             <button onClick={() => setBackfillCallsResult(null)} className="text-xs underline ml-4">Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      {/* Backfill tasks result banner */}
+      {backfillTasksResult && (
+        <div className={`px-6 py-2 text-sm font-medium ${backfillTasksResult.ok ? 'bg-emerald-50 text-emerald-700 border-b border-emerald-100' : 'bg-red-50 text-red-700 border-b border-red-100'}`}>
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <span>{backfillTasksResult.ok ? '✓' : '✗'} {backfillTasksResult.msg}</span>
+            <div className="flex items-center gap-3">
+              {backfillTasksResult.ok && (
+                <button onClick={() => router.push('/modules/tasks')} className="text-xs underline">Go to Tasks →</button>
+              )}
+              <button onClick={() => setBackfillTasksResult(null)} className="text-xs underline">Dismiss</button>
+            </div>
           </div>
         </div>
       )}
