@@ -320,6 +320,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
 
   const [dismissedEmails, setDismissedEmails] = useState(new Set())
   const [addedEmails, setAddedEmails] = useState(new Set())
+  const [confirmingEmails, setConfirmingEmails] = useState(new Set())
   const [addedCalendar, setAddedCalendar] = useState(new Set())
   const [expandedEmailIndex, setExpandedEmailIndex] = useState(null)
   const [blockedSenders, setBlockedSenders] = useState([])
@@ -404,7 +405,11 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
       priority: suggestion.priority === 'high' ? 1 : suggestion.priority === 'medium' ? 2 : 3,
       source: 'email',
     })
-    setAddedEmails(prev => new Set([...prev, suggestion.title]))
+    setConfirmingEmails(prev => new Set([...prev, suggestion.title]))
+    setTimeout(() => {
+      setAddedEmails(prev => new Set([...prev, suggestion.title]))
+      setConfirmingEmails(prev => { const n = new Set(prev); n.delete(suggestion.title); return n; })
+    }, 1200)
   }
 
   const handleBlockSender = (sender) => {
@@ -560,12 +565,14 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                   <div className="space-y-2">
                     {visibleEmailSuggestions.map((s, i) => {
                       const added = addedEmails.has(s.title)
+                      const confirming = confirmingEmails.has(s.title)
                       const isExpanded = expandedEmailIndex === i
+                      if (added) return null
                       return (
                         <div
                           key={i}
-                          className={`rounded-lg border transition-colors ${
-                            added ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 hover:border-blue-200'
+                          className={`rounded-lg border transition-all ${
+                            confirming ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 hover:border-blue-200'
                           }`}
                         >
                           {/* Main row */}
@@ -594,37 +601,30 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {added ? (
-                                <div className="flex items-center gap-1.5">
-                                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setAddedEmails(prev => { const n = new Set(prev); n.delete(s.title); return n; }) }}
-                                    className="text-xs text-gray-400 hover:text-gray-600 underline"
-                                    title="Undo"
-                                  >
-                                    Undo
-                                  </button>
-                                </div>
+                              {confirming ? (
+                                <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Task added
+                                </span>
                               ) : (
                                 <>
                                   <button
                                     onClick={e => { e.stopPropagation(); handleAddEmailTask(s) }}
                                     className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-200 font-medium"
-                                    title="Add as task"
+                                    title="Create task from this"
                                   >
-                                    + Add
+                                    Add task
                                   </button>
                                   <button
                                     onClick={e => { e.stopPropagation(); setDismissedEmails(prev => new Set([...prev, s.title])) }}
                                     className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
-                                    title="Dismiss"
+                                    title="Not relevant — dismiss"
                                   >
                                     <X className="w-3.5 h-3.5" />
                                   </button>
                                   <button
                                     onClick={e => { e.stopPropagation(); setExpandedEmailIndex(isExpanded ? null : i) }}
                                     className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
-                                    title="Show context"
+                                    title="Why was this surfaced?"
                                   >
                                     <Info className="w-3.5 h-3.5" />
                                   </button>
