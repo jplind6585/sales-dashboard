@@ -35,7 +35,7 @@ export default async function handler(req, res) {
 
   // ── PATCH /api/tasks/[id] ───────────────────────────────────────────────────
   if (req.method === 'PATCH') {
-    const allowed = ['title', 'description', 'status', 'priority', 'dueDate', 'ownerId', 'visibleToManager']
+    const allowed = ['title', 'description', 'status', 'priority', 'dueDate', 'ownerId', 'visibleToManager', 'momentum']
     const updates = {}
 
     for (const key of allowed) {
@@ -53,6 +53,34 @@ export default async function handler(req, res) {
     if (error) {
       console.error('updateTask error:', error)
       return res.status(500).json({ error: 'Failed to update task' })
+    }
+
+    // Fire-and-forget HubSpot note on complete
+    if (updates.status === 'complete' && task?.accountId) {
+      const { getSupabase: gs } = await import('../../../lib/supabase');
+      gs().from('accounts').select('hubspot_deal_id').eq('id', task.accountId).single()
+        .then(({ data: acct }) => {
+          if (!acct?.hubspot_deal_id || !process.env.HUBSPOT_API_KEY) return;
+          const noteBody = `Task completed: ${task.title}\nDate: ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+          return fetch(`https://api.hubapi.com/crm/v3/objects/notes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.HUBSPOT_API_KEY}`,
+            },
+            body: JSON.stringify({
+              properties: {
+                hs_note_body: noteBody,
+                hs_timestamp: new Date().toISOString(),
+              },
+              associations: [{
+                to: { id: String(acct.hubspot_deal_id) },
+                types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }],
+              }],
+            }),
+          }).then(r => { if (!r.ok) r.text().then(t => console.error('[hubspot-note] failed:', t)) });
+        })
+        .catch(e => console.error('[hubspot-note] error:', e.message));
     }
 
     return res.status(200).json({ success: true, task })

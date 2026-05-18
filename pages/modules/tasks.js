@@ -800,6 +800,198 @@ function NLTaskBar({ onCreate, onVoiceCreated }) {
   )
 }
 
+// ─── Debrief Bar ─────────────────────────────────────────────────────────────
+
+function DebriefBar({ onBulkCreate }) {
+  const [text, setText] = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [preview, setPreview] = useState(null)
+  const [creating, setCreating] = useState(false)
+  const { listening, transcript, start, stop, supported } = useSpeechInput()
+
+  const parseText = async (input) => {
+    if (!input?.trim()) return
+    setParsing(true)
+    try {
+      const res = await fetch('/api/tasks/debrief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input }),
+      })
+      const data = await res.json()
+      if (data.tasks) setPreview(data.tasks)
+    } catch {}
+    finally { setParsing(false) }
+  }
+
+  const handleVoiceDone = (final) => { setText(final); parseText(final) }
+  const toggleMic = () => {
+    if (listening) { stop() }
+    else { setPreview(null); setText(''); start(handleVoiceDone, () => {}) }
+  }
+
+  const removeTask = (i) => setPreview(prev => prev.filter((_, j) => j !== i))
+  const updateTask = (i, field, value) => setPreview(prev => prev.map((t, j) => j === i ? { ...t, [field]: value } : t))
+
+  const handleConfirmAll = async () => {
+    if (!preview?.length || creating) return
+    setCreating(true)
+    const created = []
+    for (const t of preview.filter(t => t.title?.trim())) {
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: t.title.trim(),
+            description: t.description || null,
+            priority: t.priority || 2,
+            dueDate: t.dueDate || null,
+            type: 'triggered',
+            accountId: t.accountId || null,
+            source: 'manual',
+          }),
+        })
+        const json = await res.json()
+        if (json.success) created.push(json.task)
+      } catch {}
+    }
+    setCreating(false)
+    setText('')
+    setPreview(null)
+    onBulkCreate?.(created)
+  }
+
+  const PRIORITY_OPTS = [
+    { value: 1, label: 'High', cls: 'text-red-600 bg-red-50 border-red-200' },
+    { value: 2, label: 'Med', cls: 'text-amber-600 bg-amber-50 border-amber-200' },
+    { value: 3, label: 'Low', cls: 'text-gray-500 bg-gray-50 border-gray-200' },
+  ]
+
+  return (
+    <div className="mb-5">
+      <div className={`bg-white border rounded-xl overflow-hidden transition-all ${
+        listening ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-200 focus-within:border-indigo-400 focus-within:ring-1 focus-within:ring-indigo-300'
+      }`}>
+        <div className="flex items-center gap-2 px-3 pt-3 pb-1.5">
+          {listening
+            ? <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+            : <Sparkles className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+          }
+          <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Task Debrief</span>
+          <span className="text-xs text-gray-400 ml-1">— speak or type multiple tasks at once</span>
+        </div>
+        <textarea
+          value={listening ? (transcript || '') : text}
+          onChange={e => { if (!listening) { setText(e.target.value); setPreview(null) } }}
+          onKeyDown={e => { if (e.key === 'Enter' && e.metaKey && !listening) parseText(text) }}
+          readOnly={listening}
+          placeholder='e.g. "CSM — review the JSP proposal. Westover — draft a reach-out email. Schedule a team sync for Thursday."'
+          rows={2}
+          className={`w-full px-3 pb-2 resize-none text-sm bg-transparent outline-none placeholder-gray-400 ${listening ? 'text-gray-500 italic' : 'text-gray-800'}`}
+        />
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100 bg-gray-50/50">
+          {supported && (
+            <button
+              onClick={toggleMic}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                listening
+                  ? 'bg-red-500 text-white shadow-sm'
+                  : 'bg-white text-gray-500 border border-gray-200 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200'
+              }`}
+            >
+              {listening ? <Square className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+              {listening ? 'Stop' : 'Voice'}
+            </button>
+          )}
+          {text && !listening && (
+            <button onClick={() => { setText(''); setPreview(null) }} className="text-xs text-gray-400 hover:text-gray-600 px-1">
+              Clear
+            </button>
+          )}
+          {!listening && (
+            <button
+              onClick={() => parseText(text)}
+              disabled={!text.trim() || parsing}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              {parsing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CornerDownLeft className="w-3 h-3" />}
+              {parsing ? 'Parsing…' : '⌘↵ Parse tasks'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {preview !== null && (
+        <div className="mt-2.5 bg-white border border-indigo-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100">
+            <div className="flex items-center gap-2">
+              <CheckCheck className="w-4 h-4 text-indigo-600" />
+              <span className="text-sm font-semibold text-gray-900">
+                {preview.length > 0 ? `${preview.length} task${preview.length !== 1 ? 's' : ''} extracted` : 'No tasks found'}
+              </span>
+            </div>
+            <button onClick={() => setPreview(null)} className="text-gray-300 hover:text-gray-500">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {preview.length > 0 ? (
+            <>
+              <div className="p-3 space-y-2">
+                {preview.map((t, i) => (
+                  <div key={i} className="flex items-start gap-2 p-3 bg-gray-50 rounded-xl">
+                    <div className="flex-1 min-w-0">
+                      <input
+                        value={t.title}
+                        onChange={e => updateTask(i, 'title', e.target.value)}
+                        className="w-full text-sm font-medium text-gray-900 bg-transparent border-none outline-none"
+                        placeholder="Task title"
+                      />
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        {t.accountName && (
+                          <span className="flex items-center gap-1 text-xs text-gray-500">
+                            <Building2 className="w-3 h-3" />{t.accountName}
+                          </span>
+                        )}
+                        {PRIORITY_OPTS.map(o => (
+                          <button
+                            key={o.value}
+                            onClick={() => updateTask(i, 'priority', o.value)}
+                            className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${t.priority === o.value ? o.cls : 'text-gray-300 bg-white border-gray-200'}`}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => removeTask(i)} className="text-gray-300 hover:text-red-400 flex-shrink-0 mt-0.5">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="px-3 pb-3">
+                <button
+                  onClick={handleConfirmAll}
+                  disabled={creating || preview.every(t => !t.title?.trim())}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors"
+                >
+                  {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {creating ? 'Creating…' : `Create ${preview.length} task${preview.length !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="px-4 py-3 text-sm text-gray-400">
+              Couldn't extract tasks. Try being specific: "CSM — follow up on proposal."
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Call Commitments Panel ───────────────────────────────────────────────────
 
 const COMMITMENTS_DISMISSED_KEY = 'call_commitments_dismissed'
@@ -1100,6 +1292,114 @@ function TodaysFocus() {
   )
 }
 
+// ─── Daily Focus Brief ───────────────────────────────────────────────────────
+
+function DailyFocusBrief({ tasks, onWorkInClaude }) {
+  const [focus, setFocus] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const CACHE_KEY = 'daily_focus_cache'
+  const CACHE_DATE_KEY = 'daily_focus_date'
+
+  useEffect(() => {
+    if (!tasks?.length) return
+    const today = new Date().toDateString()
+    const cachedDate = localStorage.getItem(CACHE_DATE_KEY)
+    if (cachedDate === today) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY))
+        if (cached?.length) { setFocus(cached); return }
+      } catch {}
+    }
+    setLoading(true)
+    fetch('/api/tasks/daily-focus')
+      .then(r => r.json())
+      .then(d => {
+        if (d.focus?.length) {
+          setFocus(d.focus)
+          localStorage.setItem(CACHE_KEY, JSON.stringify(d.focus))
+          localStorage.setItem(CACHE_DATE_KEY, today)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [tasks?.length])
+
+  const refresh = () => {
+    localStorage.removeItem(CACHE_DATE_KEY)
+    localStorage.removeItem(CACHE_KEY)
+    setFocus(null)
+    setLoading(true)
+    fetch('/api/tasks/daily-focus')
+      .then(r => r.json())
+      .then(d => {
+        if (d.focus?.length) {
+          setFocus(d.focus)
+          const today = new Date().toDateString()
+          localStorage.setItem(CACHE_KEY, JSON.stringify(d.focus))
+          localStorage.setItem(CACHE_DATE_KEY, today)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  if (!loading && !focus?.length) return null
+
+  return (
+    <div className="mb-5 bg-white rounded-xl border border-blue-200 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-blue-600" />
+          <span className="text-sm font-semibold text-blue-900">Today's Focus</span>
+          <span className="text-xs text-blue-400">AI-ranked priorities</span>
+        </div>
+        <button onClick={refresh} disabled={loading} className="text-blue-300 hover:text-blue-600 disabled:opacity-40 transition-colors p-1">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+      {loading ? (
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-blue-500">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Ranking your priorities for today…
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {(focus || []).map((item, i) => {
+            const task = tasks?.find(t => t.id === item.taskId)
+            return (
+              <div key={i} className="flex items-start gap-3 px-4 py-3">
+                <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mt-0.5 ${
+                  i === 0 ? 'bg-red-500 text-white' : i === 1 ? 'bg-orange-400 text-white' : 'bg-amber-400 text-white'
+                }`}>
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{item.title || task?.title}</p>
+                  {item.account && (
+                    <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                      <Building2 className="w-3 h-3" />{item.account}
+                    </p>
+                  )}
+                  <p className="text-xs text-blue-600 mt-0.5 italic">{item.reason}</p>
+                </div>
+                {task && onWorkInClaude && task.status !== 'complete' && (
+                  <button
+                    onClick={() => onWorkInClaude(task)}
+                    className="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Work
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Dismiss Modal ────────────────────────────────────────────────────────────
 
 const DISMISS_REASONS = [
@@ -1359,7 +1659,7 @@ function NewTaskModal({ onClose, onCreate, currentUserId, users }) {
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, selected, onToggleSelect, bulkMode }) {
+function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selected, onToggleSelect, bulkMode }) {
   const [expanded, setExpanded] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const overdue = isOverdue(task)
@@ -1417,6 +1717,18 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, se
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_COLOR[task.priority]}`}>
               {PRIORITY_LABEL[task.priority]}
             </span>
+
+            {/* Momentum badge */}
+            {task.status !== 'complete' && task.momentum && (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                task.momentum === 'waiting_on_them' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                task.momentum === 'no_next_step' ? 'bg-red-50 text-red-700 border-red-200' :
+                'bg-blue-50 text-blue-700 border-blue-200'
+              }`}>
+                {task.momentum === 'waiting_on_them' ? 'Waiting' :
+                 task.momentum === 'no_next_step' ? 'No step' : 'On me'}
+              </span>
+            )}
 
             {/* Account link */}
             {task.account && (
@@ -1491,6 +1803,28 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, se
               {task.description && task.rationale && (
                 <p className="text-xs text-gray-500 leading-relaxed">{task.description}</p>
               )}
+              {/* Momentum setter */}
+              {onMomentumChange && task.status !== 'complete' && (
+                <div className="flex items-center gap-2 flex-wrap pt-1">
+                  <span className="text-xs text-gray-500 font-medium">Momentum:</span>
+                  {[
+                    { value: 'on_me', label: 'On me', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+                    { value: 'waiting_on_them', label: 'Waiting on them', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+                    { value: 'no_next_step', label: 'No next step', cls: 'text-red-700 bg-red-50 border-red-200' },
+                  ].map(m => (
+                    <button
+                      key={m.value}
+                      onClick={() => onMomentumChange(task.id, task.momentum === m.value ? null : m.value)}
+                      className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                        task.momentum === m.value ? m.cls : 'text-gray-400 bg-gray-50 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="flex justify-end gap-3 pt-1">
                 {onDismiss && (
                   <button onClick={() => onDismiss(task)} className="text-xs text-orange-500 hover:text-orange-700">
@@ -1511,7 +1845,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, se
 
 // ─── Rep View ─────────────────────────────────────────────────────────────────
 
-function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onNewTask, selectedTaskIds, onToggleSelect, bulkMode }) {
+function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, onNewTask, selectedTaskIds, onToggleSelect, bulkMode }) {
   const grouped = TYPE_ORDER.reduce((acc, type) => {
     const items = tasks
       .filter(t => t.type === type)
@@ -1568,7 +1902,7 @@ function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, o
             </div>
             <div className="space-y-2">
               {grouped[type].map(task => (
-                <TaskRow key={task.id} task={task} onStatusChange={onStatusChange} onDelete={onDelete} onDismiss={onDismiss} onWorkInClaude={onWorkInClaude} selected={selectedTaskIds?.has(task.id)} onToggleSelect={onToggleSelect} bulkMode={bulkMode} />
+                <TaskRow key={task.id} task={task} onStatusChange={onStatusChange} onDelete={onDelete} onDismiss={onDismiss} onWorkInClaude={onWorkInClaude} onMomentumChange={onMomentumChange} selected={selectedTaskIds?.has(task.id)} onToggleSelect={onToggleSelect} bulkMode={bulkMode} />
               ))}
             </div>
           </div>
@@ -1666,6 +2000,139 @@ function ManagerView({ summary, allTasks, onStatusChange, onDelete }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Focus List View ─────────────────────────────────────────────────────────
+
+function FocusListView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selectedTaskIds, onToggleSelect, bulkMode }) {
+  const sorted = [...tasks].sort((a, b) => {
+    const aOver = isOverdue(a) ? 1 : 0
+    const bOver = isOverdue(b) ? 1 : 0
+    if (bOver !== aOver) return bOver - aOver
+    return computeTaskPriority(b) - computeTaskPriority(a)
+  })
+
+  if (!sorted.length) {
+    return (
+      <div className="text-center py-12 text-gray-400">
+        <CheckCircle2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+        <p className="text-sm">Nothing left to do right now.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {sorted.map(task => (
+        <TaskRow
+          key={task.id}
+          task={task}
+          onStatusChange={onStatusChange}
+          onDelete={onDelete}
+          onDismiss={onDismiss}
+          onWorkInClaude={onWorkInClaude}
+          onMomentumChange={onMomentumChange}
+          selected={selectedTaskIds?.has(task.id)}
+          onToggleSelect={onToggleSelect}
+          bulkMode={bulkMode}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ─── By Account View ──────────────────────────────────────────────────────────
+
+const STAGE_WEIGHT = {
+  legal: 9, proposal: 8, solution_validation: 7, demo: 6,
+  active_pursuit: 5, intro_scheduled: 4, qualifying: 3,
+}
+
+function ByAccountView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selectedTaskIds, onToggleSelect, bulkMode }) {
+  const open = tasks.filter(t => t.status !== 'complete')
+  const grouped = {}
+  const noAccount = []
+
+  open.forEach(t => {
+    if (t.account) {
+      if (!grouped[t.account.id]) grouped[t.account.id] = { account: t.account, tasks: [] }
+      grouped[t.account.id].tasks.push(t)
+    } else {
+      noAccount.push(t)
+    }
+  })
+
+  const sorted = Object.values(grouped).sort((a, b) =>
+    (STAGE_WEIGHT[b.account.stage] || 0) - (STAGE_WEIGHT[a.account.stage] || 0)
+  )
+
+  if (!sorted.length && !noAccount.length) {
+    return (
+      <div className="text-center py-12 text-gray-400">
+        <CheckCircle2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+        <p className="text-sm">No open tasks.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {sorted.map(({ account, tasks: grpTasks }) => (
+        <div key={account.id}>
+          <div className="flex items-center gap-2 mb-3">
+            <Building2 className="w-4 h-4 text-gray-400" />
+            <span className="font-semibold text-gray-800 text-sm">{account.name}</span>
+            {account.stage && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 capitalize">
+                {account.stage.replace(/_/g, ' ')}
+              </span>
+            )}
+            <span className="text-xs text-gray-400">{grpTasks.length} task{grpTasks.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="space-y-2">
+            {grpTasks.sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a)).map(task => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                onStatusChange={onStatusChange}
+                onDelete={onDelete}
+                onDismiss={onDismiss}
+                onWorkInClaude={onWorkInClaude}
+                onMomentumChange={onMomentumChange}
+                selected={selectedTaskIds?.has(task.id)}
+                onToggleSelect={onToggleSelect}
+                bulkMode={bulkMode}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+      {noAccount.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-medium text-gray-500">No account</span>
+            <span className="text-xs text-gray-400">{noAccount.length} task{noAccount.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="space-y-2">
+            {noAccount.map(task => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                onStatusChange={onStatusChange}
+                onDelete={onDelete}
+                onDismiss={onDismiss}
+                onWorkInClaude={onWorkInClaude}
+                onMomentumChange={onMomentumChange}
+                selected={selectedTaskIds?.has(task.id)}
+                onToggleSelect={onToggleSelect}
+                bulkMode={bulkMode}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -1805,6 +2272,8 @@ export default function TasksPage() {
   const [filterSource, setFilterSource] = useState('all')
   const [filterDue, setFilterDue] = useState('all')
   const [filterTier, setFilterTier] = useState('all')
+  const [taskView, setTaskView] = useState('focus') // 'focus' | 'by_account' | 'all'
+  const [backfilling, setBackfilling] = useState(false)
   const demoSeeded = useRef(false)
 
   const bulkMode = selectedTaskIds.size > 0
@@ -2021,6 +2490,31 @@ export default function TasksPage() {
     fetchTasks()
   }
 
+  const handleMomentumChange = async (taskId, momentum) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, momentum } : t))
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ momentum }),
+      })
+    } catch { fetchTasks() }
+  }
+
+  const handleBulkCreate = (created) => {
+    if (created?.length) setTasks(prev => [...created, ...prev])
+  }
+
+  const handleBackfill = async () => {
+    setBackfilling(true)
+    try {
+      const res = await fetch('/api/gong/backfill-tasks', { method: 'POST' })
+      const d = await res.json()
+      if (d.success) fetchTasks()
+    } catch {}
+    finally { setBackfilling(false) }
+  }
+
   const toggleTaskSelected = (taskId) => {
     setSelectedTaskIds(prev => {
       const next = new Set(prev)
@@ -2136,6 +2630,16 @@ export default function TasksPage() {
               </button>
 
               <button
+                onClick={handleBackfill}
+                disabled={backfilling}
+                title="Pull tasks from all Gong call analyses"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${backfilling ? 'animate-spin' : ''}`} />
+                Sync Gong
+              </button>
+
+              <button
                 onClick={() => setShowNewTask(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
               >
@@ -2164,67 +2668,120 @@ export default function TasksPage() {
           />
         ) : (
           <>
-            {/* SDR source-type tab bar */}
-            {repType === 'sdr' && (
-              <div className="flex items-center gap-1 mb-3">
-                {[
-                  { id: 'all', label: 'All Tasks' },
-                  { id: 'campaigns', label: 'Campaigns' },
-                  { id: 'top50', label: 'My Top 50' },
-                  { id: 'standard', label: 'Standard' },
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setSdrViewTab(tab.id)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                      sdrViewTab === tab.id
-                        ? tab.id === 'campaigns' ? 'bg-indigo-600 text-white'
-                          : tab.id === 'top50' ? 'bg-orange-500 text-white'
-                          : 'bg-gray-800 text-white'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+            {/* Debrief bar — always visible */}
+            <DebriefBar onBulkCreate={handleBulkCreate} />
+
+            {/* Task view tabs */}
+            <div className="flex items-center gap-1 mb-5">
+              {[
+                { id: 'focus', label: 'Focus', icon: Target },
+                { id: 'by_account', label: 'By Account', icon: Building2 },
+                { id: 'all', label: 'All', icon: LayoutGrid },
+              ].map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setTaskView(id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    taskView === id ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+              <span className="ml-auto text-sm text-gray-400">
+                {tasks.filter(t => t.status !== 'complete').length} open
+                {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length > 0 && (
+                  <span className="ml-1 text-amber-500">
+                    · {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length} waiting
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {/* Bulk action bar — all tabs */}
+            {bulkMode && (
+              <div style={{ position: 'sticky', top: '72px', zIndex: 15, display: 'flex', justifyContent: 'center', pointerEvents: 'none', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: '10px 16px', pointerEvents: 'all' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>{selectedTaskIds.size} selected</span>
+                  <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
+                  <button onClick={handleBulkComplete} style={{ fontSize: '13px', fontWeight: 500, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}>Complete</button>
+                  <button onClick={handleBulkSnooze} style={{ fontSize: '13px', fontWeight: 500, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}>Snooze 2 days</button>
+                  <button onClick={() => setSelectedTaskIds(new Set())} style={{ fontSize: '13px', fontWeight: 500, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}>Clear</button>
+                </div>
               </div>
             )}
 
-            {/* Filter bar — row 1: status tabs + select-all */}
-            <div className="flex items-center gap-2 mb-2">
-              <Filter className="w-4 h-4 text-gray-400" />
-              {['active', 'all', 'complete'].map(f => (
-                <button
-                  key={f}
-                  onClick={() => setFilterStatus(f)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${
-                    filterStatus === f
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-              <div className="ml-auto flex items-center gap-3">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#6b7280' }}>
-                  <input
-                    type="checkbox"
-                    checked={filteredTasks.length > 0 && filteredTasks.every(t => selectedTaskIds.has(t.id))}
-                    onChange={e => {
-                      if (e.target.checked) setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)))
-                      else setSelectedTaskIds(new Set())
-                    }}
-                    style={{ width: '14px', height: '14px', accentColor: '#2563eb' }}
+            {/* ── FOCUS TAB ──────────────────────────────────────────────── */}
+            {taskView === 'focus' && (() => {
+              const activeTasks = tasks.filter(t => t.status !== 'complete')
+              const onMeTasks = activeTasks.filter(t => t.momentum !== 'waiting_on_them')
+              const waitingTasks = activeTasks.filter(t => t.momentum === 'waiting_on_them')
+              return (
+                <>
+                  <DailyFocusBrief tasks={activeTasks} onWorkInClaude={task => setWorkTask(task)} />
+                  <TodaysFocus />
+                  <CallCommitmentsPanel onAddTask={handleCreate} />
+                  <div className="mb-6">
+                    <SmartSuggestionsPanel providerToken={providerToken} onAddTask={handleCreate} />
+                  </div>
+                  <FocusListView
+                    tasks={onMeTasks}
+                    onStatusChange={handleStatusChange}
+                    onDelete={handleDelete}
+                    onDismiss={task => setDismissTask(task)}
+                    onWorkInClaude={task => setWorkTask(task)}
+                    onMomentumChange={handleMomentumChange}
+                    selectedTaskIds={selectedTaskIds}
+                    onToggleSelect={toggleTaskSelected}
+                    bulkMode={bulkMode}
                   />
-                  Select all
-                </label>
-                <span className="text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
-              </div>
-            </div>
+                  {waitingTasks.length > 0 && (
+                    <details className="mt-5">
+                      <summary className="flex items-center gap-2 text-xs text-amber-600 cursor-pointer hover:text-amber-800 list-none select-none py-1">
+                        <ChevronRight className="w-3 h-3" />
+                        <span className="font-medium">{waitingTasks.length} waiting on them</span>
+                        <span className="text-amber-400">— paused, not actionable</span>
+                      </summary>
+                      <div className="space-y-2 mt-2 ml-4 opacity-70">
+                        {waitingTasks.map(task => (
+                          <TaskRow
+                            key={task.id}
+                            task={task}
+                            onStatusChange={handleStatusChange}
+                            onDelete={handleDelete}
+                            onDismiss={task => setDismissTask(task)}
+                            onWorkInClaude={task => setWorkTask(task)}
+                            onMomentumChange={handleMomentumChange}
+                            selected={selectedTaskIds.has(task.id)}
+                            onToggleSelect={toggleTaskSelected}
+                            bulkMode={bulkMode}
+                          />
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </>
+              )
+            })()}
 
-            {/* Filter bar — row 2: additional dropdowns */}
-            {(() => {
+            {/* ── BY ACCOUNT TAB ─────────────────────────────────────────── */}
+            {taskView === 'by_account' && (
+              <ByAccountView
+                tasks={tasks}
+                onStatusChange={handleStatusChange}
+                onDelete={handleDelete}
+                onDismiss={task => setDismissTask(task)}
+                onWorkInClaude={task => setWorkTask(task)}
+                onMomentumChange={handleMomentumChange}
+                selectedTaskIds={selectedTaskIds}
+                onToggleSelect={toggleTaskSelected}
+                bulkMode={bulkMode}
+              />
+            )}
+
+            {/* ── ALL TAB ────────────────────────────────────────────────── */}
+            {taskView === 'all' && (() => {
               const STAGE_OPTIONS = [
                 { value: 'all', label: 'All Stages' },
                 { value: 'qualifying', label: 'Qualifying' },
@@ -2236,175 +2793,117 @@ export default function TasksPage() {
                 { value: 'legal', label: 'Legal' },
               ]
               const distinctOwners = [...new Map(
-                tasks
-                  .map(t => {
-                    const u = users.find(u => u.id === t.ownerId)
-                    return u ? [u.full_name || u.email, u.full_name || u.email] : null
-                  })
-                  .filter(Boolean)
+                tasks.map(t => {
+                  const u = users.find(u => u.id === t.ownerId)
+                  return u ? [u.full_name || u.email, u.full_name || u.email] : null
+                }).filter(Boolean)
               ).entries()].map(([k]) => k)
               const anyNonDefault = filterStage !== 'all' || filterAssignee !== 'mine' || filterSource !== 'all' || filterDue !== 'all' || filterTier !== 'all'
-              const selectStyle = { fontSize: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '4px 8px', background: '#fff', color: '#374151', outline: 'none', cursor: 'pointer' }
+              const sel = { fontSize: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '4px 8px', background: '#fff', color: '#374151', outline: 'none', cursor: 'pointer' }
               return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                  <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={selectStyle}>
-                    {STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={selectStyle}>
-                    <option value="mine">Mine</option>
-                    {distinctOwners.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                    <option value="everyone">Everyone</option>
-                  </select>
-                  <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={selectStyle}>
-                    <option value="all">All Sources</option>
-                    <option value="voice">Voice</option>
-                    <option value="manual">Manual</option>
-                    <option value="gong">Gong</option>
-                    <option value="gmail">Gmail</option>
-                    <option value="calendar">Calendar</option>
-                    <option value="playbook">Playbook</option>
-                  </select>
-                  <select value={filterDue} onChange={e => setFilterDue(e.target.value)} style={selectStyle}>
-                    <option value="all">All</option>
-                    <option value="overdue">Overdue</option>
-                    <option value="today">Today</option>
-                    <option value="this_week">This week</option>
-                    <option value="no_due">No due date</option>
-                  </select>
-                  <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={selectStyle}>
-                    <option value="all">All Tiers</option>
-                    <option value="hot">Hot</option>
-                    <option value="active">Active</option>
-                    <option value="watching">Watching</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                  {anyNonDefault && (
-                    <button
-                      onClick={() => { setFilterStage('all'); setFilterAssignee('mine'); setFilterSource('all'); setFilterDue('all'); setFilterTier('all') }}
-                      style={{ fontSize: '12px', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '4px 0' }}
-                    >
-                      Clear filters
-                    </button>
-                  )}
-                </div>
-              )
-            })()}
-
-            {/* NL Quick-Add bar */}
-            <NLTaskBar onCreate={handleCreate} onVoiceCreated={fetchTasks} />
-
-            {/* Today's Focus morning brief */}
-            <TodaysFocus />
-
-            {/* Unresolved commitments + next steps from recent Gong calls */}
-            <CallCommitmentsPanel onAddTask={handleCreate} />
-
-            {/* Smart Suggestions from Gmail + Calendar */}
-            <div className="mb-6">
-              <SmartSuggestionsPanel
-                providerToken={providerToken}
-                onAddTask={handleCreate}
-              />
-            </div>
-
-            {/* Bulk action bar */}
-            {bulkMode && (
-              <div style={{ position: 'sticky', bottom: '24px', zIndex: 20, display: 'flex', justifyContent: 'center', pointerEvents: 'none', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: '10px 16px', pointerEvents: 'all' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>{selectedTaskIds.size} selected</span>
-                  <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
-                  <button
-                    onClick={handleBulkComplete}
-                    style={{ fontSize: '13px', fontWeight: 500, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}
-                  >
-                    Complete
-                  </button>
-                  <button
-                    onClick={handleBulkSnooze}
-                    style={{ fontSize: '13px', fontWeight: 500, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}
-                  >
-                    Snooze 2 days
-                  </button>
-                  <button
-                    onClick={() => setSelectedTaskIds(new Set())}
-                    style={{ fontSize: '13px', fontWeight: 500, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {repType === 'sdr' && sdrViewTab === 'campaigns' ? (
-              (() => {
-                const campaignGroups = filteredTasks.reduce((acc, task) => {
-                  const key = task.source_id || 'ungrouped'
-                  if (!acc[key]) acc[key] = []
-                  acc[key].push(task)
-                  return acc
-                }, {})
-                const groupKeys = Object.keys(campaignGroups)
-                if (groupKeys.length === 0) {
-                  return (
-                    <div className="text-center py-16 text-gray-400">
-                      <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                      <p className="text-sm">No campaign tasks yet.</p>
+                <>
+                  {repType === 'sdr' && (
+                    <div className="flex items-center gap-1 mb-3">
+                      {[{ id: 'all', label: 'All' }, { id: 'campaigns', label: 'Campaigns' }, { id: 'top50', label: 'My Top 50' }, { id: 'standard', label: 'Standard' }].map(tab => (
+                        <button key={tab.id} onClick={() => setSdrViewTab(tab.id)} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${sdrViewTab === tab.id ? tab.id === 'campaigns' ? 'bg-indigo-600 text-white' : tab.id === 'top50' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{tab.label}</button>
+                      ))}
                     </div>
-                  )
-                }
-                return (
-                  <div className="space-y-6">
-                    {groupKeys.map(campaignId => {
-                      const group = campaignGroups[campaignId]
-                      const firstTask = group[0]
-                      // Extract account name from title pattern "Stage X: AccountName — ..."
-                      const titleMatch = firstTask.title?.match(/Stage \d+:\s*(.+?)\s*[—-]/)
-                      const accountLabel = titleMatch ? titleMatch[1] : (firstTask.account?.name || campaignId)
-                      const pastDue = group.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status === 'open').length
-                      const completed = group.filter(t => t.status === 'complete').length
-                      const total = group.length
+                  )}
+                  <div className="flex items-center gap-2 mb-2">
+                    <Filter className="w-4 h-4 text-gray-400" />
+                    {['active', 'all', 'complete'].map(f => (
+                      <button key={f} onClick={() => setFilterStatus(f)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${filterStatus === f ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'}`}>{f}</button>
+                    ))}
+                    <div className="ml-auto flex items-center gap-3">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#6b7280' }}>
+                        <input type="checkbox" checked={filteredTasks.length > 0 && filteredTasks.every(t => selectedTaskIds.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTaskIds(new Set(filteredTasks.map(t => t.id))); else setSelectedTaskIds(new Set()) }} style={{ width: '14px', height: '14px', accentColor: '#2563eb' }} />
+                        Select all
+                      </label>
+                      <span className="text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                    <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={sel}>{STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+                    <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={sel}>
+                      <option value="mine">Mine</option>
+                      {distinctOwners.map(name => <option key={name} value={name}>{name}</option>)}
+                      <option value="everyone">Everyone</option>
+                    </select>
+                    <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={sel}>
+                      <option value="all">All Sources</option>
+                      <option value="voice">Voice</option>
+                      <option value="manual">Manual</option>
+                      <option value="gong">Gong</option>
+                      <option value="gmail">Gmail</option>
+                      <option value="calendar">Calendar</option>
+                      <option value="playbook">Playbook</option>
+                    </select>
+                    <select value={filterDue} onChange={e => setFilterDue(e.target.value)} style={sel}>
+                      <option value="all">All</option>
+                      <option value="overdue">Overdue</option>
+                      <option value="today">Today</option>
+                      <option value="this_week">This week</option>
+                      <option value="no_due">No due date</option>
+                    </select>
+                    <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={sel}>
+                      <option value="all">All Tiers</option>
+                      <option value="hot">Hot</option>
+                      <option value="active">Active</option>
+                      <option value="watching">Watching</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                    {anyNonDefault && (
+                      <button onClick={() => { setFilterStage('all'); setFilterAssignee('mine'); setFilterSource('all'); setFilterDue('all'); setFilterTier('all') }} style={{ fontSize: '12px', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '4px 0' }}>Clear filters</button>
+                    )}
+                  </div>
+                  {repType === 'sdr' && sdrViewTab === 'campaigns' ? (
+                    (() => {
+                      const campaignGroups = filteredTasks.reduce((acc, task) => { const key = task.source_id || 'ungrouped'; if (!acc[key]) acc[key] = []; acc[key].push(task); return acc }, {})
+                      const groupKeys = Object.keys(campaignGroups)
+                      if (!groupKeys.length) return <div className="text-center py-16 text-gray-400"><CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-30" /><p className="text-sm">No campaign tasks yet.</p></div>
                       return (
-                        <div key={campaignId}>
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
-                              Campaign
-                            </span>
-                            <span className="text-sm font-semibold text-gray-800">{accountLabel}</span>
-                            <span className="text-xs text-gray-400">Stage {completed} of {total}</span>
-                            {pastDue > 0 ? (
-                              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title={`${pastDue} past due`} />
-                            ) : completed === total ? (
-                              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="All complete" />
-                            ) : (
-                              <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            {group.map(task => (
-                              <TaskRow key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} onDismiss={task => setDismissTask(task)} onWorkInClaude={task => setWorkTask(task)} selected={selectedTaskIds.has(task.id)} onToggleSelect={toggleTaskSelected} bulkMode={bulkMode} />
-                            ))}
-                          </div>
+                        <div className="space-y-6">
+                          {groupKeys.map(campaignId => {
+                            const group = campaignGroups[campaignId]
+                            const firstTask = group[0]
+                            const titleMatch = firstTask.title?.match(/Stage \d+:\s*(.+?)\s*[—-]/)
+                            const accountLabel = titleMatch ? titleMatch[1] : (firstTask.account?.name || campaignId)
+                            const pastDue = group.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status === 'open').length
+                            const completed = group.filter(t => t.status === 'complete').length
+                            return (
+                              <div key={campaignId}>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">Campaign</span>
+                                  <span className="text-sm font-semibold text-gray-800">{accountLabel}</span>
+                                  <span className="text-xs text-gray-400">Stage {completed} of {group.length}</span>
+                                  {pastDue > 0 ? <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" /> : completed === group.length ? <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" /> : <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />}
+                                </div>
+                                <div className="space-y-2">
+                                  {group.map(task => <TaskRow key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} onDismiss={task => setDismissTask(task)} onWorkInClaude={task => setWorkTask(task)} onMomentumChange={handleMomentumChange} selected={selectedTaskIds.has(task.id)} onToggleSelect={toggleTaskSelected} bulkMode={bulkMode} />)}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       )
-                    })}
-                  </div>
-                )
-              })()
-            ) : (
-              <RepView
-                tasks={filteredTasks}
-                onStatusChange={handleStatusChange}
-                onDelete={handleDelete}
-                onDismiss={task => setDismissTask(task)}
-                onWorkInClaude={task => setWorkTask(task)}
-                onNewTask={() => setShowNewTask(true)}
-                selectedTaskIds={selectedTaskIds}
-                onToggleSelect={toggleTaskSelected}
-                bulkMode={bulkMode}
-              />
-            )}
+                    })()
+                  ) : (
+                    <RepView
+                      tasks={filteredTasks}
+                      onStatusChange={handleStatusChange}
+                      onDelete={handleDelete}
+                      onDismiss={task => setDismissTask(task)}
+                      onWorkInClaude={task => setWorkTask(task)}
+                      onMomentumChange={handleMomentumChange}
+                      onNewTask={() => setShowNewTask(true)}
+                      selectedTaskIds={selectedTaskIds}
+                      onToggleSelect={toggleTaskSelected}
+                      bulkMode={bulkMode}
+                    />
+                  )}
+                </>
+              )
+            })()}
           </>
         )}
       </div>
