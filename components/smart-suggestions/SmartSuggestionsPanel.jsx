@@ -577,7 +577,9 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                               <p className={`text-sm font-medium ${added ? 'text-green-700 line-through' : 'text-gray-800'}`}>
                                 {s.title}
                               </p>
-                              <p className="text-xs text-gray-400 truncate mt-0.5">{s.emailSubject}</p>
+                              <p className="text-xs text-gray-500 truncate mt-0.5">
+                                {s.sender ? `${s.sender}` : ''}{s.sender && s.emailSubject ? ' · ' : ''}{s.emailSubject || ''}
+                              </p>
                               <div className="flex items-center gap-2 mt-1">
                                 {s.category && (
                                   <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[s.category] || 'bg-gray-100 text-gray-600'}`}>
@@ -593,15 +595,24 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               {added ? (
-                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <div className="flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setAddedEmails(prev => { const n = new Set(prev); n.delete(s.title); return n; }) }}
+                                    className="text-xs text-gray-400 hover:text-gray-600 underline"
+                                    title="Undo"
+                                  >
+                                    Undo
+                                  </button>
+                                </div>
                               ) : (
                                 <>
                                   <button
                                     onClick={e => { e.stopPropagation(); handleAddEmailTask(s) }}
-                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                                    className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-200 font-medium"
                                     title="Add as task"
                                   >
-                                    <Plus className="w-3.5 h-3.5" />
+                                    + Add
                                   </button>
                                   <button
                                     onClick={e => { e.stopPropagation(); setDismissedEmails(prev => new Set([...prev, s.title])) }}
