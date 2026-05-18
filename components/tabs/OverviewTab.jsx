@@ -505,7 +505,18 @@ const PreCallBrief = ({ account }) => {
   );
 };
 
-const OverviewTab = ({ account, onUpdateAccount }) => {
+const MEMORY_TYPE_BADGE = {
+  chat_insight: 'bg-blue-100 text-blue-700',
+  pipeline_call: 'bg-purple-100 text-purple-700',
+  manual: 'bg-gray-100 text-gray-600',
+  ai_summary: 'bg-green-100 text-green-700',
+}
+
+function memoryBadgeClass(type) {
+  return MEMORY_TYPE_BADGE[type] || 'bg-gray-100 text-gray-600'
+}
+
+const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
   const metrics = account?.metrics || {};
   const businessAreas = account?.businessAreas || {};
 
@@ -525,6 +536,40 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
   const healthScore = calculateDealHealth(account);
   const healthColor = getHealthScoreColor(healthScore);
   const healthBg = getHealthScoreBg(healthScore);
+
+  // Quick observation state
+  const [obsText, setObsText] = useState('');
+  const [obsSaved, setObsSaved] = useState(false);
+  const [obsSaving, setObsSaving] = useState(false);
+
+  // Account memory state
+  const [accountMemories, setAccountMemories] = useState([]);
+  const [memoriesLoaded, setMemoriesLoaded] = useState(false);
+
+  const handleSaveObservation = async () => {
+    if (!obsText.trim() || !account?.id) return;
+    setObsSaving(true);
+    try {
+      const r = await fetch(`/api/accounts/${account.id}/memory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'manual', content: obsText.trim(), author: userEmail }),
+      });
+      const d = await r.json();
+      if (d.memory) setAccountMemories(prev => [d.memory, ...prev]);
+      setObsText('');
+      setObsSaved(true);
+      setTimeout(() => setObsSaved(false), 2000);
+    } catch {}
+    finally { setObsSaving(false); }
+  };
+
+  const handleDeleteMemory = async (memId) => {
+    try {
+      await fetch(`/api/accounts/${account.id}/memory?action=delete&memoryId=${memId}`, { method: 'POST' });
+      setAccountMemories(prev => prev.filter(m => m.id !== memId));
+    } catch {}
+  };
 
   const handleFieldChange = (field, value) => {
     if (onUpdateAccount) {
@@ -633,6 +678,30 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
         </div>
       </div>
 
+      {/* Quick observation input */}
+      <div className="flex items-center gap-2">
+        <textarea
+          value={obsText}
+          onChange={e => setObsText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSaveObservation() }}
+          placeholder="Add an observation... (champion hesitant, budget frozen Q3, etc.)"
+          rows={1}
+          className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+          style={{ maxHeight: '80px', overflowY: 'auto' }}
+          onInput={e => {
+            e.target.style.height = 'auto';
+            e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
+          }}
+        />
+        <button
+          onClick={handleSaveObservation}
+          disabled={!obsText.trim() || obsSaving}
+          className="px-3 py-2 text-sm font-medium bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors shrink-0"
+        >
+          {obsSaved ? 'Saved' : obsSaving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+
       {/* Pre-Call Brief */}
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-400">Quick overview for your next call</p>
@@ -661,6 +730,57 @@ const OverviewTab = ({ account, onUpdateAccount }) => {
 
       {/* Suggested Next Actions */}
       <SuggestedActions account={account} />
+
+      {/* Account Memory Timeline */}
+      <details
+        className="bg-white border rounded-xl overflow-hidden"
+        onToggle={e => {
+          if (e.target.open && !memoriesLoaded && account?.id) {
+            setMemoriesLoaded(true);
+            fetch(`/api/accounts/${account.id}/memory`)
+              .then(r => r.json())
+              .then(d => { if (Array.isArray(d.memories)) setAccountMemories(d.memories); })
+              .catch(() => {});
+          }
+        }}
+      >
+        <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-gray-50 list-none select-none">
+          <span className="text-sm font-semibold text-gray-800">Account Memory</span>
+          {accountMemories.length > 0 && (
+            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
+              {accountMemories.length}
+            </span>
+          )}
+        </summary>
+        <div className="border-t px-4 py-3">
+          {accountMemories.length === 0 ? (
+            <p className="text-sm text-gray-400 py-1">
+              No saved insights yet. Add an observation above or save highlights from the Chat tab.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {accountMemories.slice(0, 5).map(m => (
+                <div key={m.id} className="flex items-start gap-2">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0 ${memoryBadgeClass(m.type)}`}>
+                    {m.type?.replace(/_/g, ' ') || 'note'}
+                  </span>
+                  <span className="text-sm text-gray-700 flex-1">{m.content}</span>
+                  <span className="text-xs text-gray-400 shrink-0">
+                    {m.created_at ? new Date(m.created_at).toLocaleDateString() : ''}
+                  </span>
+                  <button
+                    onClick={() => handleDeleteMemory(m.id)}
+                    className="text-gray-300 hover:text-red-400 shrink-0 leading-none"
+                    title="Delete"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
 
       {/* Sales Journey Tracker */}
       <SalesJourneyTracker account={account} />

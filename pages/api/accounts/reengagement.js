@@ -18,11 +18,12 @@ export default async function handler(req, res) {
 
   const db = getSupabase()
 
-  const [accountRes, callsRes, stakeholdersRes, processConfig] = await Promise.all([
+  const [accountRes, callsRes, stakeholdersRes, processConfig, memoriesRes] = await Promise.all([
     db.from('accounts').select('id, name, stage, deal_value, owner_name').eq('id', accountId).single(),
     db.from('gong_call_analyses').select('analysis, analyzed_at').eq('account_id', accountId).not('analysis', 'is', null).order('analyzed_at', { ascending: false }).limit(5),
     db.from('stakeholders').select('name, title, role').eq('account_id', accountId).limit(10),
     getSalesProcessConfig(),
+    db.from('account_memory').select('type, content, created_at').eq('account_id', accountId).eq('is_active', true).order('created_at', { ascending: false }).limit(5),
   ])
 
   const account = accountRes.data
@@ -30,6 +31,11 @@ export default async function handler(req, res) {
 
   const calls = callsRes.data || []
   const stakeholders = stakeholdersRes.data || []
+  const memories = memoriesRes.data || []
+
+  const memoryContext = memories.length
+    ? `\n\n## Saved Account Insights\n${memories.map(m => `[${m.type}] ${m.content}`).join('\n')}`
+    : ''
 
   const callContext = calls.map(c => {
     const a = c.analysis || {}
@@ -42,7 +48,7 @@ export default async function handler(req, res) {
 
   const processContext = buildSalesProcessContext(processConfig)
 
-  const prompt = `You are helping a Banner sales rep reengage a prospect who has gone cold.
+  const prompt = `You are helping a Banner sales rep reengage a prospect who has gone cold.${memoryContext}
 
 ${processContext}
 

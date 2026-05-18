@@ -47,9 +47,10 @@ export default async function handler(req, res) {
 
   let recentCalls = []
   let stakeholders = []
+  let memories = []
 
   if (matchedAccount) {
-    const [callsRes, stakeholdersRes] = await Promise.all([
+    const [callsRes, stakeholdersRes, memoriesRes] = await Promise.all([
       db.from('gong_call_analyses')
         .select('title, call_date, analysis')
         .eq('account_id', matchedAccount.id)
@@ -59,10 +60,21 @@ export default async function handler(req, res) {
       db.from('stakeholders')
         .select('name, role, is_champion')
         .eq('account_id', matchedAccount.id),
+      db.from('account_memory')
+        .select('type, content, created_at')
+        .eq('account_id', matchedAccount.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(5),
     ])
     recentCalls = callsRes.data || []
     stakeholders = stakeholdersRes.data || []
+    memories = memoriesRes.data || []
   }
+
+  const memoryContext = memories.length
+    ? `\n\n## Saved Account Insights\n${memories.map(m => `[${m.type}] ${m.content}`).join('\n')}`
+    : ''
 
   const attendeeList = attendees.map(a => a.name || a.email).filter(Boolean).join(', ')
 
@@ -86,7 +98,7 @@ export default async function handler(req, res) {
     ? stakeholders.map(s => `${s.name} (${s.role})${s.is_champion ? ' — Champion' : ''}`).join(', ')
     : null
 
-  const prompt = `You are a sales AI assistant helping a rep prepare for an upcoming meeting.
+  const prompt = `You are a sales AI assistant helping a rep prepare for an upcoming meeting.${memoryContext}
 
 MEETING: "${meetingTitle}"
 TIME: ${meetingTime || 'Upcoming'}

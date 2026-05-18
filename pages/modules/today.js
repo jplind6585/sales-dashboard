@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, ChevronRight, X, RefreshCw,
   Calendar, Clock, Loader2, AlertCircle, CheckCircle2,
   Sparkles, ArrowRight, Target, Info, Phone, Mail,
-  Linkedin, MessageSquare, Plus, ExternalLink
+  Linkedin, MessageSquare, Plus, ExternalLink, CheckSquare, Square,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getSession } from '../../lib/auth';
@@ -139,18 +139,6 @@ function isToday(dateStr) {
 
 // ─── Prep Brief Modal ─────────────────────────────────────────────────────────
 
-function buildBriefTaskDescription(brief, event) {
-  const attendeeNames = (event.externalAttendees || []).map(a => a.name).join(', ')
-  const lines = [`Meeting: ${formatEventTime(event.start)}${attendeeNames ? `\nWith: ${attendeeNames}` : ''}`]
-  if (brief.opening_recommendation) lines.push(`\nOPENING\n${brief.opening_recommendation}`)
-  if (brief.key_objectives?.length) lines.push(`\nOBJECTIVES\n${brief.key_objectives.map(o => `• ${o}`).join('\n')}`)
-  if (brief.talking_points?.length) lines.push(`\nKEY POINTS\n${brief.talking_points.map(p => `• ${p}`).join('\n')}`)
-  if (brief.discovery_questions?.length) lines.push(`\nDISCOVERY QUESTIONS\n${brief.discovery_questions.map(q => `• ${q}`).join('\n')}`)
-  if (brief.watch_outs?.length) lines.push(`\nWATCH OUTS\n${brief.watch_outs.map(w => `• ${w}`).join('\n')}`)
-  if (brief.suggested_ask) lines.push(`\nCLOSING ASK\n${brief.suggested_ask}`)
-  return lines.join('')
-}
-
 function PrepBriefModal({ event, onClose }) {
   const [brief, setBrief] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -178,7 +166,6 @@ function PrepBriefModal({ event, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-start justify-between p-5 border-b">
           <div className="flex-1 min-w-0 mr-3">
             <div className="flex items-center gap-1.5 mb-1">
@@ -196,15 +183,11 @@ function PrepBriefModal({ event, onClose }) {
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto p-5">
           {loading && (
             <div className="flex flex-col items-center justify-center py-10 gap-3">
               <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
               <p className="text-sm text-gray-500">Generating pre-call brief…</p>
-              {(event.externalAttendees?.length > 0) && (
-                <p className="text-xs text-gray-400">Pulling call history for {event.title}</p>
-              )}
             </div>
           )}
 
@@ -306,7 +289,6 @@ function PrepBriefModal({ event, onClose }) {
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex gap-3 p-4 border-t">
           <button
             onClick={onClose}
@@ -320,9 +302,94 @@ function PrepBriefModal({ event, onClose }) {
   )
 }
 
+// ─── Meeting prep checklist ───────────────────────────────────────────────────
+
+function getPrepItems(title) {
+  const t = (title || '').toLowerCase()
+  if (/intro|discovery/.test(t)) {
+    return [
+      'Research company on LinkedIn',
+      'Review last activity in pipeline',
+      'Confirm agenda sent to attendees',
+    ]
+  }
+  if (/demo|demonstration/.test(t)) {
+    return [
+      'Pull open MEDDICC gaps',
+      'Confirm use case alignment',
+      'Prepare 3 discovery questions',
+      'Send pre-read deck',
+    ]
+  }
+  if (/proposal|pricing/.test(t)) {
+    return [
+      'Confirm economic buyer is on the call',
+      'Review competitor positioning',
+      'Prepare ROI numbers',
+    ]
+  }
+  return [
+    'Review account notes',
+    'Check last Gong call',
+    'Define your ask for this meeting',
+  ]
+}
+
+function MeetingPrepChecklist({ eventId, title }) {
+  const storageKey = `prep_checklist_${eventId}`
+  const items = getPrepItems(title)
+  const [open, setOpen] = useState(false)
+  const [checked, setChecked] = useState(() => {
+    try {
+      const stored = localStorage.getItem(storageKey)
+      return stored ? JSON.parse(stored) : {}
+    } catch { return {} }
+  })
+
+  const toggle = (item) => {
+    const next = { ...checked, [item]: !checked[item] }
+    setChecked(next)
+    try { localStorage.setItem(storageKey, JSON.stringify(next)) } catch {}
+  }
+
+  const doneCount = items.filter(i => checked[i]).length
+
+  return (
+    <div className="mt-2 border-t border-gray-100 pt-2">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+      >
+        <CheckSquare className="w-3.5 h-3.5" />
+        <span>{doneCount}/{items.length} prep items</span>
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {open && (
+        <ul className="mt-1.5 space-y-1">
+          {items.map(item => (
+            <li
+              key={item}
+              onClick={() => toggle(item)}
+              className="flex items-center gap-1.5 cursor-pointer select-none"
+            >
+              {checked[item]
+                ? <CheckSquare className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                : <Square className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+              }
+              <span className={`text-xs ${checked[item] ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                {item}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ─── AE View — Morning Brief card ─────────────────────────────────────────────
 
-function MorningBriefCard() {
+function MorningBriefCard({ fallbackTasks }) {
   const [brief, setBrief] = useState(null)
   const [loading, setLoading] = useState(false)
 
@@ -352,6 +419,12 @@ function MorningBriefCard() {
 
   useEffect(() => { fetchBrief() }, [fetchBrief])
 
+  const PRIORITY_COLOR = {
+    1: 'text-red-600 bg-red-50 border-red-200',
+    2: 'text-amber-600 bg-amber-50 border-amber-200',
+    3: 'text-gray-500 bg-gray-50 border-gray-200',
+  }
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-purple-50">
@@ -378,7 +451,28 @@ function MorningBriefCard() {
         )}
 
         {!loading && !brief && (
-          <p className="text-sm text-gray-400 italic py-2">No brief available.</p>
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 italic">No AI brief yet — check back after your first call of the day</p>
+            {fallbackTasks && fallbackTasks.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Your open tasks</p>
+                <ul className="space-y-1.5">
+                  {fallbackTasks.slice(0, 3).map(task => (
+                    <li key={task.id} className="flex items-start gap-2">
+                      <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${
+                        task.priority === 1 ? PRIORITY_COLOR[1] : task.priority === 2 ? PRIORITY_COLOR[2] : PRIORITY_COLOR[3]
+                      }`}>
+                        {task.priority === 1 ? 'High' : task.priority === 2 ? 'Med' : 'Low'}
+                      </span>
+                      <p className="text-xs text-gray-700 leading-snug">{task.title}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">Start your day: review your open tasks and cold deals below</p>
+            )}
+          </div>
         )}
 
         {brief && !loading && (
@@ -419,7 +513,7 @@ function MorningBriefCard() {
 
 // ─── AE View — Today's Tasks card ─────────────────────────────────────────────
 
-function TodaysTasksCard({ router }) {
+function TodaysTasksCard({ router, coldDeals, onTasksLoaded }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -429,9 +523,11 @@ function TodaysTasksCard({ router }) {
       .then(d => {
         const open = (d.tasks || []).filter(t => t.status !== 'complete')
         open.sort((a, b) => (a.priority || 3) - (b.priority || 3))
-        setTasks(open.slice(0, 5))
+        const top5 = open.slice(0, 5)
+        setTasks(top5)
+        if (onTasksLoaded) onTasksLoaded(open)
       })
-      .catch(() => {})
+      .catch(() => { if (onTasksLoaded) onTasksLoaded([]) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -466,7 +562,22 @@ function TodaysTasksCard({ router }) {
         )}
 
         {!loading && tasks.length === 0 && (
-          <p className="text-sm text-gray-400 italic py-2">No open tasks.</p>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500">No open tasks — here are deals worth touching today</p>
+            {coldDeals && coldDeals.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {coldDeals.slice(0, 2).map(d => (
+                  <button
+                    key={d.account_id}
+                    onClick={() => router.push(`/modules/account-pipeline?account=${d.account_id}`)}
+                    className="px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 hover:bg-amber-100 transition-colors"
+                  >
+                    {d.account_name} {d.days_cold ? `— ${d.days_cold}d cold` : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {!loading && tasks.length > 0 && (
@@ -493,15 +604,161 @@ function TodaysTasksCard({ router }) {
   )
 }
 
-// ─── AE View — Calendar card ──────────────────────────────────────────────────
+// ─── AE View — Deal Intelligence panel ───────────────────────────────────────
 
-function CalendarCard({ providerToken }) {
+function getDismissedInsights() {
+  const dateKey = new Date().toISOString().split('T')[0]
+  try {
+    return JSON.parse(localStorage.getItem(`dismissed_deal_insights_${dateKey}`) || '[]')
+  } catch { return [] }
+}
+
+function dismissInsight(accountId) {
+  const dateKey = new Date().toISOString().split('T')[0]
+  try {
+    const current = getDismissedInsights()
+    if (!current.includes(accountId)) {
+      localStorage.setItem(`dismissed_deal_insights_${dateKey}`, JSON.stringify([...current, accountId]))
+    }
+  } catch {}
+}
+
+function DealInsightCard({ insight, router, onDismiss }) {
+  const [expanded, setExpanded] = useState(false)
+  const urgencyBar = insight.urgency === 'high' ? 'bg-red-500' : 'bg-amber-400'
+
+  return (
+    <div className="flex gap-0 rounded-lg border border-gray-200 overflow-hidden">
+      <div className={`w-1 flex-shrink-0 ${urgencyBar}`} />
+      <div className="flex-1 p-3">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-gray-900">{insight.account_name}</span>
+            {insight.stage && <StageBadge stage={insight.stage} />}
+          </div>
+          <button
+            onClick={() => onDismiss(insight.account_id)}
+            className="text-gray-300 hover:text-gray-500 flex-shrink-0"
+            title="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <p className="text-xs font-medium text-gray-700 mb-0.5">{insight.headline}</p>
+        {insight.insight_text && (
+          <>
+            {expanded && (
+              <p className="text-xs text-gray-500 mb-1 leading-relaxed">{insight.insight_text}</p>
+            )}
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="text-xs text-blue-500 hover:underline mb-1"
+            >
+              {expanded ? 'Less' : 'More'}
+            </button>
+          </>
+        )}
+        <p className="text-xs italic text-gray-500 mb-2">{insight.recommended_action}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => router.push(`/modules/account-pipeline?account=${insight.account_id}&tab=chat`)}
+            className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg transition-colors"
+          >
+            <Sparkles className="w-3 h-3" />
+            Work in Claude
+          </button>
+          <button
+            onClick={() => onDismiss(insight.account_id)}
+            className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DealIntelligencePanel({ router, onInsightsLoaded }) {
+  const [insights, setInsights] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [dismissed, setDismissed] = useState(getDismissedInsights)
+
+  useEffect(() => {
+    fetch('/api/rep/deal-insights')
+      .then(r => r.json())
+      .then(d => {
+        const all = d.insights || []
+        setInsights(all)
+        if (onInsightsLoaded) onInsightsLoaded(d)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleDismiss = (accountId) => {
+    dismissInsight(accountId)
+    setDismissed(getDismissedInsights())
+  }
+
+  const visible = insights.filter(i => !dismissed.includes(i.account_id))
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="flex items-center px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-red-50 to-amber-50">
+        <AlertCircle className="w-4 h-4 text-red-500 mr-2" />
+        <span className="text-sm font-semibold text-gray-900">Deal Intelligence</span>
+        {!loading && visible.length > 0 && (
+          <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full">
+            {visible.length}
+          </span>
+        )}
+      </div>
+
+      <div className="p-4">
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-gray-400 py-3">
+            <Loader2 className="w-4 h-4 animate-spin text-red-400" />
+            Scanning pipeline…
+          </div>
+        )}
+
+        {!loading && visible.length === 0 && (
+          <div className="flex items-center gap-2 text-sm text-green-600 py-2">
+            <CheckCircle2 className="w-4 h-4" />
+            All deals look healthy today
+          </div>
+        )}
+
+        {!loading && visible.length > 0 && (
+          <div className="space-y-3">
+            {visible.slice(0, 3).map(insight => (
+              <DealInsightCard
+                key={insight.account_id}
+                insight={insight}
+                router={router}
+                onDismiss={handleDismiss}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── AE View — Calendar card with prep checklist ──────────────────────────────
+
+function CalendarCard({ providerToken, onEventsLoaded }) {
   const [events, setEvents] = useState(null)
   const [loading, setLoading] = useState(false)
   const [prepEvent, setPrepEvent] = useState(null)
 
   useEffect(() => {
-    if (!providerToken) return
+    if (!providerToken) {
+      if (onEventsLoaded) onEventsLoaded([])
+      return
+    }
     setLoading(true)
     fetch('/api/calendar/upcoming', {
       method: 'POST',
@@ -510,11 +767,14 @@ function CalendarCard({ providerToken }) {
     })
       .then(r => r.json())
       .then(d => {
-        // Filter to today only
         const todayEvents = (d.salesMeetings || []).filter(e => isToday(e.start))
         setEvents(todayEvents)
+        if (onEventsLoaded) onEventsLoaded(todayEvents)
       })
-      .catch(() => setEvents([]))
+      .catch(() => {
+        setEvents([])
+        if (onEventsLoaded) onEventsLoaded([])
+      })
       .finally(() => setLoading(false))
   }, [providerToken])
 
@@ -541,7 +801,9 @@ function CalendarCard({ providerToken }) {
           )}
 
           {providerToken && !loading && events !== null && events.length === 0 && (
-            <p className="text-sm text-gray-400 italic py-2">No external meetings today.</p>
+            <p className="text-sm text-gray-500 italic py-2">
+              No meetings today — a good day to reach out proactively
+            </p>
           )}
 
           {providerToken && !loading && events !== null && events.length > 0 && (
@@ -584,6 +846,7 @@ function CalendarCard({ providerToken }) {
                       </button>
                     </div>
                   </div>
+                  <MeetingPrepChecklist eventId={event.id} title={event.title} />
                 </li>
               ))}
             </ul>
@@ -598,6 +861,101 @@ function CalendarCard({ providerToken }) {
   )
 }
 
+// ─── AE View — Cold Deal Strip ────────────────────────────────────────────────
+
+function ColdDealStrip({ router, coldDeals }) {
+  const [expanded, setExpanded] = useState(null)
+
+  if (!coldDeals || coldDeals.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="flex items-center px-4 py-3 border-b border-gray-100">
+        <AlertCircle className="w-4 h-4 text-amber-500 mr-2" />
+        <span className="text-sm font-semibold text-gray-900">Deals Gone Cold</span>
+        <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
+          {coldDeals.length}
+        </span>
+      </div>
+
+      <div className="p-4">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {coldDeals.map(deal => (
+            <div key={deal.account_id} className="flex-shrink-0">
+              <button
+                onClick={() => setExpanded(expanded === deal.account_id ? null : deal.account_id)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                  expanded === deal.account_id
+                    ? 'bg-amber-100 border-amber-300 text-amber-900'
+                    : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {deal.account_name}{deal.days_cold ? ` — ${deal.days_cold}d` : ''}
+              </button>
+              {expanded === deal.account_id && (
+                <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-1.5 min-w-48">
+                  {deal.days_cold != null && (
+                    <p className="text-amber-800">Last call: {deal.days_cold} days ago</p>
+                  )}
+                  <p className="text-gray-600 italic">{deal.recommended_action || 'Schedule a check-in'}</p>
+                  <button
+                    onClick={() => router.push(`/modules/account-pipeline?account=${deal.account_id}&tab=chat`)}
+                    className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
+                  >
+                    <Mail className="w-3 h-3" />
+                    Draft email
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── AE View — Idle Account Queue ────────────────────────────────────────────
+
+function IdleAccountQueue({ router, idleQueue }) {
+  if (!idleQueue || idleQueue.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="flex items-center px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <Target className="w-4 h-4 text-blue-600 mr-2" />
+        <span className="text-sm font-semibold text-gray-900">Where to Focus Today</span>
+      </div>
+
+      <div className="p-4 space-y-2">
+        {idleQueue.map(account => (
+          <div
+            key={account.account_id}
+            className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-800 truncate">{account.name}</p>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <StageBadge stage={account.stage} />
+                {account.days_since_last_call != null && (
+                  <span className="text-xs text-amber-600 font-medium">{account.days_since_last_call}d no contact</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5 italic">{account.suggested_angle}</p>
+            </div>
+            <button
+              onClick={() => router.push(`/modules/account-pipeline?account=${account.account_id}&tab=chat`)}
+              className="flex items-center gap-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-lg border border-blue-200 transition-colors flex-shrink-0"
+            >
+              Draft outreach
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── AE View — Pipeline Focus card ───────────────────────────────────────────
 
 function PipelineFocusCard({ userId, router }) {
@@ -608,13 +966,9 @@ function PipelineFocusCard({ userId, router }) {
     fetch('/api/pipeline-overview')
       .then(r => r.json())
       .then(d => {
-        // Collect all accounts across reps, filter to current user
         const allAccounts = (d.repSummaries || [])
           .flatMap(rep => (rep.accounts || rep.staleAccounts || []).map(a => ({ ...a, repId: rep.id, repName: rep.name })))
 
-        // Also try to get stale accounts (the API exposes staleAccounts per rep)
-        // Best effort: get stale accounts for the current user from pipeline overview
-        // We sort by days since last activity ascending (most stale first)
         const userAccounts = allAccounts
           .filter(a => !userId || a.repId === userId || a.userId === userId)
           .sort((a, b) => (b.daysSinceActivity ?? 9999) - (a.daysSinceActivity ?? 9999))
@@ -685,26 +1039,54 @@ function PipelineFocusCard({ userId, router }) {
 // ─── AE View ──────────────────────────────────────────────────────────────────
 
 function AEView({ userId, providerToken, router }) {
+  const [allTasks, setAllTasks] = useState(null)
+  const [insightsData, setInsightsData] = useState(null)
+  const [todayEvents, setTodayEvents] = useState(null)
+
+  const isIdle = allTasks !== null && todayEvents !== null
+    && allTasks.length === 0 && todayEvents.length === 0
+
+  const coldDeals = (insightsData?.insights || []).filter(i => i.type === 'gone_cold')
+  const idleQueue = insightsData?.idle_queue || []
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {/* Column 1 — Your Day */}
-      <div className="space-y-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Your Day</p>
-        <MorningBriefCard />
-        <TodaysTasksCard router={router} />
+    <div className="space-y-6">
+      {/* Row 1 — Deal Intelligence (full width) */}
+      <DealIntelligencePanel router={router} onInsightsLoaded={setInsightsData} />
+
+      {/* Row 2 — three-col grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Column 1 — Your Day */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Your Day</p>
+          <MorningBriefCard fallbackTasks={allTasks} />
+          <TodaysTasksCard
+            router={router}
+            coldDeals={coldDeals}
+            onTasksLoaded={setAllTasks}
+          />
+        </div>
+
+        {/* Column 2 — Calendar */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Calendar</p>
+          <CalendarCard providerToken={providerToken} onEventsLoaded={setTodayEvents} />
+          {isIdle && idleQueue.length > 0 && (
+            <IdleAccountQueue router={router} idleQueue={idleQueue} />
+          )}
+        </div>
+
+        {/* Column 3 — Pipeline Focus */}
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline Focus</p>
+          <PipelineFocusCard userId={userId} router={router} />
+        </div>
       </div>
 
-      {/* Column 2 — Calendar */}
-      <div className="space-y-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Calendar</p>
-        <CalendarCard providerToken={providerToken} />
-      </div>
-
-      {/* Column 3 — Pipeline Focus */}
-      <div className="space-y-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline Focus</p>
-        <PipelineFocusCard userId={userId} router={router} />
-      </div>
+      {/* Cold Deal Strip — below calendar section */}
+      {coldDeals.length > 0 && (
+        <ColdDealStrip router={router} coldDeals={coldDeals} />
+      )}
     </div>
   )
 }
@@ -1075,7 +1457,6 @@ function ManagerView({ router }) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Left — Team Activity */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
@@ -1119,7 +1500,6 @@ function ManagerView({ router }) {
         </div>
       </div>
 
-      {/* Right — At-Risk Deals */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
@@ -1184,9 +1564,8 @@ export default function TodayPage() {
   const [isReady, setIsReady] = useState(false)
   const [profile, setProfile] = useState(null)
   const [providerToken, setProviderToken] = useState(null)
-  const [repType, setRepType] = useState(null) // 'sdr' | 'ae' | null
+  const [repType, setRepType] = useState(null)
 
-  // Auth + profile init
   useEffect(() => {
     const init = async () => {
       const useAuth = isSupabaseConfigured() && process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false'
@@ -1197,11 +1576,9 @@ export default function TodayPage() {
         if (session?.provider_token) setProviderToken(session.provider_token)
       }
 
-      // Load rep type from localStorage
       const stored = localStorage.getItem('user_rep_type')
       setRepType(stored || 'ae')
 
-      // Fetch profile for manager detection
       try {
         const res = await fetch('/api/me')
         const d = await res.json()
@@ -1219,8 +1596,6 @@ export default function TodayPage() {
   }
 
   const isManager = profile?.role === 'manager'
-
-  // Determine active view
   const activeView = isManager ? 'manager' : (repType || 'ae')
 
   if (!isReady) {
@@ -1233,7 +1608,6 @@ export default function TodayPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -1249,7 +1623,6 @@ export default function TodayPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Role toggle — only show for non-managers */}
               {!isManager && (
                 <div className="flex bg-gray-100 rounded-lg p-1">
                   <button
@@ -1277,7 +1650,6 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-6xl mx-auto px-6 py-8">
         {activeView === 'manager' && <ManagerView router={router} />}
         {activeView === 'ae' && (

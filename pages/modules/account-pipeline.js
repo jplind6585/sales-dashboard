@@ -193,6 +193,9 @@ export default function Home() {
   const [noteSaved, setNoteSaved] = useState(false);
   const quickNoteRef = useRef(null);
 
+  // Memory count badge
+  const [memoryCount, setMemoryCount] = useState(0);
+
   // Risk score state (optimistic updates after rescore)
   const [rescoring, setRescoring] = useState(false);
   const [rescoreResult, setRescoreResult] = useState(null);
@@ -212,6 +215,14 @@ export default function Home() {
 
   useEffect(() => {
     setRescoreResult(null);
+  }, [selectedAccount?.id]);
+
+  useEffect(() => {
+    if (!selectedAccount?.id) { setMemoryCount(0); return; }
+    fetch(`/api/accounts/${selectedAccount.id}/memory`)
+      .then(r => r.json())
+      .then(d => setMemoryCount(Array.isArray(d.memories) ? d.memories.length : 0))
+      .catch(() => setMemoryCount(0));
   }, [selectedAccount?.id]);
 
   // Form state
@@ -722,6 +733,15 @@ export default function Home() {
                             </span>
                           );
                         })()}
+                        {memoryCount > 0 && (
+                          <span
+                            className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-200 transition-colors"
+                            onClick={() => setActiveTab('overview')}
+                            title="View saved insights"
+                          >
+                            📌 {memoryCount} insight{memoryCount !== 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         {selectedAccount.url && (

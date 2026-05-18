@@ -8,16 +8,13 @@ const SUGGESTED_PROMPTS = [
   'What should I do next?',
 ]
 
-// Simple inline markdown renderer: bold and newlines only — no library
 function renderContent(text) {
   if (!text) return null
-  // Split on **bold** markers
   const parts = text.split(/(\*\*[^*]+\*\*)/)
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return <strong key={i}>{part.slice(2, -2)}</strong>
     }
-    // Render newlines as <br>
     const lines = part.split('\n')
     return lines.map((line, j) => (
       <span key={`${i}-${j}`}>
@@ -28,41 +25,28 @@ function renderContent(text) {
   })
 }
 
-function ChatMessage({ message }) {
-  const isUser = message.role === 'user'
-  const isSystem = message.role === 'system'
-
-  if (isSystem) {
-    return (
-      <div className="flex justify-center my-2">
-        <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-          {message.content}
-        </span>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
-      {!isUser && (
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mr-2 mt-0.5">
-          <Sparkles className="w-3.5 h-3.5 text-white" />
-        </div>
-      )}
-      <div
-        className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-          isUser
-            ? 'bg-blue-600 text-white rounded-tr-sm'
-            : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
-        }`}
-      >
-        {renderContent(message.content)}
-      </div>
-    </div>
-  )
+const TYPE_BADGE = {
+  chat_insight: 'bg-blue-100 text-blue-700',
+  pipeline_call: 'bg-purple-100 text-purple-700',
+  manual: 'bg-gray-100 text-gray-600',
+  ai_summary: 'bg-green-100 text-green-700',
 }
 
-export default function ChatTab({ account }) {
+function typeBadgeClass(type) {
+  return TYPE_BADGE[type] || 'bg-gray-100 text-gray-600'
+}
+
+function relativeDate(ts) {
+  if (!ts) return ''
+  const diff = Date.now() - new Date(ts)
+  const days = Math.floor(diff / 86400000)
+  if (days < 1) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  return new Date(ts).toLocaleDateString()
+}
+
+export default function ChatTab({ account, user }) {
   if (!account?.id) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
@@ -79,6 +63,22 @@ export default function ChatTab({ account }) {
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
+  // Memory state
+  const [memories, setMemories] = useState([])
+  const [memoriesExpanded, setMemoriesExpanded] = useState(false)
+
+  // Per-message save state
+  const [savingMessageIdx, setSavingMessageIdx] = useState(null)
+  const [editedSaveText, setEditedSaveText] = useState('')
+  const [savedConfirmIdx, setSavedConfirmIdx] = useState(null)
+  const [hoveredMsgIdx, setHoveredMsgIdx] = useState(null)
+
+  // End-of-session takeaways
+  const [summarizing, setSummarizing] = useState(false)
+  const [takeawayBullets, setTakeawayBullets] = useState([])
+  const [showTakeawayModal, setShowTakeawayModal] = useState(false)
+  const [savingTakeaways, setSavingTakeaways] = useState(false)
+
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -89,6 +89,14 @@ export default function ChatTab({ account }) {
       localStorage.setItem(storageKey, JSON.stringify(trimmed))
     } catch {}
   }, [storageKey])
+
+  const fetchMemories = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/accounts/${account.id}/memory`)
+      const d = await r.json()
+      if (Array.isArray(d.memories)) setMemories(d.memories)
+    } catch {}
+  }, [account.id])
 
   const generateBriefing = useCallback(async () => {
     setBriefing(true)
@@ -121,10 +129,14 @@ export default function ChatTab({ account }) {
     }
   }, [account.id, persist])
 
-  // Load from localStorage or generate briefing on mount / account change
   useEffect(() => {
     setMessages([])
     setInput('')
+    setMemories([])
+    setMemoriesExpanded(false)
+    setSavingMessageIdx(null)
+    setSavedConfirmIdx(null)
+    fetchMemories()
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) {
@@ -203,8 +215,71 @@ export default function ChatTab({ account }) {
     try { localStorage.removeItem(storageKey) } catch {}
     setMessages([])
     setInput('')
+    setSavingMessageIdx(null)
     generateBriefing()
   }
+
+  const handleOpenSaveEditor = (idx, content) => {
+    setSavingMessageIdx(idx)
+    setEditedSaveText(content.trim().slice(0, 300))
+  }
+
+  const handleSaveMemory = async () => {
+    if (!editedSaveText.trim()) return
+    try {
+      const r = await fetch(`/api/accounts/${account.id}/memory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'chat_insight', content: editedSaveText.trim(), author: user?.email }),
+      })
+      const d = await r.json()
+      if (d.memory) setMemories(prev => [d.memory, ...prev])
+      setSavedConfirmIdx(savingMessageIdx)
+      setSavingMessageIdx(null)
+      setEditedSaveText('')
+      setTimeout(() => setSavedConfirmIdx(null), 2000)
+    } catch {}
+  }
+
+  const handleSummarize = async () => {
+    setSummarizing(true)
+    try {
+      const r = await fetch(`/api/accounts/${account.id}/memory-summarize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+      })
+      const d = await r.json()
+      if (Array.isArray(d.bullets) && d.bullets.length > 0) {
+        setTakeawayBullets(d.bullets)
+        setShowTakeawayModal(true)
+      }
+    } catch {}
+    finally { setSummarizing(false) }
+  }
+
+  const handleSaveTakeaways = async () => {
+    setSavingTakeaways(true)
+    try {
+      for (const bullet of takeawayBullets) {
+        if (!bullet.trim()) continue
+        const r = await fetch(`/api/accounts/${account.id}/memory`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'ai_summary', content: bullet.trim(), author: user?.email }),
+        })
+        const d = await r.json()
+        if (d.memory) setMemories(prev => [d.memory, ...prev])
+      }
+    } catch {}
+    finally {
+      setSavingTakeaways(false)
+      setShowTakeawayModal(false)
+      setTakeawayBullets([])
+    }
+  }
+
+  const assistantMessages = messages.filter(m => m.role !== 'system')
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: '500px', maxHeight: 'calc(100vh - 280px)' }}>
@@ -226,6 +301,32 @@ export default function ChatTab({ account }) {
         </button>
       </div>
 
+      {/* Memory bar */}
+      {memories.length > 0 && (
+        <div className="mb-2 flex-shrink-0 border border-blue-100 bg-blue-50 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setMemoriesExpanded(e => !e)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs text-blue-700 hover:bg-blue-100 transition-colors"
+          >
+            <span>📌 {memories.length} saved insight{memories.length !== 1 ? 's' : ''}</span>
+            <span className="text-blue-400">{memoriesExpanded ? '▲ collapse' : '▼ expand'}</span>
+          </button>
+          {memoriesExpanded && (
+            <div className="px-3 pb-3 space-y-2">
+              {memories.map((m, i) => (
+                <div key={m.id || i} className="flex items-start gap-2">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0 ${typeBadgeClass(m.type)}`}>
+                    {m.type?.replace(/_/g, ' ') || 'note'}
+                  </span>
+                  <span className="text-xs text-gray-700 flex-1">{m.content}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{relativeDate(m.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Message area */}
       <div className="flex-1 overflow-y-auto bg-gray-50 rounded-xl p-4 mb-3 min-h-0">
         {briefing && (
@@ -246,9 +347,83 @@ export default function ChatTab({ account }) {
           </div>
         )}
 
-        {messages.map((msg, i) => (
-          <ChatMessage key={msg.ts || i} message={msg} />
-        ))}
+        {messages.map((msg, i) => {
+          const isUser = msg.role === 'user'
+          const isSystem = msg.role === 'system'
+          const isAssistant = msg.role === 'assistant'
+
+          if (isSystem) {
+            return (
+              <div key={msg.ts || i} className="flex justify-center my-2">
+                <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                  {msg.content}
+                </span>
+              </div>
+            )
+          }
+
+          return (
+            <div key={msg.ts || i}>
+              <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-1`}>
+                {!isUser && (
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mr-2 mt-0.5">
+                    <Sparkles className="w-3.5 h-3.5 text-white" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    isUser
+                      ? 'bg-blue-600 text-white rounded-tr-sm'
+                      : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
+                  }`}
+                  onMouseEnter={() => isAssistant && setHoveredMsgIdx(i)}
+                  onMouseLeave={() => isAssistant && setHoveredMsgIdx(null)}
+                >
+                  {renderContent(msg.content)}
+                </div>
+              </div>
+
+              {/* Save button for assistant messages */}
+              {isAssistant && (
+                <div className="flex justify-start ml-9 mb-2">
+                  {savedConfirmIdx === i ? (
+                    <span className="text-xs text-green-600 font-medium">Saved ✓</span>
+                  ) : savingMessageIdx === i ? (
+                    <div className="w-full max-w-[75%] mt-1">
+                      <textarea
+                        value={editedSaveText}
+                        onChange={e => setEditedSaveText(e.target.value)}
+                        rows={3}
+                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          onClick={handleSaveMemory}
+                          className="text-xs px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          Save to account
+                        </button>
+                        <button
+                          onClick={() => { setSavingMessageIdx(null); setEditedSaveText('') }}
+                          className="text-xs px-2 py-1 text-gray-400 hover:text-gray-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : hoveredMsgIdx === i ? (
+                    <button
+                      onClick={() => handleOpenSaveEditor(i, msg.content)}
+                      className="text-xs text-gray-400 hover:text-blue-600 transition-colors"
+                    >
+                      Save
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )
+        })}
 
         {loading && (
           <div className="flex justify-start mb-3">
@@ -267,6 +442,23 @@ export default function ChatTab({ account }) {
 
         <div ref={bottomRef} />
       </div>
+
+      {/* End-of-session takeaways bar */}
+      {assistantMessages.length >= 4 && (
+        <div className="flex-shrink-0 mb-2">
+          <button
+            onClick={handleSummarize}
+            disabled={summarizing}
+            className="w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 transition-colors disabled:opacity-50"
+          >
+            {summarizing ? (
+              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Summarizing...</>
+            ) : (
+              <>💾 Save key takeaways from this conversation</>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Suggested prompts */}
       <div className="flex gap-2 mb-2 flex-wrap flex-shrink-0">
@@ -311,6 +503,43 @@ export default function ChatTab({ account }) {
           )}
         </button>
       </div>
+
+      {/* Takeaway modal */}
+      {showTakeawayModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">Key Takeaways</h3>
+              <button onClick={() => { setShowTakeawayModal(false); setTakeawayBullets([]) }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              {takeawayBullets.map((bullet, i) => (
+                <textarea
+                  key={i}
+                  value={bullet}
+                  onChange={e => {
+                    const updated = [...takeawayBullets]
+                    updated[i] = e.target.value
+                    setTakeawayBullets(updated)
+                  }}
+                  rows={2}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              ))}
+            </div>
+            <div className="px-6 py-4 border-t flex items-center justify-end gap-3">
+              <button onClick={() => { setShowTakeawayModal(false); setTakeawayBullets([]) }} className="text-sm text-gray-500 hover:text-gray-700">Dismiss</button>
+              <button
+                onClick={handleSaveTakeaways}
+                disabled={savingTakeaways}
+                className="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {savingTakeaways ? 'Saving...' : `Save all (${takeawayBullets.filter(b => b.trim()).length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -15,6 +15,10 @@ import {
   DollarSign,
   Zap,
   BookOpen,
+  X,
+  Loader2,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import { STAGES } from '../../lib/constants'
@@ -161,6 +165,19 @@ export default function PipelineOverview() {
   const [briefLoading, setBriefLoading] = useState(false)
   const [brief, setBrief] = useState(null)
 
+  // Pipeline Review modal state
+  const [pipelineReviewOpen, setPipelineReviewOpen] = useState(false)
+  const [reviewStep, setReviewStep] = useState(1)
+  const [reviewTitle, setReviewTitle] = useState('')
+  const [reviewTranscript, setReviewTranscript] = useState('')
+  const [reviewGongId, setReviewGongId] = useState('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [sessionData, setSessionData] = useState(null)
+  const [reviewedItems, setReviewedItems] = useState([])
+  const [confirmResult, setConfirmResult] = useState(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const [reviewTeamMembers, setReviewTeamMembers] = useState([])
+
   function loadData() {
     fetch('/api/pipeline-overview')
       .then(r => r.json())
@@ -185,6 +202,76 @@ export default function PipelineOverview() {
     } catch (e) { alert(e.message) }
     finally { setBriefLoading(false) }
   }
+
+  function openPipelineReview() {
+    setPipelineReviewOpen(true)
+    setReviewStep(1)
+    setReviewTitle('')
+    setReviewTranscript('')
+    setReviewGongId('')
+    setSessionData(null)
+    setReviewedItems([])
+    setConfirmResult(null)
+    fetch('/api/users').then(r => r.json()).then(d => {
+      if (d.users) setReviewTeamMembers(d.users)
+    }).catch(() => {})
+  }
+
+  async function analyzeReview() {
+    setAnalyzing(true)
+    try {
+      const r = await fetch('/api/admin/pipeline-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: reviewTranscript, gongCallId: reviewGongId, title: reviewTitle }),
+      })
+      const d = await r.json()
+      if (d.success && d.sessionData) {
+        setSessionData(d.sessionData)
+        const items = (d.sessionData.analysis?.accounts_discussed || []).map(acc => ({
+          ...acc,
+          memory_note_text: acc.memory_note || '',
+          save_memory: true,
+          action_items: (acc.action_items || []).map(ai => ({
+            ...ai,
+            title_text: ai.title || '',
+            assigned_to: ai.assigned_to || '',
+            due_days: ai.due_days ?? 3,
+            priority: ai.priority ?? 2,
+            create_task: true,
+          })),
+        }))
+        setReviewedItems(items)
+        setReviewStep(2)
+      } else {
+        alert(d.error || 'Analysis failed')
+      }
+    } catch (e) { alert(e.message) }
+    finally { setAnalyzing(false) }
+  }
+
+  async function confirmReview() {
+    setConfirmLoading(true)
+    try {
+      const r = await fetch('/api/admin/pipeline-call-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sessionData?.sessionId, items: reviewedItems }),
+      })
+      const d = await r.json()
+      if (d.success) {
+        setConfirmResult(d)
+        setReviewStep(3)
+      } else {
+        alert(d.error || 'Confirm failed')
+      }
+    } catch (e) { alert(e.message) }
+    finally { setConfirmLoading(false) }
+  }
+
+  const reviewTaskCount = reviewedItems.reduce((sum, acc) =>
+    sum + (acc.action_items || []).filter(ai => ai.create_task).length, 0)
+  const reviewMemoryCount = reviewedItems.filter(acc => acc.save_memory && acc.memory_note_text?.trim()).length
 
   async function syncHubSpot() {
     setSyncing(true); setSyncResult(null)
@@ -276,6 +363,12 @@ export default function PipelineOverview() {
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
             >
               <Users className="w-4 h-4" />Rep Coaching
+            </button>
+            <button
+              onClick={openPipelineReview}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg"
+            >
+              <BookOpen className="w-4 h-4" />Pipeline Review
             </button>
             <button
               onClick={generateBrief}
@@ -720,6 +813,302 @@ export default function PipelineOverview() {
           )}
         </div>
       </div>
+      {/* Pipeline Review Modal */}
+      {pipelineReviewOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Pipeline Review</h2>
+                {reviewStep < 3 && (
+                  <p className="text-xs text-gray-400 mt-0.5">Step {reviewStep} of 3</p>
+                )}
+              </div>
+              <button
+                onClick={() => setPipelineReviewOpen(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+
+              {/* Step 1 — Input */}
+              {reviewStep === 1 && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Meeting title</label>
+                    <input
+                      type="text"
+                      value={reviewTitle}
+                      onChange={e => setReviewTitle(e.target.value)}
+                      placeholder="e.g. 'Weekly Pipeline Review May 18'"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Transcript or meeting notes</label>
+                    <textarea
+                      value={reviewTranscript}
+                      onChange={e => setReviewTranscript(e.target.value)}
+                      placeholder="Paste transcript or meeting notes here..."
+                      rows={10}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Or Gong Call ID</label>
+                    <input
+                      type="text"
+                      value={reviewGongId}
+                      onChange={e => setReviewGongId(e.target.value)}
+                      placeholder="Gong call ID"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  {analyzing && (
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                      Analyzing pipeline discussion...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2 — Review */}
+              {reviewStep === 2 && sessionData && (
+                <div className="space-y-5">
+                  {sessionData.analysis?.summary && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-gray-700">
+                      {sessionData.analysis.summary}
+                    </div>
+                  )}
+
+                  {reviewedItems.map((item, itemIdx) => {
+                    const matched = sessionData.matchedAccounts?.[item.account_name]
+                    return (
+                      <div key={itemIdx} className="border border-gray-200 rounded-xl overflow-hidden">
+                        {/* Account header */}
+                        <div className="px-4 py-3 bg-gray-50 border-b flex items-center gap-3">
+                          <span className="text-sm font-semibold text-gray-800">{item.account_name}</span>
+                          {matched ? (
+                            <span className="text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+                              Matched: {matched.name}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                              No match found
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="px-4 py-3 space-y-3">
+                          {/* Memory note */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <input
+                                type="checkbox"
+                                id={`mem-${itemIdx}`}
+                                checked={item.save_memory}
+                                onChange={e => {
+                                  const updated = [...reviewedItems]
+                                  updated[itemIdx] = { ...updated[itemIdx], save_memory: e.target.checked }
+                                  setReviewedItems(updated)
+                                }}
+                                className="accent-blue-600"
+                              />
+                              <label htmlFor={`mem-${itemIdx}`} className="text-xs font-medium text-gray-600 cursor-pointer">Save memory note</label>
+                            </div>
+                            <textarea
+                              value={item.memory_note_text}
+                              onChange={e => {
+                                const updated = [...reviewedItems]
+                                updated[itemIdx] = { ...updated[itemIdx], memory_note_text: e.target.value }
+                                setReviewedItems(updated)
+                              }}
+                              rows={2}
+                              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                              placeholder="Memory note for this account..."
+                            />
+                          </div>
+
+                          {/* Action items */}
+                          {item.action_items?.length > 0 && (
+                            <div>
+                              <div className="text-xs font-medium text-gray-500 mb-2">Action Items</div>
+                              <div className="space-y-2">
+                                {item.action_items.map((ai, aiIdx) => (
+                                  <div key={aiIdx} className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={ai.create_task}
+                                        onChange={e => {
+                                          const updated = [...reviewedItems]
+                                          updated[itemIdx].action_items[aiIdx] = { ...ai, create_task: e.target.checked }
+                                          setReviewedItems(updated)
+                                        }}
+                                        className="accent-blue-600 shrink-0"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={ai.title_text}
+                                        onChange={e => {
+                                          const updated = [...reviewedItems]
+                                          updated[itemIdx].action_items[aiIdx] = { ...ai, title_text: e.target.value }
+                                          setReviewedItems(updated)
+                                        }}
+                                        className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        placeholder="Task title"
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const updated = [...reviewedItems]
+                                          updated[itemIdx].action_items = updated[itemIdx].action_items.filter((_, idx) => idx !== aiIdx)
+                                          setReviewedItems(updated)
+                                        }}
+                                        className="text-gray-300 hover:text-red-400 shrink-0"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                    <div className="flex items-center gap-2 pl-6">
+                                      <input
+                                        type="text"
+                                        value={ai.assigned_to}
+                                        onChange={e => {
+                                          const updated = [...reviewedItems]
+                                          updated[itemIdx].action_items[aiIdx] = { ...ai, assigned_to: e.target.value }
+                                          setReviewedItems(updated)
+                                        }}
+                                        list="review-team-members"
+                                        placeholder="Assigned to"
+                                        className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                      />
+                                      <datalist id="review-team-members">
+                                        {reviewTeamMembers.map(m => (
+                                          <option key={m.id} value={m.full_name || m.email} />
+                                        ))}
+                                      </datalist>
+                                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                                        <span>Due in</span>
+                                        <input
+                                          type="number"
+                                          value={ai.due_days}
+                                          onChange={e => {
+                                            const updated = [...reviewedItems]
+                                            updated[itemIdx].action_items[aiIdx] = { ...ai, due_days: parseInt(e.target.value) || 3 }
+                                            setReviewedItems(updated)
+                                          }}
+                                          min={1}
+                                          className="w-12 border border-gray-200 rounded px-1.5 py-1 text-center focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        />
+                                        <span>days</span>
+                                      </div>
+                                      <select
+                                        value={ai.priority}
+                                        onChange={e => {
+                                          const updated = [...reviewedItems]
+                                          updated[itemIdx].action_items[aiIdx] = { ...ai, priority: parseInt(e.target.value) }
+                                          setReviewedItems(updated)
+                                        }}
+                                        className="text-xs border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                      >
+                                        <option value={1}>P1 High</option>
+                                        <option value={2}>P2 Med</option>
+                                        <option value={3}>P3 Low</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Add action item */}
+                          <button
+                            onClick={() => {
+                              const updated = [...reviewedItems]
+                              updated[itemIdx].action_items = [
+                                ...(updated[itemIdx].action_items || []),
+                                { title_text: '', assigned_to: '', due_days: 3, priority: 2, create_task: true },
+                              ]
+                              setReviewedItems(updated)
+                            }}
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            <Plus className="w-3 h-3" />Add action item
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Step 3 — Done */}
+              {reviewStep === 3 && confirmResult && (
+                <div className="flex flex-col items-center justify-center py-8 gap-4">
+                  <div className="text-4xl">✅</div>
+                  <p className="text-lg font-semibold text-gray-800">
+                    Done. Created {confirmResult.tasksCreated ?? 0} tasks across {confirmResult.accountsProcessed ?? 0} accounts.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50 flex-shrink-0">
+              {reviewStep === 1 && (
+                <button
+                  onClick={analyzeReview}
+                  disabled={analyzing || (!reviewTranscript.trim() && !reviewGongId.trim())}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+                >
+                  {analyzing ? <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</> : 'Analyze'}
+                </button>
+              )}
+              {reviewStep === 2 && (
+                <>
+                  <button
+                    onClick={() => setReviewStep(1)}
+                    className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={confirmReview}
+                    disabled={confirmLoading}
+                    className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+                  >
+                    {confirmLoading
+                      ? <><Loader2 className="w-4 h-4 animate-spin" />Creating...</>
+                      : `Create ${reviewTaskCount} task${reviewTaskCount !== 1 ? 's' : ''} + Save ${reviewMemoryCount} memor${reviewMemoryCount !== 1 ? 'ies' : 'y'}`
+                    }
+                  </button>
+                </>
+              )}
+              {reviewStep === 3 && (
+                <button
+                  onClick={() => {
+                    setPipelineReviewOpen(false)
+                    setReviewStep(1)
+                    setSessionData(null)
+                    setReviewedItems([])
+                    setConfirmResult(null)
+                  }}
+                  className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 font-medium"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

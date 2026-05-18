@@ -23,7 +23,7 @@ export default async function handler(req, res) {
 
   const db = getSupabase()
 
-  const [accountRes, callsRes, tasksRes, stakeholdersRes, gapsRes, notesRes, processConfig] = await Promise.all([
+  const [accountRes, callsRes, tasksRes, stakeholdersRes, gapsRes, notesRes, processConfig, memoriesRes] = await Promise.all([
     db.from('accounts').select('id, name, stage, deal_value, owner_name, hubspot_deal_id, vertical, ownership_type').eq('id', accountId).single(),
     db.from('gong_call_analyses').select('gong_call_id, analysis, analyzed_at').eq('account_id', accountId).not('analysis', 'is', null).order('analyzed_at', { ascending: false }).limit(15),
     db.from('tasks').select('id, title, status, due_date, source_type, dismissed_at').eq('account_id', accountId).is('dismissed_at', null).in('status', ['open', 'in_progress']).limit(20),
@@ -31,6 +31,7 @@ export default async function handler(req, res) {
     db.from('information_gaps').select('question, category, status').eq('account_id', accountId).eq('status', 'open').limit(10),
     db.from('notes').select('content, created_at').eq('account_id', accountId).order('created_at', { ascending: false }).limit(5),
     getSalesProcessConfig(),
+    db.from('account_memory').select('type, content, created_at').eq('account_id', accountId).eq('is_active', true).order('created_at', { ascending: false }).limit(5),
   ])
 
   const account = accountRes.data
@@ -41,6 +42,11 @@ export default async function handler(req, res) {
   const stakeholders = stakeholdersRes.data || []
   const gaps = gapsRes.data || []
   const notes = notesRes.data || []
+  const memories = memoriesRes.data || []
+
+  const memoryContext = memories.length
+    ? `\n\n## Saved Account Insights\n${memories.map(m => `[${m.type}] ${m.content}`).join('\n')}`
+    : ''
 
   // Build stakeholders section
   const stakeholderLines = stakeholders.length
@@ -166,7 +172,7 @@ ${callLines || 'No analyzed calls yet.'}
 
 ${salesProcessSnippet}
 
-TODAY: ${today}
+TODAY: ${today}${memoryContext}
 
 You know this deal better than anyone. Be direct. When asked for an email or message, draft it — don't explain what you are about to do. When asked where the deal stands, give a real assessment including risks. Keep responses focused and specific to this account.`
 
