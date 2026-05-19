@@ -92,10 +92,10 @@ export default async function handler(req, res) {
 
   const { data: existingRows } = await db
     .from('gong_call_analyses')
-    .select('gong_call_id, analyzed_at')
+    .select('gong_call_id, analyzed_at, ignored')
     .in('gong_call_id', gongCallIds);
 
-  const analyzedIds = new Set((existingRows || []).filter(r => r.analyzed_at).map(r => r.gong_call_id));
+  const analyzedIds = new Set((existingRows || []).filter(r => r.analyzed_at || r.ignored).map(r => r.gong_call_id));
 
   // 3. Filter to unanalyzed calls by auto-analyze reps
   const getCallType = (title) => {
