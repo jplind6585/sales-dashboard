@@ -10,8 +10,6 @@ import { getSupabase } from '../../../lib/supabase'
 const GONG_API_BASE = 'https://api.gong.io'
 const BATCH_SIZE = 20
 
-export const config = { maxDuration: 300 }
-
 function normalizeName(s) {
   return (s || '')
     .toLowerCase()
@@ -47,15 +45,16 @@ function getCallType(title) {
 }
 
 export default async function handler(req, res) {
+  try {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).end()
 
-  const secret = process.env.CRON_SECRET
+  const secret = (process.env.CRON_SECRET || '').trim()
   if (secret && req.headers['authorization'] !== `Bearer ${secret}`) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  const gongAccessKey = process.env.GONG_ACCESS_KEY
-  const gongSecretKey = process.env.GONG_SECRET_KEY
+  const gongAccessKey = (process.env.GONG_ACCESS_KEY || '').trim()
+  const gongSecretKey = (process.env.GONG_SECRET_KEY || '').trim()
   if (!gongAccessKey || !gongSecretKey) {
     return res.status(500).json({ error: 'Gong credentials not configured' })
   }
@@ -73,10 +72,13 @@ export default async function handler(req, res) {
   let listUrl = `${GONG_API_BASE}/v2/calls?fromDateTime=${fromDate.toISOString()}&toDateTime=${toDate.toISOString()}`
   if (cursor) listUrl += `&cursor=${encodeURIComponent(cursor)}`
 
-  const callsRes = await fetch(listUrl, { method: 'GET', headers: gongHeaders })
+  const gongGetHeaders = { Authorization: gongHeaders.Authorization }
+  console.log('[backfill-historical] fetching calls list:', listUrl)
+  const callsRes = await fetch(listUrl, { method: 'GET', headers: gongGetHeaders })
   if (!callsRes.ok) {
     const errText = await callsRes.text().catch(() => '')
-    return res.status(500).json({ error: `Gong API error: ${callsRes.status}`, detail: errText })
+    console.error('[backfill-historical] Gong list error:', callsRes.status, errText)
+    return res.status(500).json({ error: `Gong list failed: ${callsRes.status}`, detail: errText })
   }
   const callsData = await callsRes.json().catch(() => ({}))
   const allCalls = callsData.calls || []
@@ -116,7 +118,7 @@ export default async function handler(req, res) {
   // 3. Fetch user map for rep name/email
   let userMap = {}
   try {
-    const usersRes = await fetch(`${GONG_API_BASE}/v2/users`, { method: 'GET', headers: gongHeaders })
+    const usersRes = await fetch(`${GONG_API_BASE}/v2/users`, { method: 'GET', headers: gongGetHeaders })
     if (usersRes.ok) {
       const usersData = await usersRes.json()
       ;(usersData.users || []).forEach(u => {
@@ -245,7 +247,7 @@ export default async function handler(req, res) {
       .upsert(newInsertRows, { onConflict: 'gong_call_id' })
     if (error) {
       console.error('[backfill-historical] insert error:', error.message)
-      return res.status(500).json({ error: error.message })
+      return res.status(500).json({ error: 'DB insert failed: ' + error.message })
     }
   }
 
@@ -265,4 +267,8 @@ export default async function handler(req, res) {
     cursor: nextCursor,
     done: !nextCursor,
   })
+  } catch (e) {
+    console.error('[backfill-historical] unhandled exception:', e.message, e.stack)
+    return res.status(500).json({ error: 'Unhandled exception: ' + e.message })
+  }
 }
