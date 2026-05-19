@@ -4,8 +4,8 @@
 // Protected by CRON_SECRET.
 // Run via GitHub Actions: .github/workflows/backfill-historical.yml
 
+import { createClient } from '@supabase/supabase-js'
 import { createGongHeaders } from '../../../lib/apiUtils'
-import { getSupabase } from '../../../lib/supabase'
 
 const GONG_API_BASE = 'https://api.gong.io'
 const BATCH_SIZE = 20
@@ -59,6 +59,13 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Gong credentials not configured' })
   }
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  console.log('[backfill-historical] supabase url set:', !!supabaseUrl, 'service role key set:', !!supabaseKey)
+  if (!supabaseUrl || !supabaseKey) {
+    return res.status(500).json({ error: `Missing Supabase config: url=${!!supabaseUrl} key=${!!supabaseKey}` })
+  }
+
   const body = req.method === 'POST' ? (req.body || {}) : req.query
   const { cursor, fromDate: fromDateParam } = body
 
@@ -89,7 +96,7 @@ export default async function handler(req, res) {
   }
 
   // 2. Check which are already fully imported (have transcript_text stored)
-  const db = getSupabase()
+  const db = createClient(supabaseUrl, supabaseKey)
   const callIds = allCalls.map(c => c.id)
 
   const { data: existingRows } = await db
@@ -228,8 +235,8 @@ export default async function handler(req, res) {
       duration_seconds: call.duration || 0,
       gong_url: call.url || null,
       transcript_text: transcriptText,
+      analyzed_at: null,
       ignored: false,
-      // analyzed_at left null — process-backlog will pick it up
     }
     if (accountId) {
       row.account_id = accountId
