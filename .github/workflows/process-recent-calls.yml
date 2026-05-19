@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  process:
+  process-recent:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger post-call processing
@@ -24,3 +24,17 @@ jobs:
             echo "ERROR: Expected 200, got $status"
             exit 1
           fi
+
+  process-backlog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process unanalyzed call backlog
+        run: |
+          body=$(curl -s -w "\n%{http_code}" \
+            -X POST "${{ secrets.PRODUCTION_URL }}/api/cron/process-backlog" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+          status=$(echo "$body" | tail -1)
+          response=$(echo "$body" | head -1)
+          echo "Status: $status"
+          echo "Response: $response"
