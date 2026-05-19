@@ -22,6 +22,24 @@ const BLOCKLIST_KEY = 'email_sender_blocklist'
 const SUGGESTIONS_CACHE_KEY = 'smart_suggestions_cache'
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
 
+function todayKey() {
+  return new Date().toISOString().split('T')[0]
+}
+function loadDailySet(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return new Set()
+    const { date, items } = JSON.parse(raw)
+    if (date !== todayKey()) return new Set()
+    return new Set(items)
+  } catch { return new Set() }
+}
+function saveDailySet(key, set) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ date: todayKey(), items: [...set] }))
+  } catch {}
+}
+
 function loadSuggestionsCache() {
   try {
     const raw = localStorage.getItem(SUGGESTIONS_CACHE_KEY)
@@ -318,20 +336,20 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
   const [calendarEvents, setCalendarEvents] = useState(null)
   const [responseMetrics, setResponseMetrics] = useState(null)
 
-  const [dismissedEmails, setDismissedEmails] = useState(new Set())
-  const [addedEmails, setAddedEmails] = useState(new Set())
+  const [dismissedEmails, setDismissedEmails] = useState(() => loadDailySet('suggestions_dismissed'))
+  const [addedEmails, setAddedEmails] = useState(() => loadDailySet('suggestions_added'))
   const [confirmingEmails, setConfirmingEmails] = useState(new Set())
-  const [addedCalendar, setAddedCalendar] = useState(new Set())
+  const [addedCalendar, setAddedCalendar] = useState(() => loadDailySet('suggestions_added_calendar'))
   const [expandedEmailIndex, setExpandedEmailIndex] = useState(null)
   const [blockedSenders, setBlockedSenders] = useState([])
   const [prepBriefEvent, setPrepBriefEvent] = useState(null)
 
   const hasSyncedRef = useRef(false)
 
-  // Load blocked senders from localStorage on mount
-  useEffect(() => {
-    setBlockedSenders(loadBlocklist())
-  }, [])
+  useEffect(() => { setBlockedSenders(loadBlocklist()) }, [])
+  useEffect(() => { saveDailySet('suggestions_dismissed', dismissedEmails) }, [dismissedEmails])
+  useEffect(() => { saveDailySet('suggestions_added', addedEmails) }, [addedEmails])
+  useEffect(() => { saveDailySet('suggestions_added_calendar', addedCalendar) }, [addedCalendar])
 
   const sync = async () => {
     if (!providerToken) {

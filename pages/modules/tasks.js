@@ -2457,7 +2457,10 @@ export default function TasksPage() {
         body: JSON.stringify({ ...data, type: data.type || 'assigned' }),
       })
       const json = await res.json()
-      if (json.success) setTasks(prev => [json.task, ...prev])
+      if (json.success) {
+        setTasks(prev => [json.task, ...prev])
+        fetchTasks()
+      }
     } catch (err) {
       console.error('Failed to create task:', err)
     }

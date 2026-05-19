@@ -162,6 +162,7 @@ Return JSON array of up to 8 items:
   "title": "concise action in imperative form",
   "reason": "why this matters / what email triggered it",
   "emailSubject": "the subject line",
+  "sender": "the sender's name or email address (from the From: field)",
   "priority": "high|medium|low",
   "category": "follow_up|send_content|schedule_meeting|internal"
 }]
