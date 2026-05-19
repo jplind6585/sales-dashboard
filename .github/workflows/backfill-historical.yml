@@ -76,3 +76,14 @@ jobs:
             echo "WARNING: Hit max iterations ($max_iterations). Re-run workflow to continue."
             echo "Total so far: imported=$total_imported skipped=$total_skipped"
           fi
+
+      - name: Auto-link imported calls to accounts
+        run: |
+          echo "Running match-calls to link all imported calls to accounts..."
+          body=$(curl -s -f \
+            -X POST "${{ secrets.PRODUCTION_URL }}/api/hubspot/match-calls" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+          matched=$(echo "$body" | jq -r '.matched // 0')
+          total=$(echo "$body" | jq -r '.total // 0')
+          echo "Linked $matched of $total unlinked calls to accounts"

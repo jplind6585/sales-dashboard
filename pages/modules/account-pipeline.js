@@ -168,6 +168,8 @@ export default function Home() {
   const [filterOwner, setFilterOwner] = useState('');
   const [filterCompetitor, setFilterCompetitor] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+  const [sortBy, setSortBy] = useState('az'); // az | last_call | call_count | cold
+  const [callStats, setCallStats] = useState({});
 
   // Campaign builder state
   const [campaignMode, setCampaignMode] = useState(false)
@@ -243,6 +245,14 @@ export default function Home() {
     }
   }, [router.query, accounts]);
 
+  // Load call stats for sort/filter (once on mount)
+  useEffect(() => {
+    fetch('/api/accounts/call-stats')
+      .then(r => r.json())
+      .then(d => { if (d.stats) setCallStats(d.stats) })
+      .catch(() => {})
+  }, [])
+
   // Derive unique owners for filter dropdown
   const uniqueOwners = useMemo(() => {
     const names = [...new Set(accounts.map(a => a.ownerName).filter(Boolean))].sort()
@@ -265,9 +275,12 @@ export default function Home() {
     return STAGE_ORDER.filter(s => present.has(s))
   }, [accounts])
 
-  // Filter + search accounts
+  // Filter + search + sort accounts
   const filteredAccounts = useMemo(() => {
-    return accounts.filter(a => {
+    const now = Date.now()
+    const dayMs = 24 * 60 * 60 * 1000
+
+    const filtered = accounts.filter(a => {
       // By default hide inactive + closed stages unless toggled or explicitly filtered
       if (!filterStage) {
         if (CLOSED_STAGES.has(a.stage)) return false
@@ -277,16 +290,63 @@ export default function Home() {
       }
       if (filterOwner && a.ownerName !== filterOwner) return false
       if (filterCompetitor && a.competitor1 !== filterCompetitor && a.competitor2 !== filterCompetitor) return false
+
+      // Cold filter
+      if (sortBy === 'cold') {
+        const stats = callStats[a.id]
+        const daysSince = stats?.lastCallDate
+          ? Math.floor((now - new Date(stats.lastCallDate).getTime()) / dayMs)
+          : null
+        if (daysSince !== null && daysSince < 30) return false
+      }
+
       if (search) {
         const q = search.toLowerCase()
         return a.name?.toLowerCase().includes(q) || a.ownerName?.toLowerCase().includes(q) || a.stage?.toLowerCase().includes(q)
       }
       return true
     })
-  }, [accounts, search, filterStage, filterOwner, showInactive])
+
+    // Sort
+    if (sortBy === 'last_call') {
+      filtered.sort((a, b) => {
+        const aDate = callStats[a.id]?.lastCallDate
+        const bDate = callStats[b.id]?.lastCallDate
+        if (!aDate && !bDate) return a.name.localeCompare(b.name)
+        if (!aDate) return 1
+        if (!bDate) return -1
+        return new Date(bDate) - new Date(aDate) // most recent first
+      })
+    } else if (sortBy === 'call_count') {
+      filtered.sort((a, b) => {
+        const aCount = callStats[a.id]?.callCount || 0
+        const bCount = callStats[b.id]?.callCount || 0
+        return bCount - aCount
+      })
+    } else if (sortBy === 'cold') {
+      // Sort coldest (longest without contact) first
+      filtered.sort((a, b) => {
+        const aDate = callStats[a.id]?.lastCallDate
+        const bDate = callStats[b.id]?.lastCallDate
+        if (!aDate && !bDate) return a.name.localeCompare(b.name)
+        if (!aDate) return -1 // never called = coldest = first
+        if (!bDate) return 1
+        return new Date(aDate) - new Date(bDate) // oldest contact first
+      })
+    } else if (sortBy === 'stage') {
+      filtered.sort((a, b) => {
+        const aIdx = STAGE_ORDER.indexOf(a.stage)
+        const bIdx = STAGE_ORDER.indexOf(b.stage)
+        return aIdx - bIdx
+      })
+    }
+    // Default 'az': already in name order from API
+
+    return filtered
+  }, [accounts, search, filterStage, filterOwner, showInactive, sortBy, callStats])
 
   const activeCount = filteredAccounts.length
-  const hasFilters = search || filterStage || filterOwner || filterCompetitor
+  const hasFilters = search || filterStage || filterOwner || filterCompetitor || sortBy !== 'az'
 
   // Select account + load detail
   const handleSelectAccount = useCallback(async (account) => {
@@ -538,7 +598,7 @@ export default function Home() {
                 </h2>
                 {hasFilters && (
                   <button
-                    onClick={() => { setSearch(''); setFilterStage(''); setFilterOwner(''); setFilterCompetitor('') }}
+                    onClick={() => { setSearch(''); setFilterStage(''); setFilterOwner(''); setFilterCompetitor(''); setSortBy('az') }}
                     className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
                   >
                     <X className="w-3 h-3" /> Clear
@@ -597,6 +657,19 @@ export default function Home() {
                   </select>
                 </div>
               )}
+              <div className="mt-1.5">
+                <select
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value="az">Sort: A–Z</option>
+                  <option value="last_call">Sort: Last contacted</option>
+                  <option value="call_count">Sort: Most conversations</option>
+                  <option value="cold">Filter: Cold 30+ days</option>
+                  <option value="stage">Sort: Stage</option>
+                </select>
+              </div>
             </div>
 
             {/* Account list */}
@@ -642,6 +715,15 @@ export default function Home() {
                               <span className={`text-xs px-1.5 py-0.5 rounded ${stageColor}`}>{stageLabel}</span>
                               {account.ownerName && (
                                 <span className="text-xs text-gray-400 truncate max-w-[80px]">{account.ownerName.split(' ')[0]}</span>
+                              )}
+                              {(sortBy === 'last_call' || sortBy === 'cold' || sortBy === 'call_count') && callStats[account.id] && (
+                                <span className="text-xs text-gray-400">
+                                  {sortBy === 'call_count'
+                                    ? `${callStats[account.id].callCount} calls`
+                                    : callStats[account.id].lastCallDate
+                                    ? `${Math.floor((Date.now() - new Date(callStats[account.id].lastCallDate).getTime()) / (24 * 60 * 60 * 1000))}d ago`
+                                    : 'never'}
+                                </span>
                               )}
                             </div>
                           </div>
@@ -755,6 +837,27 @@ export default function Home() {
                         {selectedAccount.dealValue && (
                           <span className="text-sm text-gray-500">${selectedAccount.dealValue.toLocaleString()}</span>
                         )}
+                        {/* Account health: call recency + depth */}
+                        {callStats[selectedAccount.id] && (() => {
+                          const stats = callStats[selectedAccount.id]
+                          const daysSince = stats.lastCallDate
+                            ? Math.floor((Date.now() - new Date(stats.lastCallDate).getTime()) / (24 * 60 * 60 * 1000))
+                            : null
+                          const isWarm = daysSince != null && daysSince <= 14
+                          const isCold = daysSince === null || daysSince > 30
+                          const dotColor = isWarm ? 'bg-green-500' : isCold ? 'bg-red-400' : 'bg-amber-400'
+                          const label = daysSince != null
+                            ? `${daysSince}d since last call`
+                            : 'Never called'
+                          return (
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-block w-2 h-2 rounded-full ${dotColor} flex-shrink-0`} />
+                              <span className="text-xs text-gray-500">
+                                {label} · {stats.callCount} call{stats.callCount !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          )
+                        })()}
                       </div>
                       {/* Competitor tags */}
                       <CompetitorTags account={selectedAccount} onSave={updateAccountField} />
