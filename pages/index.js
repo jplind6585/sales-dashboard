@@ -16,12 +16,12 @@ export default function Home() {
         const { user } = await getCurrentUser();
 
         if (user) {
-          router.replace('/modules/tasks');
+          router.replace('/modules/today');
         } else {
           router.replace('/login');
         }
       } else {
-        router.replace('/modules/tasks');
+        router.replace('/modules/today');
       }
     };
 

@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     }).catch(err => console.warn('Gong onboarding sync failed:', err))
   }
 
-  return redirect(res, '/modules/tasks')
+  return redirect(res, '/modules/today')
 }
 
 // Explicit redirect that preserves Set-Cookie headers set via res.setHeader()

@@ -1,4 +1,4 @@
-// Generates a reengagement brief + outreach scripts for a stale account.
+// Generates a reengagement brief using full call history for the account.
 // POST { accountId }
 
 import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils'
@@ -18,12 +18,16 @@ export default async function handler(req, res) {
 
   const db = getSupabase()
 
-  const [accountRes, callsRes, stakeholdersRes, processConfig, memoriesRes] = await Promise.all([
+  const [accountRes, callsRes, stakeholdersRes, processConfig] = await Promise.all([
     db.from('accounts').select('id, name, stage, deal_value, owner_name').eq('id', accountId).single(),
-    db.from('gong_call_analyses').select('analysis, analyzed_at').eq('account_id', accountId).not('analysis', 'is', null).order('analyzed_at', { ascending: false }).limit(5),
-    db.from('stakeholders').select('name, title, role').eq('account_id', accountId).limit(10),
+    db.from('gong_call_analyses')
+      .select('analysis, call_date, analyzed_at, duration_seconds, title, transcript_text')
+      .eq('account_id', accountId)
+      .not('analysis', 'is', null)
+      .order('call_date', { ascending: false })
+      .limit(30), // full history, capped at 30 to stay in context
+    db.from('stakeholders').select('name, title, role, email').eq('account_id', accountId).limit(15),
     getSalesProcessConfig(),
-    db.from('account_memory').select('type, content, created_at').eq('account_id', accountId).eq('is_active', true).order('created_at', { ascending: false }).limit(5),
   ])
 
   const account = accountRes.data
@@ -31,53 +35,127 @@ export default async function handler(req, res) {
 
   const calls = callsRes.data || []
   const stakeholders = stakeholdersRes.data || []
-  const memories = memoriesRes.data || []
 
-  const memoryContext = memories.length
-    ? `\n\n## Saved Account Insights\n${memories.map(m => `[${m.type}] ${m.content}`).join('\n')}`
-    : ''
+  // Aggregate signals across all calls
+  const allThemes = []
+  const allObjections = []
+  const allBuyingSignals = []
+  const allRedFlags = []
+  const allNextSteps = []
+  const allCommitments = []
+  const icpScores = []
+  const discoveryScores = []
+  let avgTalkRatio = 0
+  let positiveCallCount = 0
 
-  const callContext = calls.map(c => {
+  for (const call of calls) {
+    const a = call.analysis || {}
+    if (a.themes) allThemes.push(...a.themes)
+    if (a.objections) allObjections.push(...a.objections.map(o => typeof o === 'string' ? o : o.text || o.category))
+    if (a.buying_signals) allBuyingSignals.push(...a.buying_signals)
+    if (a.red_flags) allRedFlags.push(...a.red_flags)
+    if (a.next_steps_mentioned) allNextSteps.push(...a.next_steps_mentioned)
+    if (a.commitments) allCommitments.push(...a.commitments)
+    if (a.icp_score) icpScores.push(a.icp_score)
+    if (a.discovery_score) discoveryScores.push(a.discovery_score)
+    if (typeof a.rep_talk_ratio === 'number') avgTalkRatio += a.rep_talk_ratio
+    if (a.sentiment === 'positive') positiveCallCount++
+  }
+
+  const avgIcp = icpScores.length ? (icpScores.reduce((s, x) => s + x, 0) / icpScores.length).toFixed(1) : null
+  const avgDiscovery = discoveryScores.length ? (discoveryScores.reduce((s, x) => s + x, 0) / discoveryScores.length).toFixed(1) : null
+  const lastCall = calls[0]
+  const firstCall = calls[calls.length - 1]
+
+  // Deduplicate themes and signals
+  const topThemes = [...new Set(allThemes)].slice(0, 6)
+  const topBuyingSignals = [...new Set(allBuyingSignals)].slice(0, 5)
+  const topObjections = [...new Set(allObjections)].slice(0, 4)
+  const topRedFlags = [...new Set(allRedFlags)].slice(0, 3)
+  const recentNextSteps = allNextSteps.slice(0, 4)
+  const recentCommitments = allCommitments.slice(0, 3)
+
+  // Build call history narrative (last 5 calls)
+  const recentCallSummaries = calls.slice(0, 5).map((c, i) => {
     const a = c.analysis || {}
-    return `Call (${c.analyzed_at?.slice(0,10)}): ${a.summary || 'No summary'}\nNext steps: ${(a.next_steps_mentioned || []).join(', ') || 'None'}`
+    const dateStr = c.call_date ? new Date(c.call_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'unknown date'
+    const durationMin = c.duration_seconds ? Math.round(c.duration_seconds / 60) : null
+    return [
+      `Call ${i + 1}: ${c.title || 'Untitled'} — ${dateStr}${durationMin ? ` (${durationMin} min)` : ''}`,
+      a.summary ? `  Summary: ${a.summary}` : null,
+      a.icp_score ? `  ICP: ${a.icp_score}/10` : null,
+      a.sentiment ? `  Sentiment: ${a.sentiment}` : null,
+    ].filter(Boolean).join('\n')
   }).join('\n\n')
 
-  const stakeholderContext = stakeholders.length
-    ? stakeholders.map(s => `${s.name}${s.title ? ` (${s.title})` : ''} — ${s.role || 'Unknown role'}`).join('\n')
-    : 'No stakeholders on record'
+  // Use transcript from most recent call if available (first 3000 chars)
+  const recentTranscriptExcerpt = lastCall?.transcript_text
+    ? `\nMost recent call transcript excerpt:\n${lastCall.transcript_text.slice(0, 3000)}`
+    : ''
 
   const processContext = buildSalesProcessContext(processConfig)
 
-  const prompt = `You are helping a Banner sales rep reengage a prospect who has gone cold.${memoryContext}
+  const daysSinceLastCall = lastCall?.call_date
+    ? Math.floor((Date.now() - new Date(lastCall.call_date).getTime()) / (1000 * 60 * 60 * 24))
+    : null
+  const totalCallDays = (firstCall?.call_date && lastCall?.call_date)
+    ? Math.floor((new Date(lastCall.call_date) - new Date(firstCall.call_date)) / (1000 * 60 * 60 * 24))
+    : null
+
+  const prompt = `You are helping a Banner sales rep reengage a prospect that has gone cold. Use every signal from the full call history to write highly specific, non-generic outreach.
 
 ${processContext}
 
 ACCOUNT: ${account.name}
-Stage: ${account.stage || 'unknown'}
-Deal value: ${account.deal_value ? '$' + account.deal_value.toLocaleString() : 'unknown'}
+Stage: ${(account.stage || 'unknown').replace(/_/g, ' ')}
 Owner: ${account.owner_name || 'unknown'}
+Total Gong calls on record: ${calls.length}
+Relationship duration: ${totalCallDays != null ? `${totalCallDays} days` : 'unknown'}
+Days since last call: ${daysSinceLastCall != null ? `${daysSinceLastCall} days` : 'unknown'}
+Calls with positive sentiment: ${positiveCallCount} of ${calls.length}
+Avg ICP score across calls: ${avgIcp || 'not scored'}
+Avg discovery score: ${avgDiscovery || 'not scored'}
 
 STAKEHOLDERS:
-${stakeholderContext}
+${stakeholders.length ? stakeholders.map(s => `${s.name}${s.title ? ` (${s.title})` : ''}${s.role ? ` — ${s.role}` : ''}${s.email ? ` <${s.email}>` : ''}`).join('\n') : 'No stakeholders on record'}
 
-LAST KNOWN CONVERSATIONS:
-${callContext || 'No call history on record.'}
+RECURRING THEMES (across all calls):
+${topThemes.length ? topThemes.join(', ') : 'None identified'}
 
-Generate reengagement outreach. Be specific to this company and what was discussed before. Do NOT use generic templates.
+BUYING SIGNALS (across all calls):
+${topBuyingSignals.length ? topBuyingSignals.join('\n') : 'None'}
 
-Respond with valid JSON only:
+OBJECTIONS RAISED:
+${topObjections.length ? topObjections.join('\n') : 'None'}
+
+RED FLAGS:
+${topRedFlags.length ? topRedFlags.join('\n') : 'None'}
+
+OPEN NEXT STEPS (from last calls):
+${recentNextSteps.length ? recentNextSteps.join('\n') : 'None'}
+
+REP COMMITMENTS (from last calls):
+${recentCommitments.length ? recentCommitments.join('\n') : 'None'}
+
+CALL HISTORY (most recent first):
+${recentCallSummaries || 'No calls on record'}
+${recentTranscriptExcerpt}
+
+Generate a highly specific, non-generic reengagement brief. Reference actual context from the calls — specific pain points, what they said, where the conversation stalled, what was promised. Do NOT write a generic template.
+
+Return valid JSON only:
 {
-  "why_reengage": "2 sentences on why this account is worth pursuing and what the opportunity is",
+  "why_reengage": "2 sentences on why this account is worth pursuing right now — tie to their specific situation and the relationship built",
   "cold_email": {
-    "subject": "email subject line",
-    "body": "the email body — reference something specific from prior conversations, keep it under 100 words, end with a soft ask"
+    "subject": "email subject line — specific, references something real from prior conversations",
+    "body": "email body — reference a specific conversation moment or thing they shared, stay under 100 words, end with a soft and specific ask"
   },
   "cold_call_script": {
-    "opener": "how to open the call — reference the relationship and last interaction",
-    "pain_hook": "the key pain point to surface based on what was discussed before",
-    "ask": "what to ask for at the end of the call"
+    "opener": "how to open — reference the specific relationship and where things left off",
+    "pain_hook": "the exact pain point to surface, tied to what they actually said on calls",
+    "ask": "what to ask for — specific, not 'let me know if you want to reconnect'"
   },
-  "talking_points": ["3-4 specific talking points grounded in prior conversation context"]
+  "talking_points": ["3-4 talking points grounded in actual call history and their specific situation"]
 }`
 
   let brief
@@ -90,8 +168,8 @@ Respond with valid JSON only:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1200,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
@@ -104,5 +182,12 @@ Respond with valid JSON only:
   }
 
   if (!brief) return apiError(res, 500, 'Failed to parse reengagement brief')
-  return apiSuccess(res, { brief, accountName: account.name })
+
+  return apiSuccess(res, {
+    brief,
+    accountName: account.name,
+    callCount: calls.length,
+    daysSinceLastCall,
+    avgIcpScore: avgIcp ? parseFloat(avgIcp) : null,
+  })
 }
