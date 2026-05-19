@@ -33,14 +33,21 @@ jobs:
               payload="{\"cursor\": \"${cursor}\", \"fromDate\": \"${FROM_DATE}\"}"
             fi
 
-            body=$(curl -s -f \
+            # Use -w to capture HTTP status code; do NOT use -f so we can see the response body on errors
+            raw=$(curl -s -w "\n%{http_code}" \
               -X POST "${{ secrets.PRODUCTION_URL }}/api/gong/backfill-historical" \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
               -H "Content-Type: application/json" \
               -d "$payload")
 
-            if [ $? -ne 0 ]; then
-              echo "ERROR: curl failed on iteration $iteration"
+            status=$(echo "$raw" | tail -1)
+            body=$(echo "$raw" | head -1)
+
+            echo "Iteration $iteration — HTTP $status"
+
+            if [ "$status" != "200" ]; then
+              echo "ERROR: Expected 200, got $status"
+              echo "Response: $body"
               exit 1
             fi
 
@@ -58,7 +65,7 @@ jobs:
 
             total_imported=$((total_imported + imported))
             total_skipped=$((total_skipped + skipped))
-            echo "Iteration $iteration: imported=$imported skipped=$skipped done=$done cursor=$next_cursor"
+            echo "  imported=$imported skipped=$skipped done=$done"
 
             if [ "$done" = "true" ]; then
               echo "All historical calls imported. Total: imported=$total_imported skipped=$total_skipped"
@@ -68,7 +75,6 @@ jobs:
             cursor="$next_cursor"
             iteration=$((iteration + 1))
 
-            # Small pause to avoid hammering the API
             sleep 3
           done
 
@@ -80,10 +86,13 @@ jobs:
       - name: Auto-link imported calls to accounts
         run: |
           echo "Running match-calls to link all imported calls to accounts..."
-          body=$(curl -s -f \
+          raw=$(curl -s -w "\n%{http_code}" \
             -X POST "${{ secrets.PRODUCTION_URL }}/api/hubspot/match-calls" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json")
+          status=$(echo "$raw" | tail -1)
+          body=$(echo "$raw" | head -1)
+          echo "HTTP $status — $body"
           matched=$(echo "$body" | jq -r '.matched // 0')
           total=$(echo "$body" | jq -r '.total // 0')
           echo "Linked $matched of $total unlinked calls to accounts"
