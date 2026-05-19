@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard } from 'lucide-react'
+import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
@@ -47,6 +47,17 @@ const REPORTS = [
     available: true,
     status: 'live',
     tags: ['Admin', 'Data Quality', 'HubSpot'],
+  },
+  {
+    id: 'hubspot-audit',
+    name: 'HubSpot Audit Log',
+    description: 'Full log of every write the sales dashboard makes to HubSpot — notes, stage syncs, deal updates, contact creates. See what was sent, when, by whom, and whether it succeeded.',
+    icon: ClipboardList,
+    href: '/modules/sales-reports/hubspot-audit',
+    color: 'from-amber-500 to-orange-500',
+    available: true,
+    status: 'live',
+    tags: ['HubSpot', 'Admin', 'Audit'],
   },
 ]
 
