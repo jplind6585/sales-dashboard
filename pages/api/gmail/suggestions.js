@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     // ── 2. Fetch message details (headers + snippet) ──────────────────────────
     const messages = await Promise.all(
       allIds.map(({ id }) =>
-        gmailFetch(`/messages/${id}?format=metadata&metadataHeaders=Subject,From,To,Date`, token)
+        gmailFetch(`/messages/${id}?format=metadata&metadataHeaders=Subject,From,To,Cc,Date`, token)
           .catch(() => null)
       )
     )
@@ -102,14 +102,23 @@ export default async function handler(req, res) {
       .map(m => {
         const headers = m.payload?.headers || []
         const isInbox = !m.labelIds?.includes('SENT')
+        const toField = getHeader(headers, 'To') || ''
+        const ccField = getHeader(headers, 'Cc') || ''
+        const fromField = getHeader(headers, 'From') || ''
+        const repEmail = 'james@withbanner.com'
+        const inTo = toField.toLowerCase().includes(repEmail)
+        const inCc = ccField.toLowerCase().includes(repEmail)
+        const fromInternal = fromField.toLowerCase().includes('@withbanner.com')
         return {
           id: m.id,
           subject: getHeader(headers, 'Subject') || '(no subject)',
-          from: getHeader(headers, 'From'),
-          to: getHeader(headers, 'To'),
+          from: fromField,
+          to: toField,
           date: getHeader(headers, 'Date'),
           snippet: m.snippet || '',
           direction: isInbox ? 'received' : 'sent',
+          role: isInbox ? (inTo ? 'to' : inCc ? 'cc' : 'to') : 'sent',
+          fromInternal,
         }
       })
 
@@ -137,37 +146,43 @@ export default async function handler(req, res) {
 
     // ── 5. Send to Claude for action item extraction ──────────────────────────
     const emailContext = emailSummaries.slice(0, 25).map((e, i) =>
-      `[${i + 1}] ${e.direction.toUpperCase()} | ${e.date}
+      `[${i + 1}] ${e.direction === 'sent' ? 'SENT' : `RECEIVED (rep was: ${e.role.toUpperCase()})`} | ${e.date}
 Subject: ${e.subject}
-${e.direction === 'received' ? `From: ${e.from}` : `To: ${e.to}`}
+${e.direction === 'received' ? `From: ${e.from}${e.fromInternal ? ' [INTERNAL - Banner team member]' : ''}` : `To: ${e.to}`}
 Preview: ${e.snippet}`
     ).join('\n\n')
 
-    const prompt = `You are reviewing emails for a B2B SaaS sales rep at Banner (CapEx management software).
+    const prompt = `You are reviewing emails for James Lindberg, an AE at Banner (CapEx management software). James manages a team of SDRs who book meetings on his behalf.
 
-Identify action items, follow-ups, and commitments from these emails.
+Your job: identify genuine action items — things James personally needs to DO next.
+
+CRITICAL RULES:
+1. If James was CC'd (role: CC), skip it UNLESS the email body explicitly asks James to do something or requires his direct response. Meeting confirmations, FYIs, and updates where James is cc'd are NOT tasks.
+2. If an internal Banner team member (SDR, GTM) sent a meeting confirmation to a prospect, surface it as a PREP task: "Prep for [Account] [call type] on [date] — booked by [SDR name]" — not as a confirmation task.
+3. Do NOT use location details, casual context, or conversational filler from email bodies in titles (e.g. "casino floor" is where the prospect happened to be, not relevant to the task).
+4. A meeting that is already scheduled and confirmed = no task needed unless James needs to prepare or send materials.
+5. Only extract tasks where James is the person who needs to act.
+
+Look for:
+- Promises James personally made ("I'll send...", "I'll follow up...", "Let me get you...")
+- Requests from prospects/customers addressed directly TO James that need a response
+- Follow-ups James hasn't addressed yet
+- Prep needed for upcoming meetings booked by his SDRs or himself
 
 EMAILS (last 7 days):
 ${emailContext}
 
-Extract only genuine action items — things the rep needs to DO, not just informational emails.
-Look for:
-- Promises the rep made ("I'll send...", "I'll follow up...", "Let me get you...")
-- Requests from prospects/customers that need a response
-- Follow-ups that haven't been addressed
-- Meeting requests or scheduling needed
-
-Return JSON array of up to 8 items:
+Return JSON array of up to 6 items:
 [{
-  "title": "concise action in imperative form",
-  "reason": "why this matters / what email triggered it",
+  "title": "concise action in imperative form — specific to James's role",
+  "reason": "one sentence: what triggered this and why James needs to act",
   "emailSubject": "the subject line",
-  "sender": "the sender's name or email address (from the From: field)",
+  "sender": "sender's name or email (from the From: field)",
   "priority": "high|medium|low",
   "category": "follow_up|send_content|schedule_meeting|internal"
 }]
 
-Return ONLY valid JSON array. If no action items, return [].`
+Return ONLY valid JSON array. If no genuine action items, return [].`
 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
