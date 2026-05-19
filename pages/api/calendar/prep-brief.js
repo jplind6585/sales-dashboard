@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { meetingTitle, attendees = [], meetingTime } = req.body
+  const { meetingTitle, attendees = [], meetingTime, accountId } = req.body
   if (!meetingTitle) return res.status(400).json({ error: 'meetingTitle required' })
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -17,32 +17,45 @@ export default async function handler(req, res) {
 
   const db = getSupabase()
 
-  // Fuzzy-match meeting title to an active account
-  const { data: accounts } = await db
-    .from('accounts')
-    .select('id, name, stage')
-    .not('stage', 'in', '(closed_won,closed_lost)')
-    .order('name')
-    .limit(200)
-
   let matchedAccount = null
-  if (accounts?.length) {
-    const titleLower = meetingTitle.toLowerCase()
-    let bestScore = 0
-    for (const acc of accounts) {
-      const nameLower = acc.name.toLowerCase()
-      const nameWords = nameLower.split(/\s+/).filter(w => w.length > 2)
-      let score = 0
-      if (titleLower.includes(nameLower)) score = 100
-      else if (nameLower.includes(titleLower)) score = 90
-      else {
-        for (const word of nameWords) {
-          if (titleLower.includes(word)) score += 20
+
+  // If caller already matched the account (from calendar/upcoming), use it directly
+  if (accountId) {
+    const { data: acc } = await db
+      .from('accounts')
+      .select('id, name, stage')
+      .eq('id', accountId)
+      .single()
+    matchedAccount = acc || null
+  }
+
+  // Otherwise fuzzy-match meeting title to an active account
+  if (!matchedAccount) {
+    const { data: accounts } = await db
+      .from('accounts')
+      .select('id, name, stage')
+      .not('stage', 'in', '(closed_won,closed_lost)')
+      .order('name')
+      .limit(200)
+
+    if (accounts?.length) {
+      const titleLower = meetingTitle.toLowerCase()
+      let bestScore = 0
+      for (const acc of accounts) {
+        const nameLower = acc.name.toLowerCase()
+        const nameWords = nameLower.split(/\s+/).filter(w => w.length > 2)
+        let score = 0
+        if (titleLower.includes(nameLower)) score = 100
+        else if (nameLower.includes(titleLower)) score = 90
+        else {
+          for (const word of nameWords) {
+            if (titleLower.includes(word)) score += 20
+          }
         }
+        if (score > bestScore) { bestScore = score; matchedAccount = acc }
       }
-      if (score > bestScore) { bestScore = score; matchedAccount = acc }
+      if (bestScore < 15) matchedAccount = null
     }
-    if (bestScore < 15) matchedAccount = null
   }
 
   let recentCalls = []

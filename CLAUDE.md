@@ -329,14 +329,20 @@ Manager view showing where deals stall. Reads `GET /api/bottleneck`.
 
 ### Slack (multi-channel bot)
 - Bot Token (`SLACK_BOT_TOKEN`) with `chat:write` + `chat:write.public` scopes
+- **READ scopes needed (add in Slack app settings):** `channels:history`, `groups:history`, `channels:read`, `groups:read`, `channels:join`
+- **Public channels (pursuit_*):** bot auto-joins on first read via `channels:join` — no manual invite needed
+- **Bot must be invited to `#sales_operations`** (private channel, lock icon) — `/invite @YourBotName` in that channel once
 - All messages sent via `https://slack.com/api/chat.postMessage` with dynamic `channel` param
 - **Channel routing priority:** explicit `slack_channel` field on account → auto-derived from account name → `SLACK_DEFAULT_CHANNEL`
 - **Channel naming convention:** `pursuit_` + account name lowercased, spaces and punctuation stripped. Example: "United Defense Resources" → `pursuit_uniteddefenseresources`
-- `lib/slack.js` exports: `deriveChannelName(name)`, `resolveAccountChannel(account)`, `sendSlackMessage(payload, channel)`, `buildStageChangeNotification(...)`, `buildRepDigest(...)`, `buildManagerDigest(...)`
+- `lib/slack.js` exports: `deriveChannelName(name)`, `resolveAccountChannel(account)`, `sendSlackMessage(payload, channel)`, `getSlackChannelId(name)`, `getChannelMessages(name, limit)`, `buildStageChangeNotification(...)`, `buildRepDigest(...)`, `buildManagerDigest(...)`
+- **Read APIs:** `GET /api/slack/channel-messages?accountId=X` (or `?channel=name`) — fetches pursuit channel messages; `GET /api/slack/sales-ops-feed` — parses last 7d of `#sales_operations` into structured bookings
 - **Real-time events** via `POST /api/slack/notify`:
   - `stage_change` — fires when account stage changes (from `useAccountStore`)
   - `task_complete` — fires when a task is marked complete (from `tasks.js`)
 - **Daily digest** (`GET /api/send-daily-digest`, cron Mon–Fri 8am): each rep's digest routes to their Slack DM (if `slack_user_id` set) → most-active account channel → `SLACK_DEFAULT_CHANNEL`. Manager digest → `SLACK_MANAGER_CHANNEL` (James's DM: `D02PGNHTR53`)
+- **`#sales_operations`** — SDR booking channel. Messages parsed by `sales-ops-feed` into: `{ sdrName, action, accountName, contactName, contactTitle, ae, dateTime, contextBullets }`. Bookings for James surfaced in Smart Suggestions panel as purple prep cards.
+- **`pursuit_[accountname]`** — per-account channel. Messages shown in OverviewTab "Slack Channel Activity" collapsible section. Bot already posts there on stage changes and task completions.
 
 ### Vercel Cron
 Defined in `vercel.json`:
@@ -476,6 +482,12 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 ---
 
 ## Recently Shipped (reverse chronological)
+
+- **2026-05-18** — Quick wins (4 features):
+  - **Open in Gmail from Work in Claude**: `detectDraftedEmail()` in `tasks.js` scans every assistant message for a `Subject:` line. When found, "Open in Gmail" button appears below the message. Clicking opens `mail.google.com/mail/u/0/?view=cm&su=...&body=...` with the body pre-filled including the rep's email signature (from `localStorage.email_signature`). If the task has an `accountId`, a HubSpot note is auto-logged via `POST /api/hubspot/log-note` (no checkbox — fires automatically). Shows "Logged to HubSpot" / "Will log to HubSpot" text next to button.
+  - **HubSpot note logging** (`pages/api/hubspot/log-note.js`): POST `{ accountId, subject }` — looks up account's `hubspot_deal_id`, creates HubSpot note via `/crm/v3/objects/notes` associated to the deal. Association type ID 214 = note-to-deal.
+  - **Gmail suggestions — due date extraction**: Updated `pages/api/gmail/suggestions.js` prompt to include `dueDate: "YYYY-MM-DD or null"` in the JSON schema. `handleAddEmailTask` in `SmartSuggestionsPanel.jsx` now passes `dueDate` when creating the task.
+  - **Auto-create prep tasks on calendar sync**: `SmartSuggestionsPanel.jsx` — after sync() loads calendar events, auto-creates "Prep for: [event title]" tasks for owned meetings with `needsPrep: true` (within 48 hours). Tracks created events in `autoPrepCreatedRef` (daily localStorage set `auto_prep_created`) to prevent duplicates across re-syncs. Also fires on cache-load via `useEffect`. Shows amber "Auto-created N prep task(s)" notice. User can still click "AI Brief" for the full AI-generated brief.
 
 - **2026-05-09** — Big build (phase 1):
   - **Today page** (`/modules/today`): role-aware landing (SDR/AE/Manager). SDR view: daily call targets from `sdr_touches_today` localStorage, call queue from `pursuit_accounts` localStorage, touch logging (call/email/linkedin/meeting/voicemail + outcome). AE view: morning brief, top-5 tasks, today's calendar with AI Brief, top-3 stale pipeline accounts. Manager view: team activity table, at-risk late-stage accounts. Role toggle saves to localStorage + profiles.rep_type.

@@ -296,6 +296,21 @@ function buildGenericIntro(task) {
   return lines.join('')
 }
 
+function detectDraftedEmail(text) {
+  const match = text.match(/(?:^|\n)\*{0,2}Subject:\*{0,2}\s*(.+)/i)
+  if (!match) return null
+  const subject = match[1].replace(/\*+/g, '').trim()
+  if (!subject) return null
+  const body = text.slice(text.indexOf(match[0]) + match[0].length).trim()
+  if (body.length < 20) return null
+  return { subject, body }
+}
+
+function buildGmailUrl(subject, body, signature) {
+  const fullBody = signature ? `${body}\n\n${signature}` : body
+  return `https://mail.google.com/mail/u/0/?view=cm&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(fullBody)}`
+}
+
 function WorkInClaude({ task, onClose }) {
   const storageKey = `wic_${task.id}`
   const playbook = getPlaybook(task)
@@ -303,6 +318,7 @@ function WorkInClaude({ task, onClose }) {
   const [accountCalls, setAccountCalls] = useState([])
   const [callsLoading, setCallsLoading] = useState(!!needsFetch)
   const [copiedId, setCopiedId] = useState(null)
+  const [hubspotLoggedFor, setHubspotLoggedFor] = useState(new Set())
   const [messages, setMessages] = useState(() => {
     try {
       const saved = localStorage.getItem(storageKey)
@@ -458,7 +474,7 @@ function WorkInClaude({ task, onClose }) {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' ? (
-                <div className="group relative max-w-[85%]">
+                <div className="group relative max-w-[85%] space-y-1.5">
                   <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
                     {msg.content}
                   </div>
@@ -478,6 +494,43 @@ function WorkInClaude({ task, onClose }) {
                       <Copy className="w-3.5 h-3.5 text-gray-400" />
                     )}
                   </button>
+                  {(() => {
+                    const emailDraft = detectDraftedEmail(msg.content)
+                    if (!emailDraft) return null
+                    const msgKey = msg.ts ?? i
+                    const isLogged = hubspotLoggedFor.has(msgKey)
+                    return (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => {
+                            let sig = ''
+                            try { sig = localStorage.getItem('email_signature') || '' } catch {}
+                            window.open(buildGmailUrl(emailDraft.subject, emailDraft.body, sig), '_blank')
+                            // Auto-log to HubSpot if task has account
+                            if (task.accountId && !isLogged) {
+                              fetch('/api/hubspot/log-note', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ accountId: task.accountId, subject: emailDraft.subject }),
+                              })
+                                .then(r => r.json())
+                                .then(d => { if (d.success) setHubspotLoggedFor(prev => new Set([...prev, msgKey])) })
+                                .catch(() => {})
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-200 hover:border-blue-300 hover:bg-blue-50 rounded-lg text-xs font-medium text-gray-700 hover:text-blue-700 transition-colors shadow-sm"
+                        >
+                          <Send className="w-3 h-3" />
+                          Open in Gmail
+                        </button>
+                        {task.accountId && (
+                          <span className="text-xs text-gray-400">
+                            {isLogged ? 'Logged to HubSpot' : 'Will log to HubSpot'}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               ) : (
                 <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap bg-indigo-600 text-white rounded-br-sm">

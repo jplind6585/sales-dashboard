@@ -13,6 +13,7 @@ const TABS = [
   { id: 'duplicates', label: 'Potential Duplicates' },
   { id: 'hubspot', label: 'Missing HubSpot' },
   { id: 'aliases', label: 'Alias Suggestions' },
+  { id: 'slack_channels', label: 'Slack Channels' },
   { id: 'history', label: 'Merge History' },
 ]
 
@@ -340,7 +341,7 @@ export default function DataQuality() {
       <div className="bg-white border-b border-gray-200 shrink-0">
         <div className="max-w-6xl mx-auto px-6 flex gap-0">
           {TABS.map(tab => {
-            const count = tab.id === 'unmatched' ? counts.unmatched : tab.id === 'low_confidence' ? (triageItems?.length ?? null) : tab.id === 'duplicates' ? counts.duplicates : tab.id === 'hubspot' ? counts.missingHubspot : tab.id === 'aliases' ? counts.aliasSuggestions : (data?.mergeLog?.length || 0)
+            const count = tab.id === 'unmatched' ? counts.unmatched : tab.id === 'low_confidence' ? (triageItems?.length ?? null) : tab.id === 'duplicates' ? counts.duplicates : tab.id === 'hubspot' ? counts.missingHubspot : tab.id === 'aliases' ? counts.aliasSuggestions : tab.id === 'slack_channels' ? ((counts.orphanChannels || 0) + (counts.unmatchedAccounts || 0)) : (data?.mergeLog?.length || 0)
             return (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`px-5 py-3.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === tab.id ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -627,6 +628,117 @@ export default function DataQuality() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Slack Channels ── */}
+            {activeTab === 'slack_channels' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Slack Channel Audit</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      {data?.channelAudit?.totalPursuitChannels ?? '—'} pursuit_* channels found in Slack
+                    </p>
+                  </div>
+                </div>
+
+                {/* Orphan channels — Slack channel exists but no matching account */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    Channels with no matching account
+                    {data?.channelAudit?.orphanChannels?.length > 0 && (
+                      <Badge color="red">{data.channelAudit.orphanChannels.length}</Badge>
+                    )}
+                  </h3>
+                  {!data?.channelAudit?.orphanChannels?.length ? (
+                    <p className="text-sm text-gray-400 italic">All channels match an account.</p>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Channel</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600 text-xs">Possible issue</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {data.channelAudit.orphanChannels.map(ch => (
+                            <tr key={ch.channelName} className="hover:bg-gray-50">
+                              <td className="px-4 py-2.5 font-mono text-xs text-gray-800">#{ch.channelName}</td>
+                              <td className="px-4 py-2.5 text-gray-500 text-xs">No account name produces this slug — renamed, closed, or typo'd</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Duplicate channels — multiple accounts map to same channel */}
+                {data?.channelAudit?.duplicateChannels?.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      Ambiguous channels (multiple account matches)
+                      <Badge color="yellow">{data.channelAudit.duplicateChannels.length}</Badge>
+                    </h3>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Channel</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Matching accounts</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {data.channelAudit.duplicateChannels.map(ch => (
+                            <tr key={ch.channelName} className="hover:bg-gray-50">
+                              <td className="px-4 py-2.5 font-mono text-xs text-gray-800">#{ch.channelName}</td>
+                              <td className="px-4 py-2.5 text-gray-600 text-xs">
+                                {ch.matchedAccounts.map(a => `${a.name} (${a.stage?.replace(/_/g, ' ')})`).join(' · ')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active accounts with no pursuit channel */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    Active deals with no pursuit channel
+                    {data?.channelAudit?.unmatchedAccounts?.length > 0 && (
+                      <Badge color="yellow">{data.channelAudit.unmatchedAccounts.length}</Badge>
+                    )}
+                  </h3>
+                  <p className="text-xs text-gray-400 mb-2">These accounts are in active stages but have no corresponding Slack channel.</p>
+                  {!data?.channelAudit?.unmatchedAccounts?.length ? (
+                    <p className="text-sm text-gray-400 italic">All active accounts have a channel.</p>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Account</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Stage</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600 text-xs">Expected channel</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {data.channelAudit.unmatchedAccounts.slice(0, 30).map(a => (
+                            <tr key={a.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2.5 text-gray-800 font-medium">{a.name}</td>
+                              <td className="px-4 py-2.5"><Badge color="gray">{a.stage?.replace(/_/g, ' ')}</Badge></td>
+                              <td className="px-4 py-2.5 font-mono text-xs text-gray-400">#{a.expectedChannel}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

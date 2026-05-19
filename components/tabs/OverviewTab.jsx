@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight, X, Sparkles, Swords, Play, ChevronDown, Clock } from 'lucide-react';
+import { Loader2, ArrowRight, AlertTriangle, TrendingUp, Users, Target, CheckCircle, Circle, ChevronRight, X, Sparkles, Swords, Play, ChevronDown, Clock, Hash, ExternalLink } from 'lucide-react';
 import { getSupabase } from '../../lib/supabase';
 import {
   VERTICALS,
@@ -512,6 +512,97 @@ const MEMORY_TYPE_BADGE = {
   ai_summary: 'bg-green-100 text-green-700',
 }
 
+// ─── Slack Channel Activity ───────────────────────────────────────────────────
+
+function SlackChannelActivity({ account }) {
+  const [messages, setMessages] = useState([]);
+  const [channelName, setChannelName] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = () => {
+    if (!account?.id || loading) return;
+    setLoading(true);
+    fetch(`/api/slack/channel-messages?accountId=${account.id}`)
+      .then(r => r.json())
+      .then(d => {
+        setMessages(d.messages || []);
+        setChannelName(d.channelName || null);
+        if (d.error && !d.messages?.length) setError(d.error);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => { setLoading(false); setLoaded(true); });
+  };
+
+  function formatTs(ts) {
+    if (!ts) return '';
+    const d = new Date(parseFloat(ts) * 1000);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  return (
+    <details
+      className="bg-white border rounded-xl overflow-hidden"
+      onToggle={e => { if (e.target.open && !loaded) load(); }}
+    >
+      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-gray-50 list-none select-none">
+        <Hash className="w-4 h-4 text-purple-500 shrink-0" />
+        <span className="text-sm font-semibold text-gray-800">Slack Channel Activity</span>
+        {channelName && (
+          <span className="text-xs text-gray-400 font-normal">#{channelName}</span>
+        )}
+        {messages.length > 0 && (
+          <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-medium ml-auto">
+            {messages.length}
+          </span>
+        )}
+      </summary>
+      <div className="border-t px-4 py-3">
+        {loading && (
+          <div className="flex items-center gap-2 py-2 text-sm text-gray-400">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Loading channel messages…
+          </div>
+        )}
+        {error && !loading && (
+          <p className="text-xs text-gray-400 py-1">
+            {error.includes('not_in_channel') || error.includes('channel_not_found')
+              ? `Channel #${channelName || 'pursuit_' + account?.name?.toLowerCase().replace(/\s+/g, '')} not found or bot not invited.`
+              : error}
+          </p>
+        )}
+        {!loading && !error && messages.length === 0 && loaded && (
+          <p className="text-xs text-gray-400 py-1">No messages in channel yet.</p>
+        )}
+        {!loading && messages.length > 0 && (
+          <div className="space-y-3">
+            {messages.slice(0, 15).map((m, i) => (
+              <div key={m.ts || i} className="flex gap-2.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-purple-300 mt-2 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xs font-semibold text-gray-700">{m.userName}</span>
+                    <span className="text-xs text-gray-400">{formatTs(m.ts)}</span>
+                  </div>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mt-0.5">
+                    {m.text}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function memoryBadgeClass(type) {
   return MEMORY_TYPE_BADGE[type] || 'bg-gray-100 text-gray-600'
 }
@@ -781,6 +872,9 @@ const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
           )}
         </div>
       </details>
+
+      {/* Slack Channel Activity */}
+      <SlackChannelActivity account={account} />
 
       {/* Sales Journey Tracker */}
       <SalesJourneyTracker account={account} />

@@ -19,7 +19,7 @@ const PRIORITY_COLORS = {
 }
 
 const BLOCKLIST_KEY = 'email_sender_blocklist'
-const SUGGESTIONS_CACHE_KEY = 'smart_suggestions_cache_v2'
+const SUGGESTIONS_CACHE_KEY = 'smart_suggestions_cache_v3'
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
 
 function todayKey() {
@@ -52,12 +52,13 @@ function loadSuggestionsCache() {
   }
 }
 
-function saveSuggestionsCache(suggestions, calendarEvents, responseMetrics) {
+function saveSuggestionsCache(suggestions, calendarEvents, responseMetrics, sdrBookings) {
   try {
     localStorage.setItem(SUGGESTIONS_CACHE_KEY, JSON.stringify({
       suggestions,
       calendarEvents,
       responseMetrics,
+      sdrBookings,
       cachedAt: Date.now(),
     }))
   } catch {}
@@ -119,6 +120,7 @@ function PrepBriefModal({ event, onClose, onCreateTask }) {
         meetingTitle: event.title,
         attendees: event.externalAttendees,
         meetingTime: formatEventTime(event.start),
+        accountId: event.matchedAccount?.id || null,
       }),
     })
       .then(r => r.json())
@@ -335,6 +337,9 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
   const [emailSuggestions, setEmailSuggestions] = useState(null)
   const [calendarEvents, setCalendarEvents] = useState(null)
   const [responseMetrics, setResponseMetrics] = useState(null)
+  const [sdrBookings, setSdrBookings] = useState(null)
+  const [addedBookings, setAddedBookings] = useState(() => loadDailySet('suggestions_added_bookings'))
+  const [dismissedBookings, setDismissedBookings] = useState(() => loadDailySet('suggestions_dismissed_bookings'))
 
   const [dismissedEmails, setDismissedEmails] = useState(() => loadDailySet('suggestions_dismissed'))
   const [addedEmails, setAddedEmails] = useState(() => loadDailySet('suggestions_added'))
@@ -342,6 +347,8 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
   const [addedCalendar, setAddedCalendar] = useState(() => loadDailySet('suggestions_added_calendar'))
   const [expandedEmailIndex, setExpandedEmailIndex] = useState(null)
   const [blockedSenders, setBlockedSenders] = useState([])
+  const [autoPrepCount, setAutoPrepCount] = useState(0)
+  const autoPrepCreatedRef = useRef(loadDailySet('auto_prep_created'))
   const [prepBriefEvent, setPrepBriefEvent] = useState(null)
 
   const hasSyncedRef = useRef(false)
@@ -350,6 +357,8 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
   useEffect(() => { saveDailySet('suggestions_dismissed', dismissedEmails) }, [dismissedEmails])
   useEffect(() => { saveDailySet('suggestions_added', addedEmails) }, [addedEmails])
   useEffect(() => { saveDailySet('suggestions_added_calendar', addedCalendar) }, [addedCalendar])
+  useEffect(() => { saveDailySet('suggestions_added_bookings', addedBookings) }, [addedBookings])
+  useEffect(() => { saveDailySet('suggestions_dismissed_bookings', dismissedBookings) }, [dismissedBookings])
 
   const sync = async () => {
     if (!providerToken) {
@@ -361,7 +370,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
     setError(null)
 
     try {
-      const [emailRes, calRes] = await Promise.all([
+      const [emailRes, calRes, opsRes] = await Promise.all([
         fetch('/api/gmail/suggestions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -372,10 +381,12 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: providerToken }),
         }),
+        fetch('/api/slack/sales-ops-feed'),
       ])
 
       const emailData = await emailRes.json()
       const calData = await calRes.json()
+      const opsData = opsRes.ok ? await opsRes.json() : { bookings: [] }
 
       if (!emailRes.ok) throw new Error(emailData.error || 'Gmail sync failed')
       if (!calRes.ok) throw new Error(calData.error || 'Calendar sync failed')
@@ -383,15 +394,44 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
       const suggestions = emailData.suggestions || []
       const meetings = calData.salesMeetings || []
       const metrics = emailData.responseMetrics || null
+      const bookings = (opsData.bookings || []).filter(b =>
+        b.ae?.toLowerCase().includes('james')
+      )
 
       setEmailSuggestions(suggestions)
       setResponseMetrics(metrics)
       setCalendarEvents(meetings)
+      setSdrBookings(bookings)
       setDismissedEmails(new Set())
       setAddedEmails(new Set())
       setAddedCalendar(new Set())
+      setDismissedBookings(new Set())
       setExpandedEmailIndex(null)
-      saveSuggestionsCache(suggestions, meetings, metrics)
+      saveSuggestionsCache(suggestions, meetings, metrics, bookings)
+
+      // Auto-create prep tasks for owned meetings that need prep and haven't been auto-created yet today
+      if (onAddTask && meetings.length) {
+        const toAutoPrep = meetings.filter(e =>
+          e.needsPrep && e.isOwned !== false && !autoPrepCreatedRef.current.has(e.id)
+        )
+        if (toAutoPrep.length) {
+          toAutoPrep.forEach(event => {
+            const attendeeNames = event.externalAttendees.map(a => a.name).join(', ')
+            onAddTask({
+              title: `Prep for: ${event.title}`,
+              description: `Meeting: ${formatEventTime(event.start)}${attendeeNames ? `\nWith: ${attendeeNames}` : ''}`,
+              type: 'assigned',
+              priority: event.hoursUntil <= 24 ? 1 : 2,
+              dueDate: new Date(new Date(event.start).getTime() - 30 * 60 * 1000).toISOString().split('T')[0],
+              source: 'calendar',
+            })
+            autoPrepCreatedRef.current.add(event.id)
+          })
+          saveDailySet('auto_prep_created', autoPrepCreatedRef.current)
+          setAddedCalendar(prev => new Set([...prev, ...toAutoPrep.map(e => e.id)]))
+          setAutoPrepCount(toAutoPrep.length)
+        }
+      }
     } catch (e) {
       setError(e.message)
     } finally {
@@ -409,11 +449,38 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
         setEmailSuggestions(cached.suggestions)
         setCalendarEvents(cached.calendarEvents)
         setResponseMetrics(cached.responseMetrics)
+        if (cached.sdrBookings) setSdrBookings(cached.sdrBookings)
       } else {
         sync()
       }
     }
   }, [providerToken])
+
+  // Auto-create prep tasks when calendarEvents loads from cache (sync() handles the live case)
+  const autoPrepFiredRef = useRef(false)
+  useEffect(() => {
+    if (!calendarEvents?.length || !onAddTask || autoPrepFiredRef.current) return
+    autoPrepFiredRef.current = true
+    const toAutoPrep = calendarEvents.filter(e =>
+      e.needsPrep && e.isOwned !== false && !autoPrepCreatedRef.current.has(e.id)
+    )
+    if (!toAutoPrep.length) return
+    toAutoPrep.forEach(event => {
+      const attendeeNames = event.externalAttendees.map(a => a.name).join(', ')
+      onAddTask({
+        title: `Prep for: ${event.title}`,
+        description: `Meeting: ${formatEventTime(event.start)}${attendeeNames ? `\nWith: ${attendeeNames}` : ''}`,
+        type: 'assigned',
+        priority: event.hoursUntil <= 24 ? 1 : 2,
+        dueDate: new Date(new Date(event.start).getTime() - 30 * 60 * 1000).toISOString().split('T')[0],
+        source: 'calendar',
+      })
+      autoPrepCreatedRef.current.add(event.id)
+    })
+    saveDailySet('auto_prep_created', autoPrepCreatedRef.current)
+    setAddedCalendar(prev => new Set([...prev, ...toAutoPrep.map(e => e.id)]))
+    setAutoPrepCount(toAutoPrep.length)
+  }, [calendarEvents])
 
   const handleAddEmailTask = (suggestion) => {
     onAddTask({
@@ -422,6 +489,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
       type: 'assigned',
       priority: suggestion.priority === 'high' ? 1 : suggestion.priority === 'medium' ? 2 : 3,
       source: 'email',
+      dueDate: suggestion.dueDate || null,
     })
     setConfirmingEmails(prev => new Set([...prev, suggestion.title]))
     setTimeout(() => {
@@ -469,7 +537,8 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
 
   const newSuggestionsCount = visibleEmailSuggestions.filter(s => !addedEmails.has(s.title)).length
   const prepNeededCount = (calendarEvents || []).filter(e => e.needsPrep && !addedCalendar.has(e.id)).length
-  const totalBadge = newSuggestionsCount + prepNeededCount
+  const newBookingsCount = (sdrBookings || []).filter(b => !dismissedBookings.has(b.ts) && !addedBookings.has(b.ts)).length
+  const totalBadge = newSuggestionsCount + prepNeededCount + newBookingsCount
 
   return (
     <>
@@ -542,6 +611,14 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
               </div>
             )}
 
+            {/* Auto-prep notice */}
+            {autoPrepCount > 0 && !loading && (
+              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                Auto-created {autoPrepCount} prep task{autoPrepCount !== 1 ? 's' : ''} for upcoming meetings
+              </div>
+            )}
+
             {/* Response metrics strip */}
             {responseMetrics && !loading && (
               <div className="flex items-center gap-4 p-2.5 bg-gray-50 rounded-lg text-xs text-gray-500">
@@ -567,6 +644,79 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                     </button>
                   </span>
                 )}
+              </div>
+            )}
+
+            {/* SDR Bookings from sales_operations */}
+            {sdrBookings !== null && sdrBookings.length > 0 && !loading && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">From #sales_operations</span>
+                </div>
+                <div className="space-y-2">
+                  {sdrBookings.filter(b => !dismissedBookings.has(b.ts)).map((b, i) => {
+                    const key = b.ts || String(i)
+                    const isAdded = addedBookings.has(key)
+                    return (
+                      <div key={key} className={`rounded-lg border p-3 ${isAdded ? 'bg-green-50 border-green-200' : 'bg-purple-50 border-purple-200'}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800">
+                              {b.action}: <span className="text-purple-700">{b.accountName}</span>
+                            </p>
+                            {b.contactName && (
+                              <p className="text-xs text-gray-600 mt-0.5">
+                                {b.contactName}{b.contactTitle ? ` — ${b.contactTitle}` : ''}
+                              </p>
+                            )}
+                            {b.dateTime && (
+                              <p className="text-xs text-gray-500 mt-0.5">{b.dateTime}</p>
+                            )}
+                            {b.contextBullets?.length > 0 && (
+                              <ul className="mt-1 space-y-0.5">
+                                {b.contextBullets.slice(0, 3).map((c, ci) => (
+                                  <li key={ci} className="text-xs text-gray-600 flex gap-1">
+                                    <span className="text-purple-400 shrink-0">•</span>{c}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            <p className="text-xs text-gray-400 mt-1">Booked by {b.sdrName}</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            {isAdded ? (
+                              <CheckCircle2 className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    onAddTask({
+                                      title: `Prep for ${b.accountName} ${b.action}`,
+                                      description: `Booked by ${b.sdrName}\n${b.contactName ? `Contact: ${b.contactName}${b.contactTitle ? ` — ${b.contactTitle}` : ''}\n` : ''}${b.dateTime ? `When: ${b.dateTime}\n` : ''}${b.contextBullets?.length ? `\nContext:\n${b.contextBullets.map(c => `• ${c}`).join('\n')}` : ''}`,
+                                      type: 'assigned',
+                                      priority: 1,
+                                      source: 'calendar',
+                                    })
+                                    setAddedBookings(prev => new Set([...prev, key]))
+                                  }}
+                                  className="px-2 py-1 text-xs text-purple-600 hover:bg-purple-100 rounded border border-purple-200 font-medium"
+                                >
+                                  Add task
+                                </button>
+                                <button
+                                  onClick={() => setDismissedBookings(prev => new Set([...prev, key]))}
+                                  className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
 
@@ -712,29 +862,40 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                   <div className="space-y-2">
                     {calendarEvents.map(event => {
                       const added = addedCalendar.has(event.id)
+                      const isTransferred = !!event.transferredTo
                       return (
                         <div
                           key={event.id}
                           className={`flex items-start gap-2 p-3 rounded-lg border transition-colors ${
                             added ? 'bg-green-50 border-green-200' :
+                            isTransferred ? 'bg-gray-50 border-gray-200 opacity-70' :
                             event.needsPrep ? 'bg-amber-50 border-amber-200' :
                             'bg-white border-gray-200'
                           }`}
                         >
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium ${added ? 'text-green-700' : 'text-gray-800'}`}>
+                            <p className={`text-sm font-medium ${added ? 'text-green-700' : isTransferred ? 'text-gray-500' : 'text-gray-800'}`}>
                               {event.title}
                             </p>
+                            {event.originalTitle && (
+                              <p className="text-xs text-gray-400 truncate">"{event.originalTitle}"</p>
+                            )}
                             <p className="text-xs text-gray-500 mt-0.5">
                               {formatEventTime(event.start)}
-                              {event.durationMin && ` · ${event.durationMin}min`}
+                              {event.durationMin ? ` · ${event.durationMin}min` : ''}
+                              {event.matchedAccount?.stage ? ` · ${event.matchedAccount.stage.replace(/_/g, ' ')}` : ''}
                             </p>
                             {event.externalAttendees.length > 0 && (
                               <p className="text-xs text-gray-400 mt-0.5 truncate">
                                 With: {event.externalAttendees.map(a => a.name).join(', ')}
                               </p>
                             )}
-                            {event.needsPrep && !added && (
+                            {isTransferred && (
+                              <span className="inline-block mt-1 px-1.5 py-0.5 bg-gray-100 text-gray-500 text-xs rounded">
+                                Owned by {event.transferredTo}
+                              </span>
+                            )}
+                            {event.needsPrep && !added && !isTransferred && (
                               <span className="inline-block mt-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs rounded font-medium">
                                 Prep needed
                               </span>
@@ -754,7 +915,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                             )}
                             {added ? (
                               <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            ) : (
+                            ) : !isTransferred ? (
                               <button
                                 onClick={() => handleOpenPrepBrief(event)}
                                 className="flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded border border-indigo-200"
@@ -763,7 +924,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                                 <Sparkles className="w-3 h-3" />
                                 AI Brief
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       )

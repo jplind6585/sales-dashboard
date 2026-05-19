@@ -179,7 +179,8 @@ Return JSON array of up to 6 items:
   "emailSubject": "the subject line",
   "sender": "sender's name or email (from the From: field)",
   "priority": "high|medium|low",
-  "category": "follow_up|send_content|schedule_meeting|internal"
+  "category": "follow_up|send_content|schedule_meeting|internal",
+  "dueDate": "YYYY-MM-DD if a specific date/deadline is mentioned in the email, otherwise null"
 }]
 
 Return ONLY valid JSON array. If no genuine action items, return [].`
