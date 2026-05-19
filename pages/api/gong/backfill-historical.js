@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createGongHeaders } from '../../../lib/apiUtils'
 
 const GONG_API_BASE = 'https://api.gong.io'
-const BATCH_SIZE = 20
+const BATCH_SIZE = 100
 
 function normalizeName(s) {
   return (s || '')
