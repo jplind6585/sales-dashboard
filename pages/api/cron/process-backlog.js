@@ -20,12 +20,12 @@ export default async function handler(req, res) {
   // Grab next batch of unanalyzed calls that have Gong metadata
   const { data: backlog } = await db
     .from('gong_call_analyses')
-    .select('gong_call_id, title, call_date, call_type, rep_name, rep_email, duration_seconds, gong_url')
+    .select('gong_call_id, title, call_date, call_type, rep_name, rep_email, duration_seconds, gong_url, transcript_text')
     .is('analyzed_at', null)
     .eq('ignored', false)
     .not('gong_call_id', 'is', null)
     .order('call_date', { ascending: false })
-    .limit(10)
+    .limit(50)
 
   if (!backlog?.length) {
     const { count } = await db
@@ -53,6 +53,7 @@ export default async function handler(req, res) {
           repEmail: call.rep_email,
           durationSeconds: call.duration_seconds,
           gongUrl: call.gong_url,
+          transcriptText: call.transcript_text || null,
         }),
       })
       const d = await r.json().catch(() => ({}))

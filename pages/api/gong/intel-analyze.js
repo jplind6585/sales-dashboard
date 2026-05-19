@@ -223,63 +223,69 @@ export default async function handler(req, res) {
   if (!validateMethod(req, res, 'POST')) return;
   if (!validateRequired(req, res, ['callId'])) return;
 
-  const { callId, title, date, callType, repName, repEmail, durationSeconds, gongUrl } = req.body;
+  const { callId, title, date, callType, repName, repEmail, durationSeconds, gongUrl, transcriptText: preloadedTranscript } = req.body;
 
-  const credentials = validateGongCredentials(res);
-  if (!credentials) return;
   const apiKey = validateAnthropicKey(res);
   if (!apiKey) return;
 
-  const { accessKey, secretKey } = credentials;
-  const gongHeaders = createGongHeaders(accessKey, secretKey);
+  // Use pre-loaded transcript if provided (from process-backlog, skips Gong re-fetch)
+  const hasPreloaded = preloadedTranscript && preloadedTranscript.length > 50 && preloadedTranscript !== '[No transcript available for this call]';
+
+  let transcriptText = '';
 
   try {
-    // Fetch call details + transcript in parallel
-    const [detailsRes, transcriptRes] = await Promise.all([
-      fetch(`${GONG_API_BASE}/v2/calls/extensive`, {
-        method: 'POST',
-        headers: gongHeaders,
-        body: JSON.stringify({
-          filter: { callIds: [callId] },
-          contentSelector: { exposedFields: { parties: true } },
+    if (hasPreloaded) {
+      transcriptText = preloadedTranscript;
+    } else {
+      const credentials = validateGongCredentials(res);
+      if (!credentials) return;
+      const { accessKey, secretKey } = credentials;
+      const gongHeaders = createGongHeaders(accessKey, secretKey);
+
+      // Fetch call details + transcript in parallel
+      const [detailsRes, transcriptRes] = await Promise.all([
+        fetch(`${GONG_API_BASE}/v2/calls/extensive`, {
+          method: 'POST',
+          headers: gongHeaders,
+          body: JSON.stringify({
+            filter: { callIds: [callId] },
+            contentSelector: { exposedFields: { parties: true } },
+          }),
         }),
-      }),
-      fetch(`${GONG_API_BASE}/v2/calls/transcript`, {
-        method: 'POST',
-        headers: gongHeaders,
-        body: JSON.stringify({ filter: { callIds: [callId] } }),
-      }),
-    ]);
+        fetch(`${GONG_API_BASE}/v2/calls/transcript`, {
+          method: 'POST',
+          headers: gongHeaders,
+          body: JSON.stringify({ filter: { callIds: [callId] } }),
+        }),
+      ]);
 
-    const detailsData = await detailsRes.json().catch(() => ({}));
-    const transcriptData = await transcriptRes.json().catch(() => ({}));
+      const detailsData = await detailsRes.json().catch(() => ({}));
+      const transcriptData = await transcriptRes.json().catch(() => ({}));
 
-    const callDetails = detailsData.calls?.[0];
-    const callTranscript = transcriptData.callTranscripts?.[0];
+      const callDetails = detailsData.calls?.[0];
+      const callTranscript = transcriptData.callTranscripts?.[0];
 
-    // Build speaker map
-    const speakerMap = {};
-    (callDetails?.parties || []).forEach(p => {
-      speakerMap[p.speakerId] = {
-        name: p.name || p.emailAddress || `Speaker ${p.speakerId}`,
-        affiliation: p.affiliation,
-      };
-    });
-
-    // Format transcript text
-    let transcriptText = '';
-    if (callTranscript?.transcript && Array.isArray(callTranscript.transcript)) {
-      callTranscript.transcript.forEach(segment => {
-        const speaker = speakerMap[segment.speakerId] || { name: `Speaker ${segment.speakerId}`, affiliation: 'unknown' };
-        const label = speaker.affiliation === 'internal' ? `[REP] ${speaker.name}` : `[PROSPECT] ${speaker.name}`;
-        (segment.sentences || []).forEach(s => {
-          transcriptText += `${label}: ${s.text}\n`;
-        });
+      const speakerMap = {};
+      (callDetails?.parties || []).forEach(p => {
+        speakerMap[p.speakerId] = {
+          name: p.name || p.emailAddress || `Speaker ${p.speakerId}`,
+          affiliation: p.affiliation,
+        };
       });
-    }
 
-    if (!transcriptText.trim()) {
-      transcriptText = '[No transcript available for this call]';
+      if (callTranscript?.transcript && Array.isArray(callTranscript.transcript)) {
+        callTranscript.transcript.forEach(segment => {
+          const speaker = speakerMap[segment.speakerId] || { name: `Speaker ${segment.speakerId}`, affiliation: 'unknown' };
+          const label = speaker.affiliation === 'internal' ? `[REP] ${speaker.name}` : `[PROSPECT] ${speaker.name}`;
+          (segment.sentences || []).forEach(s => {
+            transcriptText += `${label}: ${s.text}\n`;
+          });
+        });
+      }
+
+      if (!transcriptText.trim()) {
+        transcriptText = '[No transcript available for this call]';
+      }
     }
 
     const durationMin = Math.round((durationSeconds || 0) / 60);
