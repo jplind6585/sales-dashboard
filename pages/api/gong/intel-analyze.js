@@ -407,6 +407,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate â€
         gong_url: gongUrl || null,
         analysis,
         analyzed_at: new Date().toISOString(),
+        transcript_text: transcriptText || null,
       },
       { onConflict: 'gong_call_id' }
     );
