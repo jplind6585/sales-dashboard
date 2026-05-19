@@ -19,7 +19,7 @@ const PRIORITY_COLORS = {
 }
 
 const BLOCKLIST_KEY = 'email_sender_blocklist'
-const SUGGESTIONS_CACHE_KEY = 'smart_suggestions_cache'
+const SUGGESTIONS_CACHE_KEY = 'smart_suggestions_cache_v2'
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
 
 function todayKey() {
@@ -620,8 +620,9 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               {confirming ? (
-                                <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> Task added
+                                <span className="text-xs text-green-600 font-medium flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Saved — check <span className="underline cursor-pointer" onClick={() => window.dispatchEvent(new CustomEvent('tasks:switchTab', { detail: 'all' }))}>All tasks</span>
                                 </span>
                               ) : (
                                 <>

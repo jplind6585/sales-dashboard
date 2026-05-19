@@ -2359,6 +2359,14 @@ export default function TasksPage() {
     if (isReady) fetchTasks()
   }, [isReady, fetchTasks])
 
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.detail === 'all') setTaskView('all')
+    }
+    window.addEventListener('tasks:switchTab', handler)
+    return () => window.removeEventListener('tasks:switchTab', handler)
+  }, [])
+
   const handleStatusChange = async (taskId, newStatus) => {
     if (newStatus === 'complete') {
       const task = tasks.find(t => t.id === taskId)
