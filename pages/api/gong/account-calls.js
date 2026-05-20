@@ -41,9 +41,10 @@ export default async function handler(req, res) {
   const db = getSupabase();
   const { data: rows, error } = await db
     .from('gong_call_analyses')
-    .select('gong_call_id, analysis, analyzed_at, call_date, match_confidence, match_method')
+    .select('gong_call_id, title, rep_name, analysis, analyzed_at, call_date, match_confidence, match_method, transcript_text')
     .eq('account_id', accountId)
-    .not('analysis', 'is', null)
+    .eq('ignored', false)
+    .not('analyzed_at', 'is', null)
     .order('analyzed_at', { ascending: false })
     .limit(100);
 
@@ -54,9 +55,9 @@ export default async function handler(req, res) {
     return {
       id: row.gong_call_id,
       gongCallId: row.gong_call_id,
-      title: a.call_title || null,
+      title: row.title || a.call_title || null,
       date: row.call_date || row.analyzed_at,
-      repName: a.rep_name || null,
+      repName: row.rep_name || a.rep_name || null,
       summary: a.summary || null,
       nextSteps: a.next_steps_mentioned || [],
       commitments: a.commitments || [],
@@ -65,7 +66,8 @@ export default async function handler(req, res) {
       redFlags: a.red_flags || a.redFlags || [],
       meddicc: a.meddicc || null,
       discoveryScore: a.discovery_score ?? null,
-      talkRatio: a.talk_ratio ?? null,
+      talkRatio: a.rep_talk_ratio ?? a.talk_ratio ?? null,
+      transcriptText: row.transcript_text || null,
       attentionScore: attentionScore(row),
       matchConfidence: row.match_confidence,
       matchMethod: row.match_method,

@@ -100,9 +100,10 @@ function AnnotatedTranscript({ transcript }) {
   )
 }
 
-// ── Gong-analyzed call card (auto-linked, no raw transcript text) ──────────────
+// ── Gong-analyzed call card (auto-linked, includes raw transcript) ──────────────
 function GongCallCard({ call }) {
   const [expanded, setExpanded] = useState(false)
+  const [showTranscript, setShowTranscript] = useState(false)
 
   const hasAttention = call.attentionScore >= 40
   const date = call.date
@@ -237,6 +238,32 @@ function GongCallCard({ call }) {
                   )
                 })}
               </div>
+            </div>
+          )}
+          {call.transcriptText && (
+            <div>
+              <button
+                onClick={() => setShowTranscript(t => !t)}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium"
+              >
+                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showTranscript ? 'rotate-90' : ''}`} />
+                {showTranscript ? 'Hide transcript' : 'View transcript'}
+              </button>
+              {showTranscript && (
+                <div className="mt-3 bg-gray-50 rounded border p-3">
+                  <AnnotatedTranscript
+                    transcript={{
+                      text: call.transcriptText,
+                      rawAnalysis: {
+                        nextSteps: call.nextSteps,
+                        buyingSignals: call.buyingSignals,
+                        objections: call.objections,
+                        redFlags: call.redFlags,
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
