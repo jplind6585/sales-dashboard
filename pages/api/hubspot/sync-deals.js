@@ -10,7 +10,7 @@ const HS_API_BASE = 'https://api.hubapi.com';
 const SALES_PIPELINE_ID = '663206213';
 
 const STAGE_MAP = {
-  '973866334':  'qualifying',              // Pre Pursuit
+  '973866334':  'inactive_sdr_follow_up',   // Pre Pursuit
   '1268649029': 'inactive_sdr_follow_up', // Inactive Pursuit - SDR Follow Up
   '973866335':  'inactive_ae_follow_up',  // Inactive Pursuit - AE Follow Up
   '973866336':  'active_pursuit',         // Active Pursuit

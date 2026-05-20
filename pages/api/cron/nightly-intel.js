@@ -1,19 +1,18 @@
 // GET /api/cron/nightly-intel
-// Nightly job: lists recent Gong calls, analyzes any that haven't been analyzed yet.
-// Protected by CRON_SECRET. Called nightly via Vercel cron.
+// Nightly job: imports all new Gong calls then analyzes James's unanalyzed calls.
 //
-// Flow:
-//   1. Fetch last 30 days of calls from Gong API
-//   2. Query gong_call_analyses to find which are unanalyzed
-//   3. POST to /api/gong/intel-analyze for each (with CRON_SECRET auth so it uses service role DB client)
-//   4. Log results
+// Two-phase approach prevents lost calls when analysis fails:
+//   Phase 1 — Import: store ALL new calls (any rep) with analyzed_at=null.
+//             No_show calls (< 2 min) are immediately marked ignored.
+//   Phase 2 — Analyze: call intel-analyze for each unanalyzed James Lindberg call.
+//             Intel-analyze handles transcript fetch + Claude analysis + DB update.
+//
+// process-backlog cron handles analysis for non-James calls in the background.
 
 import { createGongHeaders } from '../../../lib/apiUtils';
 import { getSupabase } from '../../../lib/supabase';
 
 const GONG_API_BASE = 'https://api.gong.io';
-
-// Reps to auto-analyze (from project config — James only; others are manual)
 const AUTO_ANALYZE_REPS = ['James Lindberg'];
 
 export default async function handler(req, res) {
@@ -41,18 +40,14 @@ export default async function handler(req, res) {
 
   // Quick mode (?quick=1): short lookback for frequent intraday runs
   const isQuick = req.query.quick === '1';
-  const lookbackHours = isQuick ? 8 : 90 * 24;
-  const callCap = isQuick ? 10 : 150;
+  // 150 days covers the 90-day nightly window plus buffer for backfill gaps
+  const lookbackHours = isQuick ? 8 : 150 * 24;
+  const analyzeCap = isQuick ? 10 : 150;
 
-  // 1. Fetch recent calls from Gong
   const toDate = new Date();
   const fromDate = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
-  let allCalls = [];
-  let cursor = null;
-  let pageCount = 0;
-
-  // Fetch Gong users to get rep names
+  // ── Fetch Gong users ──────────────────────────────────────────────────────────
   let userMap = {};
   try {
     const usersRes = await fetch(`${GONG_API_BASE}/v2/users`, { method: 'GET', headers: gongHeaders });
@@ -64,6 +59,11 @@ export default async function handler(req, res) {
       });
     }
   } catch { /* continue */ }
+
+  // ── Fetch all calls in window (all reps) ─────────────────────────────────────
+  let allCalls = [];
+  let cursor = null;
+  let pageCount = 0;
 
   try {
     do {
@@ -77,50 +77,76 @@ export default async function handler(req, res) {
       allCalls = allCalls.concat(data.calls || []);
       cursor = data.records?.cursor || null;
       pageCount++;
-    } while (cursor && pageCount < 5);
+    } while (cursor && pageCount < 10);
   } catch (e) {
     return res.status(500).json({ error: `Gong API error: ${e.message}` });
   }
 
   if (!allCalls.length) {
-    return res.status(200).json({ analyzed: 0, message: 'No calls in last 30 days' });
+    return res.status(200).json({ imported: 0, analyzed: 0, message: 'No calls in window' });
   }
 
-  // 2. Check which are already analyzed in DB
   const db = getSupabase();
   const gongCallIds = allCalls.map(c => c.id);
 
+  // Check which calls are already in the DB (any state)
   const { data: existingRows } = await db
     .from('gong_call_analyses')
     .select('gong_call_id, analyzed_at, ignored')
     .in('gong_call_id', gongCallIds);
 
-  const analyzedIds = new Set((existingRows || []).filter(r => r.analyzed_at || r.ignored).map(r => r.gong_call_id));
+  const existingMap = new Map((existingRows || []).map(r => [r.gong_call_id, r]));
 
-  // 3. Filter to unanalyzed calls by auto-analyze reps
-  const getCallType = (title) => {
-    const t = (title || '').toLowerCase();
-    if (t.includes('intro') || t.includes('introduction')) return 'intro';
-    if (t.includes('demo')) return 'demo';
-    return 'solution_validation';
-  };
+  // ── Phase 1: Import new calls ─────────────────────────────────────────────────
+  const newCalls = allCalls.filter(c => !existingMap.has(c.id));
+  let imported = 0;
+
+  if (newCalls.length > 0) {
+    const rows = newCalls.map(call => {
+      const user = userMap[call.primaryUserId] || null;
+      const durationSeconds = call.duration || 0;
+      const isNoShow = durationSeconds < 120;
+      return {
+        gong_call_id: call.id,
+        title: call.title || 'Untitled',
+        call_date: call.started || null,
+        duration_seconds: durationSeconds,
+        rep_name: user?.name || null,
+        rep_email: user?.email || null,
+        gong_url: call.url || null,
+        analyzed_at: null,
+        ignored: isNoShow,
+        ignore_reason: isNoShow ? 'no_show' : null,
+      };
+    });
+
+    // Batch insert in chunks of 100
+    for (let i = 0; i < rows.length; i += 100) {
+      const { error } = await db
+        .from('gong_call_analyses')
+        .upsert(rows.slice(i, i + 100), { onConflict: 'gong_call_id', ignoreDuplicates: true });
+      if (!error) imported += rows.slice(i, i + 100).length;
+    }
+    console.log(`[nightly-intel] imported ${imported} new calls`);
+  }
+
+  // ── Phase 2: Analyze James's unanalyzed calls ─────────────────────────────────
+  // Re-query to include newly imported rows
+  const { data: pendingRows } = await db
+    .from('gong_call_analyses')
+    .select('gong_call_id, analyzed_at, ignored')
+    .in('gong_call_id', gongCallIds);
+
+  const doneIds = new Set((pendingRows || []).filter(r => r.analyzed_at || r.ignored).map(r => r.gong_call_id));
 
   const toAnalyze = allCalls
-    .filter(call => !analyzedIds.has(call.id))
+    .filter(call => !doneIds.has(call.id))
     .filter(call => {
       const user = userMap[call.primaryUserId];
       return user && AUTO_ANALYZE_REPS.includes(user.name);
     })
-    .slice(0, callCap);
+    .slice(0, analyzeCap);
 
-  if (!toAnalyze.length) {
-    console.log(`[nightly-intel] All ${AUTO_ANALYZE_REPS.join(', ')} calls already analyzed`);
-    return res.status(200).json({ analyzed: 0, total: allCalls.length, message: 'All calls already analyzed' });
-  }
-
-  // 4. Analyze each call via intel-analyze (with CRON_SECRET auth)
-  // VERCEL_PROJECT_PRODUCTION_URL is the stable production domain (no per-deploy suffix).
-  // VERCEL_URL changes every deploy and may point to a non-production deployment.
   const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : process.env.VERCEL_URL
@@ -128,6 +154,13 @@ export default async function handler(req, res) {
     : 'http://localhost:3000';
 
   const results = { analyzed: 0, failed: 0 };
+
+  const getCallType = (title) => {
+    const t = (title || '').toLowerCase();
+    if (t.includes('intro') || t.includes('introduction')) return 'intro';
+    if (t.includes('demo')) return 'demo';
+    return 'solution_validation';
+  };
 
   for (const call of toAnalyze) {
     const user = userMap[call.primaryUserId] || null;
@@ -152,19 +185,23 @@ export default async function handler(req, res) {
       const data = await r.json().catch(() => ({}));
       if (data.analysis) {
         results.analyzed++;
-        console.log(`[nightly-intel] Analyzed: ${call.title}`);
+        console.log(`[nightly-intel] analyzed: ${call.title}`);
       } else {
         results.failed++;
-        console.error(`[nightly-intel] Failed: ${call.title}`, data.error);
+        console.error(`[nightly-intel] failed: ${call.title}`, data.error);
       }
     } catch (e) {
       results.failed++;
-      console.error(`[nightly-intel] Error analyzing ${call.title}:`, e.message);
+      console.error(`[nightly-intel] error on ${call.title}:`, e.message);
     }
-    // Small delay between calls to avoid rate limiting
     await new Promise(r => setTimeout(r, 500));
   }
 
-  console.log(`[nightly-intel] Done: ${results.analyzed} analyzed, ${results.failed} failed`);
-  return res.status(200).json({ ...results, total: allCalls.length, queued: toAnalyze.length });
+  console.log(`[nightly-intel] done: ${imported} imported, ${results.analyzed} analyzed, ${results.failed} failed`);
+  return res.status(200).json({
+    imported,
+    ...results,
+    total: allCalls.length,
+    queued: toAnalyze.length,
+  });
 }
