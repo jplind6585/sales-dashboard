@@ -17,15 +17,48 @@ export default async function handler(req, res) {
     ? `https://${process.env.VERCEL_URL}`
     : 'http://localhost:3000'
 
-  // Grab next batch of unanalyzed calls that have Gong metadata
-  const { data: backlog } = await db
-    .from('gong_call_analyses')
-    .select('gong_call_id, title, call_date, call_type, rep_name, rep_email, duration_seconds, gong_url, transcript_text')
-    .is('analyzed_at', null)
-    .eq('ignored', false)
-    .not('gong_call_id', 'is', null)
-    .order('call_date', { ascending: false })
-    .limit(50)
+  // Priority stages: active deals get analyzed before the general backlog
+  const PRIORITY_STAGES = ['legal', 'proposal', 'solution_validation', 'demo', 'active_pursuit', 'intro_scheduled']
+
+  // Fetch accounts in active stages for priority join
+  const { data: priorityAccounts } = await db
+    .from('accounts')
+    .select('id')
+    .in('stage', PRIORITY_STAGES)
+
+  const priorityAccountIds = (priorityAccounts || []).map(a => a.id)
+
+  const BATCH = 50
+  let backlog = []
+
+  // Slot 1: up to BATCH calls from active-stage accounts (most recent first)
+  if (priorityAccountIds.length > 0) {
+    const { data: priorityCalls } = await db
+      .from('gong_call_analyses')
+      .select('gong_call_id, title, call_date, call_type, rep_name, rep_email, duration_seconds, gong_url, transcript_text')
+      .is('analyzed_at', null)
+      .eq('ignored', false)
+      .not('gong_call_id', 'is', null)
+      .in('account_id', priorityAccountIds)
+      .order('call_date', { ascending: false })
+      .limit(BATCH)
+    backlog = priorityCalls || []
+  }
+
+  // Slot 2: fill remaining slots from general backlog (any account, most recent)
+  if (backlog.length < BATCH) {
+    const exclude = new Set(backlog.map(c => c.gong_call_id))
+    const { data: general } = await db
+      .from('gong_call_analyses')
+      .select('gong_call_id, title, call_date, call_type, rep_name, rep_email, duration_seconds, gong_url, transcript_text')
+      .is('analyzed_at', null)
+      .eq('ignored', false)
+      .not('gong_call_id', 'is', null)
+      .order('call_date', { ascending: false })
+      .limit(BATCH * 3) // over-fetch so we can dedupe
+    const fill = (general || []).filter(c => !exclude.has(c.gong_call_id)).slice(0, BATCH - backlog.length)
+    backlog = [...backlog, ...fill]
+  }
 
   if (!backlog?.length) {
     const { count } = await db
