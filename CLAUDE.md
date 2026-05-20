@@ -483,6 +483,15 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 
 ## Recently Shipped (reverse chronological)
 
+- **2026-05-19** — Backfill completion + call intelligence infrastructure:
+  - **2-year historical backfill complete**: 3,832 calls stored, 3,788 with real transcript (98.7%). Required two workflow runs — first had BATCH_SIZE=20 bug (missed ~30 calls/page), second with BATCH_SIZE=100 captured everything.
+  - **Ignored calls**: Calls marked `ignored=true` with `ignore_reason` ('no_show' for < 2 min duration, 'internal' for no [PROSPECT] speaker). 1,135 no-shows + 122 internal = 1,257 ignored. Stay in DB as "don't re-fetch" ledger. All crons filter these out. `nightly-intel.js` updated to skip ignored calls.
+  - **process-backlog bumped to 50/run**: Was 10. Now passes `transcript_text` from DB to `intel-analyze` → skips Gong re-fetch entirely. Saves ~5-8s per call. maxDuration: 300 added to vercel.json.
+  - **intel-analyze optimization**: If `transcriptText` in request body, skips both Gong API calls. Falls back to Gong fetch for new calls.
+  - **Account linking SQL pass**: Added first-word matching directly via SQL. 884 → 1,434 calls linked (37.4%).
+  - **Key bug fixed**: `analyzed_at` column has `DEFAULT now()` — backfill was inserting rows without explicit null, so process-backlog never found them. Fixed to `analyzed_at: null`.
+  - **Key infra fix**: `SUPABASE_SERVICE_ROLE_KEY` wrong in Vercel caused "Invalid API key" on all DB writes. Service role key must be the secret key from Supabase Settings → API, not the anon key.
+
 - **2026-05-18** — Big build (phase 2):
   - **Call backlog processing**: New `pages/api/cron/process-backlog.js` — queries DB for `analyzed_at IS NULL AND ignored = false`, takes 10 most recent, calls intel-analyze per call with 400ms delay. GitHub Actions workflow (`process-recent-calls.yml`) runs it every 30 min alongside the existing `process-recent` job.
   - **Transcript storage**: Added `transcript_text TEXT` column to `gong_call_analyses`. `intel-analyze.js` now saves full formatted transcript to this column on every analysis. Permanent storage, no re-fetching needed.
