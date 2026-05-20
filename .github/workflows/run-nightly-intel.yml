@@ -1,0 +1,22 @@
+name: Run Nightly Intel (Manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  nightly-intel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger nightly intel
+        run: |
+          body=$(curl -s -w "\n%{http_code}" \
+            -X GET "${{ secrets.PRODUCTION_URL }}/api/cron/nightly-intel" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          status=$(echo "$body" | tail -1)
+          response=$(echo "$body" | head -1)
+          echo "Status: $status"
+          echo "Response: $response"
+          if [ "$status" != "200" ]; then
+            echo "ERROR: Expected 200, got $status"
+            exit 1
+          fi
