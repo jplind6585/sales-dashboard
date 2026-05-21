@@ -61,25 +61,44 @@ export default async function handler(req, res) {
   } catch { /* continue */ }
 
   // ── Fetch all calls in window (all reps) ─────────────────────────────────────
-  let allCalls = [];
-  let cursor = null;
-  let pageCount = 0;
+  // Gong paginates oldest-first, so recent calls appear on later pages.
+  // We run TWO sweeps: the long window for historical gaps, and a short 90-day
+  // window (matching list-calls, provably returns recent calls) as a safety net.
+  async function fetchGongCalls(from, to, label) {
+    const calls = [];
+    let cur = null;
+    let pages = 0;
+    try {
+      do {
+        let url = `${GONG_API_BASE}/v2/calls?fromDateTime=${from.toISOString()}&toDateTime=${to.toISOString()}`;
+        if (cur) url += `&cursor=${encodeURIComponent(cur)}`;
+        if (pages > 0) await new Promise(r => setTimeout(r, 150));
+        const resp = await fetch(url, { method: 'GET', headers: gongHeaders });
+        if (!resp.ok) break;
+        const data = await resp.json();
+        calls.push(...(data.calls || []));
+        cur = data.records?.cursor || null;
+        pages++;
+      } while (cur && pages < 100);
+    } catch { /* continue with what we have */ }
+    console.log(`[nightly-intel] ${label}: fetched ${calls.length} calls in ${pages} pages`);
+    return calls;
+  }
 
-  try {
-    do {
-      let url = `${GONG_API_BASE}/v2/calls?fromDateTime=${fromDate.toISOString()}&toDateTime=${toDate.toISOString()}`;
-      if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
-      if (pageCount > 0) await new Promise(r => setTimeout(r, 150));
+  // Long window: catches historical gaps
+  const longCalls = await fetchGongCalls(fromDate, toDate, '150d sweep');
+  // Short window: guarantees recent calls are captured (Gong oldest-first pagination can bury these)
+  const recentFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const recentCalls = await fetchGongCalls(recentFrom, toDate, '90d sweep');
 
-      const response = await fetch(url, { method: 'GET', headers: gongHeaders });
-      if (!response.ok) break;
-      const data = await response.json();
-      allCalls = allCalls.concat(data.calls || []);
-      cursor = data.records?.cursor || null;
-      pageCount++;
-    } while (cursor && pageCount < 100); // paginate until exhausted (safety cap: 10k calls)
-  } catch (e) {
-    return res.status(500).json({ error: `Gong API error: ${e.message}` });
+  // Merge, deduplicate by Gong call ID
+  const seenIds = new Set(longCalls.map(c => c.id));
+  const allCalls = [...longCalls];
+  for (const call of recentCalls) {
+    if (!seenIds.has(call.id)) {
+      allCalls.push(call);
+      seenIds.add(call.id);
+    }
   }
 
   if (!allCalls.length) {
