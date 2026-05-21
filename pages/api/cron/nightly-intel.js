@@ -77,7 +77,7 @@ export default async function handler(req, res) {
       allCalls = allCalls.concat(data.calls || []);
       cursor = data.records?.cursor || null;
       pageCount++;
-    } while (cursor && pageCount < 10);
+    } while (cursor && pageCount < 100); // paginate until exhausted (safety cap: 10k calls)
   } catch (e) {
     return res.status(500).json({ error: `Gong API error: ${e.message}` });
   }
