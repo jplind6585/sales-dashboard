@@ -14,6 +14,7 @@ import {
   BarChart2,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
+import ModulesNav from '../../components/layout/ModulesNav'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -251,6 +252,7 @@ export default function BottleneckTracker() {
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
+            <ModulesNav router={router} />
             <UserMenu />
           </div>
         </div>

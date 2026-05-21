@@ -535,6 +535,7 @@ const DEFAULT_SHOW = 5;
 
 const TranscriptsTab = ({ account, onOpenTranscriptModal }) => {
   const [gongCalls, setGongCalls] = useState([])
+  const [pendingCount, setPendingCount] = useState(0)
   const [gongLoading, setGongLoading] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
@@ -543,7 +544,12 @@ const TranscriptsTab = ({ account, onOpenTranscriptModal }) => {
     setGongLoading(true)
     fetch(`/api/gong/account-calls?accountId=${account.id}`)
       .then(r => r.json())
-      .then(d => { if (d.success) setGongCalls(d.calls || []) })
+      .then(d => {
+        if (d.success) {
+          setGongCalls(d.calls || [])
+          setPendingCount(d.pendingCount || 0)
+        }
+      })
       .catch(() => {})
       .finally(() => setGongLoading(false))
   }, [account?.id])
@@ -568,6 +574,11 @@ const TranscriptsTab = ({ account, onOpenTranscriptModal }) => {
             {needsAttentionCount > 0 && (
               <span className="text-xs text-amber-700 font-medium bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />{needsAttentionCount} need attention
+              </span>
+            )}
+            {pendingCount > 0 && (
+              <span className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Clock className="w-3 h-3" />{pendingCount} queued for analysis
               </span>
             )}
           </div>

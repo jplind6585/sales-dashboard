@@ -155,13 +155,27 @@ const TASK_PLAYBOOKS = [
   {
     id: 'gong-task',
     match: task => ['gong_next_step', 'gong_commitment'].includes(task.sourceType),
-    fetchContext: null,
-    maxTokens: 1000,
-    buildIntro(task) {
-      const lines = [`Ready to help you knock this out.`]
-      if (task.rationale) lines.push(`\n**Context from the call:** ${task.rationale}`)
-      if (task.primaryAction) lines.push(`\n**Suggested first move:** ${task.primaryAction}`)
-      lines.push(`\nWhat do you need — a draft email, a message to send, or a talking points doc?`)
+    fetchContext: 'calls',
+    maxTokens: 1200,
+    buildIntro(task, calls) {
+      const lines = []
+      const acct = task.account?.name
+      const stage = task.account?.stage?.replace(/_/g, ' ')
+      if (acct) lines.push(`Working on **${acct}**${stage ? ` — ${stage} stage` : ''}.`)
+      lines.push(`\n**Task:** ${task.title}`)
+      if (task.rationale) lines.push(`**From the call:** ${task.rationale}`)
+      if (task.primaryAction) lines.push(`**Suggested move:** ${task.primaryAction}`)
+      if (calls?.length) {
+        const latest = calls[0]
+        const a = latest?.analysis || {}
+        if (a.summary) lines.push(`\n**Last call summary:** ${a.summary.slice(0, 200)}`)
+        const open = (a.next_steps_mentioned || []).concat(a.commitments || []).slice(0, 3)
+        if (open.length) lines.push(`**Other open items:** ${open.join(' | ')}`)
+        const meddicc = a.meddicc || {}
+        const gaps = Object.entries(meddicc).filter(([, v]) => !v || /unknown|not identified|not mentioned/i.test(v)).map(([k]) => k)
+        if (gaps.length) lines.push(`**MEDDIC gaps:** ${gaps.join(', ')}`)
+      }
+      lines.push(`\nReady to draft the email, write a message, or build the deliverable. What format do you need?`)
       return lines.join('\n')
     },
   },
@@ -2391,8 +2405,9 @@ export default function TasksPage() {
     if (demoSeeded.current) return
     demoSeeded.current = true
     const demos = [
-      { title: 'Email UDR for an update', description: 'Check in on where they are in the evaluation and see if they need anything from us.', type: 'assigned', priority: 2 },
-      { title: 'Create swim lanes for IRT', description: 'Map out the key stakeholders and workstreams for the IRT deal — who owns what in their buying process.', type: 'assigned', priority: 2 },
+      { title: 'Set up your Slack ID in Settings', description: 'Add your Slack Member ID so you receive daily digests with your deal updates and commitments.', type: 'assigned', priority: 1 },
+      { title: 'Review your accounts in Account Pipeline', description: 'Open Account Pipeline to see all your active deals. Check for stale accounts and review any AI-analyzed calls.', type: 'assigned', priority: 2 },
+      { title: 'Connect Google Calendar for meeting prep', description: 'Grant calendar access in Settings so the app can surface prep briefs before your sales calls.', type: 'assigned', priority: 3 },
     ]
     const created = []
     for (const d of demos) {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { ArrowLeft, Save, CheckCircle2, ShieldCheck, UserPlus, Mail } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
+import ModulesNav from '../../components/layout/ModulesNav'
 
 const ROLE_OPTIONS = [
   { value: 'ae', label: 'AE' },
@@ -24,6 +25,8 @@ export default function SettingsPage() {
   const [slackUserId, setSlackUserId] = useState('')
   const [slackSaving, setSlackSaving] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
+  const [slackTesting, setSlackTesting] = useState(false)
+  const [slackTestResult, setSlackTestResult] = useState(null)
 
   // Team (admin only)
   const [teamMembers, setTeamMembers] = useState([])
@@ -71,9 +74,24 @@ export default function SettingsPage() {
         body: JSON.stringify({ slack_user_id: slackUserId.trim() || null }),
       })
       setSlackSaved(true)
+      setSlackTestResult(null)
       setTimeout(() => setSlackSaved(false), 3000)
     } catch {}
     finally { setSlackSaving(false) }
+  }
+
+  const handleSlackTest = async () => {
+    setSlackTesting(true)
+    setSlackTestResult(null)
+    try {
+      const r = await fetch('/api/slack/test-dm', { method: 'POST' })
+      const d = await r.json()
+      setSlackTestResult(r.ok ? 'sent' : d.error || 'failed')
+    } catch {
+      setSlackTestResult('failed')
+    } finally {
+      setSlackTesting(false)
+    }
   }
 
   const handleInvite = async () => {
@@ -114,11 +132,14 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b shadow-sm">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-3">
-          <button onClick={() => router.push('/modules')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-            <ArrowLeft className="w-4 h-4 text-gray-500" />
-          </button>
-          <h1 className="text-base font-semibold text-gray-900">Settings</h1>
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.push('/modules')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+              <ArrowLeft className="w-4 h-4 text-gray-500" />
+            </button>
+            <h1 className="text-base font-semibold text-gray-900">Settings</h1>
+          </div>
+          <ModulesNav router={router} />
         </div>
       </div>
 
@@ -152,7 +173,7 @@ export default function SettingsPage() {
             <textarea
               value={emailSignature}
               onChange={e => setEmailSignature(e.target.value)}
-              placeholder={'Best regards,\nJames Lindberg\nBanner\njames@withbanner.com'}
+              placeholder={'Best regards,\n[Your Name]\n[Your Company]\n[your@email.com]'}
               rows={5}
               className="w-full px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
             />
@@ -173,7 +194,7 @@ export default function SettingsPage() {
               <p className="text-xs text-gray-500 mb-3">
                 In Slack: click your profile photo → ••• → <strong>Copy member ID</strong>. Looks like <code className="bg-gray-100 px-1 rounded">U01234ABCDE</code>
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <input
                   type="text"
                   value={slackUserId}
@@ -189,7 +210,18 @@ export default function SettingsPage() {
                   {slackSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
                   {slackSaved ? 'Saved' : 'Save'}
                 </button>
-                {slackSaved && <span className="text-xs text-green-600">Daily digests will DM you.</span>}
+                {slackUserId && (
+                  <button
+                    onClick={handleSlackTest}
+                    disabled={slackTesting}
+                    className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  >
+                    {slackTesting ? 'Sending…' : 'Send test DM'}
+                  </button>
+                )}
+                {slackTestResult === 'sent' && <span className="text-xs text-green-600">Test sent — check Slack.</span>}
+                {slackTestResult && slackTestResult !== 'sent' && <span className="text-xs text-red-500">{slackTestResult}</span>}
+                {slackSaved && !slackTestResult && <span className="text-xs text-green-600">Saved.</span>}
               </div>
             </div>
           </div>

@@ -39,14 +39,20 @@ export default async function handler(req, res) {
   if (!accountId) return apiError(res, 400, 'accountId required');
 
   const db = getSupabase();
-  const { data: rows, error } = await db
-    .from('gong_call_analyses')
-    .select('gong_call_id, title, rep_name, analysis, analyzed_at, call_date, match_confidence, match_method, transcript_text')
-    .eq('account_id', accountId)
-    .eq('ignored', false)
-    .not('analyzed_at', 'is', null)
-    .order('analyzed_at', { ascending: false })
-    .limit(100);
+  const [{ data: rows, error }, { count: pendingCount }] = await Promise.all([
+    db.from('gong_call_analyses')
+      .select('gong_call_id, title, rep_name, analysis, analyzed_at, call_date, match_confidence, match_method, transcript_text')
+      .eq('account_id', accountId)
+      .eq('ignored', false)
+      .not('analyzed_at', 'is', null)
+      .order('analyzed_at', { ascending: false })
+      .limit(100),
+    db.from('gong_call_analyses')
+      .select('id', { count: 'exact', head: true })
+      .eq('account_id', accountId)
+      .eq('ignored', false)
+      .is('analyzed_at', null),
+  ]);
 
   if (error) return apiError(res, 500, error.message);
 
@@ -80,5 +86,5 @@ export default async function handler(req, res) {
     return new Date(b.date || 0) - new Date(a.date || 0);
   });
 
-  return apiSuccess(res, { calls, total: calls.length });
+  return apiSuccess(res, { calls, total: calls.length, pendingCount: pendingCount || 0 });
 }

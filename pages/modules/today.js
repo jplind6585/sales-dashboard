@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import {
-  Zap, Building2, Send, TrendingUp, Users, LayoutGrid, BarChart3,
+  Zap, Building2, Send, TrendingUp, Users, BarChart3,
   ChevronDown, ChevronUp, ChevronRight, X, RefreshCw,
   Calendar, Clock, Loader2, AlertCircle, CheckCircle2,
   Sparkles, ArrowRight, Target, Info, Phone, Mail,
@@ -11,56 +11,7 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import UserMenu from '../../components/auth/UserMenu';
-
-// ─── Modules quick-nav ────────────────────────────────────────────────────────
-const QUICK_MODULES = [
-  { label: 'Today', href: '/modules/today', icon: Zap, color: 'text-amber-500' },
-  { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-600' },
-  { label: 'Outbound Engine', href: '/modules/outbound-engine', icon: Send, color: 'text-purple-600' },
-  { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
-  { label: 'Rep Coaching', href: '/modules/coaching', icon: Users, color: 'text-indigo-600' },
-  { label: 'Account Pursuit', href: '/modules/pursuit', icon: Target, color: 'text-orange-500' },
-  { label: 'Bottleneck', href: '/modules/bottleneck', icon: BarChart3, color: 'text-red-500' },
-  { label: 'All Modules', href: '/modules', icon: LayoutGrid, color: 'text-gray-600' },
-]
-
-function ModulesNav({ router }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-      >
-        <LayoutGrid className="w-4 h-4" />
-        Modules
-        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 w-52 z-20">
-          {QUICK_MODULES.map(m => (
-            <button
-              key={m.href}
-              onClick={() => { router.push(m.href); setOpen(false) }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
-            >
-              <m.icon className={`w-4 h-4 ${m.color}`} />
-              {m.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+import ModulesNav from '../../components/layout/ModulesNav';
 
 // ─── Stage badge ──────────────────────────────────────────────────────────────
 
@@ -452,7 +403,7 @@ function MorningBriefCard({ fallbackTasks }) {
 
         {!loading && !brief && (
           <div className="space-y-3">
-            <p className="text-xs text-gray-500 italic">No AI brief yet — check back after your first call of the day</p>
+            <p className="text-xs text-gray-500 italic">Generating your brief — check back shortly, or hit refresh above.</p>
             {fallbackTasks && fallbackTasks.length > 0 ? (
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Your open tasks</p>
@@ -496,6 +447,18 @@ function MorningBriefCard({ fallbackTasks }) {
                   {brief.deals_to_watch.slice(0, 3).map((d, i) => (
                     <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5">
                       <span className="text-amber-400 mt-0.5">•</span>{d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {brief.quick_wins?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Quick Wins</p>
+                <ul className="space-y-1">
+                  {brief.quick_wins.slice(0, 3).map((w, i) => (
+                    <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5">
+                      <span className="text-green-500 mt-0.5">✓</span>{w}
                     </li>
                   ))}
                 </ul>
@@ -1038,7 +1001,63 @@ function PipelineFocusCard({ userId, router }) {
 
 // ─── AE View ──────────────────────────────────────────────────────────────────
 
-function AEView({ userId, providerToken, router }) {
+// ─── Onboarding card (dismissed per-browser) ──────────────────────────────────
+
+function OnboardingCard({ profile, router }) {
+  const [dismissed, setDismissed] = useState(true)
+
+  useEffect(() => {
+    const isDismissed = localStorage.getItem('onboarding_card_dismissed') === '1'
+    if (!isDismissed) setDismissed(false)
+  }, [])
+
+  const hasSlack = !!profile?.slack_user_id
+  const hasRepType = !!localStorage.getItem('user_rep_type')
+  const allDone = hasSlack && hasRepType
+
+  const dismiss = () => {
+    localStorage.setItem('onboarding_card_dismissed', '1')
+    setDismissed(true)
+  }
+
+  if (dismissed || allDone) return null
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start justify-between gap-4">
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-blue-900 mb-2">Get set up — 2 steps</p>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-sm">
+            {hasRepType
+              ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+              : <div className="w-4 h-4 rounded-full border-2 border-blue-300 shrink-0" />
+            }
+            <span className={hasRepType ? 'text-gray-400 line-through' : 'text-blue-800'}>
+              Set your role (SDR or AE) using the toggle above
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            {hasSlack
+              ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+              : <div className="w-4 h-4 rounded-full border-2 border-blue-300 shrink-0" />
+            }
+            <span className={hasSlack ? 'text-gray-400 line-through' : 'text-blue-800'}>
+              <button onClick={() => router.push('/modules/settings')} className="underline hover:text-blue-600">
+                Add your Slack ID
+              </button>
+              {' '}to receive daily digests
+            </span>
+          </div>
+        </div>
+      </div>
+      <button onClick={dismiss} className="text-blue-300 hover:text-blue-500 shrink-0 mt-0.5">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  )
+}
+
+function AEView({ userId, providerToken, router, profile }) {
   const [allTasks, setAllTasks] = useState(null)
   const [insightsData, setInsightsData] = useState(null)
   const [todayEvents, setTodayEvents] = useState(null)
@@ -1051,6 +1070,8 @@ function AEView({ userId, providerToken, router }) {
 
   return (
     <div className="space-y-6">
+      <OnboardingCard profile={profile} router={router} />
+
       {/* Row 1 — Deal Intelligence (full width) */}
       <DealIntelligencePanel router={router} onInsightsLoaded={setInsightsData} />
 
@@ -1653,7 +1674,7 @@ export default function TodayPage() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         {activeView === 'manager' && <ManagerView router={router} />}
         {activeView === 'ae' && (
-          <AEView userId={user?.id} providerToken={providerToken} router={router} />
+          <AEView userId={user?.id} providerToken={providerToken} router={router} profile={profile} />
         )}
         {activeView === 'sdr' && <SDRView router={router} />}
       </div>

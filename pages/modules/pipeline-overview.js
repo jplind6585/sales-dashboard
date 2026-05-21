@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
+import ModulesNav from '../../components/layout/ModulesNav'
 import { STAGES } from '../../lib/constants'
 
 function fmt$(n) {
@@ -387,6 +388,7 @@ export default function PipelineOverview() {
               <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing…' : 'Sync HubSpot'}
             </button>
+            <ModulesNav router={router} />
             <UserMenu />
           </div>
         </div>

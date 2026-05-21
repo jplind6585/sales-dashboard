@@ -8,6 +8,7 @@ import { useAccountStore } from '../../stores/useAccountStore';
 
 // Auth components
 import UserMenu from '../../components/auth/UserMenu';
+import ModulesNav from '../../components/layout/ModulesNav';
 
 // Constants
 import { TABS } from '../../lib/constants';
@@ -166,6 +167,7 @@ export default function Home() {
   const [search, setSearch] = useState('');
   const [filterStage, setFilterStage] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
+  const [myOwnerName, setMyOwnerName] = useState('');
   const [filterCompetitor, setFilterCompetitor] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [sortBy, setSortBy] = useState('az'); // az | last_call | call_count | cold
@@ -244,6 +246,19 @@ export default function Home() {
       if (target) handleSelectAccount(target);
     }
   }, [router.query, accounts]);
+
+  // Load current user profile to default owner filter to "my accounts"
+  useEffect(() => {
+    fetch('/api/me')
+      .then(r => r.json())
+      .then(d => {
+        if (d.profile?.full_name) {
+          setMyOwnerName(d.profile.full_name)
+          setFilterOwner(d.profile.full_name)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // Load call stats for sort/filter (once on mount)
   useEffect(() => {
@@ -573,7 +588,8 @@ export default function Home() {
             </button>
             <h1 className="text-3xl font-bold">Account Management</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <ModulesNav router={router} />
             <button
               onClick={() => setShowNewAccount(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -618,6 +634,24 @@ export default function Home() {
                 />
               </div>
 
+              {/* My / All toggle */}
+              {myOwnerName && (
+                <div className="flex bg-gray-100 rounded-md p-0.5 mb-1">
+                  <button
+                    onClick={() => setFilterOwner(myOwnerName)}
+                    className={`flex-1 text-xs py-1 rounded transition-colors ${filterOwner === myOwnerName ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    My accounts
+                  </button>
+                  <button
+                    onClick={() => setFilterOwner('')}
+                    className={`flex-1 text-xs py-1 rounded transition-colors ${filterOwner === '' ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    All
+                  </button>
+                </div>
+              )}
+
               {/* Filter row */}
               <div className="flex gap-1.5">
                 <select
@@ -630,13 +664,13 @@ export default function Home() {
                     <option key={s} value={s}>{STAGE_LABELS[s] || s}</option>
                   ))}
                 </select>
-                {uniqueOwners.length > 0 && (
+                {uniqueOwners.length > 1 && filterOwner === '' && (
                   <select
                     value={filterOwner}
                     onChange={e => setFilterOwner(e.target.value)}
                     className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
                   >
-                    <option value="">Owner</option>
+                    <option value="">All owners</option>
                     {uniqueOwners.map(o => (
                       <option key={o} value={o}>{o.split(' ')[0]}</option>
                     ))}

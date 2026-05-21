@@ -13,7 +13,6 @@ import { createGongHeaders } from '../../../lib/apiUtils';
 import { getSupabase } from '../../../lib/supabase';
 
 const GONG_API_BASE = 'https://api.gong.io';
-const AUTO_ANALYZE_REPS = ['James Lindberg'];
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -182,10 +181,6 @@ export default async function handler(req, res) {
 
   const toAnalyze = allCalls
     .filter(call => !doneIds.has(call.id))
-    .filter(call => {
-      const user = userMap[call.primaryUserId];
-      return user && AUTO_ANALYZE_REPS.includes(user.name);
-    })
     .slice(0, analyzeCap);
 
   const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL

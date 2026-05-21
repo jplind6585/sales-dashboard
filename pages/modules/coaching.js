@@ -5,6 +5,7 @@ import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Zap, Users, MessageSquare,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
+import ModulesNav from '../../components/layout/ModulesNav'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 const REPS = ['James Lindberg', 'Mark Murphy', 'Logan King', 'Tony Alic', 'Justin Goodkind', 'Jovan Arsovski']
@@ -235,6 +236,7 @@ export default function CoachingDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ModulesNav router={router} />
             {user && <UserMenu />}
           </div>
         </div>
