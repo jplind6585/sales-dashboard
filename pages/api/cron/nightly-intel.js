@@ -92,13 +92,35 @@ export default async function handler(req, res) {
   const recentCalls = await fetchGongCalls(recentFrom, toDate, '90d sweep');
 
   // Merge, deduplicate by Gong call ID
-  const seenIds = new Set(longCalls.map(c => c.id));
+  const longCallIds = new Set(longCalls.map(c => c.id));
+  const seenIds = new Set(longCallIds);
   const allCalls = [...longCalls];
+  const supplementalOnly = [];
   for (const call of recentCalls) {
     if (!seenIds.has(call.id)) {
       allCalls.push(call);
       seenIds.add(call.id);
+      supplementalOnly.push(call);
     }
+  }
+
+  // Alert if supplemental sweep caught calls the main sweep missed — signals pagination degradation
+  if (supplementalOnly.length > 0) {
+    const slackToken = process.env.SLACK_BOT_TOKEN;
+    const managerChannel = process.env.SLACK_MANAGER_CHANNEL || 'D02PGNHTR53';
+    if (slackToken) {
+      const titles = supplementalOnly.slice(0, 5).map(c => `• ${c.title || 'Untitled'}`).join('\n');
+      const more = supplementalOnly.length > 5 ? `\n+${supplementalOnly.length - 5} more` : '';
+      await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${slackToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: managerChannel,
+          text: `⚠️ Nightly intel: main sweep missed ${supplementalOnly.length} call(s) — caught by supplemental sweep. Gong pagination may be degraded.\n${titles}${more}`,
+        }),
+      }).catch(() => {});
+    }
+    console.log(`[nightly-intel] WARN: supplemental sweep rescued ${supplementalOnly.length} calls missed by main sweep`);
   }
 
   if (!allCalls.length) {
