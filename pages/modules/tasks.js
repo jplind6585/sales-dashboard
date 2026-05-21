@@ -475,8 +475,8 @@ function WorkInClaude({ task, onClose }) {
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' ? (
                 <div className="group relative max-w-[85%] space-y-1.5">
-                  <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
-                    {msg.content}
+                  <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed">
+                    {renderMarkdown(msg.content)}
                   </div>
                   <button
                     onClick={() => {
@@ -1710,6 +1710,30 @@ function NewTaskModal({ onClose, onCreate, currentUserId, users }) {
   )
 }
 
+// ─── Markdown renderer (handles **bold**, # headers, line breaks) ─────────────
+function renderMarkdown(text) {
+  if (!text) return null
+  return text.split('\n').map((line, i, arr) => {
+    let tag = 'span'
+    let content = line
+    if (line.startsWith('### ')) { tag = 'h3'; content = line.slice(4) }
+    else if (line.startsWith('## ')) { tag = 'h2'; content = line.slice(3) }
+    else if (line.startsWith('# ')) { tag = 'h1'; content = line.slice(2) }
+
+    const parts = content.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
+      part.startsWith('**') && part.endsWith('**')
+        ? <strong key={j}>{part.slice(2, -2)}</strong>
+        : part
+    )
+
+    const br = i < arr.length - 1 ? <br /> : null
+    if (tag === 'h1') return <span key={i} style={{ display: 'block', fontWeight: 700, fontSize: '0.9em', marginTop: '0.5em' }}>{parts}{br}</span>
+    if (tag === 'h2') return <span key={i} style={{ display: 'block', fontWeight: 600, marginTop: '0.4em' }}>{parts}{br}</span>
+    if (tag === 'h3') return <span key={i} style={{ display: 'block', fontWeight: 600, color: '#374151', marginTop: '0.3em' }}>{parts}{br}</span>
+    return <span key={i}>{parts}{br}</span>
+  })
+}
+
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
 function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selected, onToggleSelect, bulkMode }) {
@@ -1725,7 +1749,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
       selected ? 'border-blue-300 bg-blue-50/30' :
       overdue ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'
     } hover:shadow-sm`}>
-      <div className="flex items-start gap-3 p-4">
+      <div className="flex items-start gap-3 p-4" onClick={() => setExpanded(e => !e)} style={{ cursor: 'pointer' }}>
         {/* Checkbox — visible on hover or in bulk mode */}
         <div className={`mt-0.5 flex-shrink-0 ${bulkMode ? '' : 'opacity-0 group-hover:opacity-100'}`} style={{ width: '16px' }}>
           <input
@@ -1739,7 +1763,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
 
         {/* Complete toggle */}
         <button
-          onClick={() => onStatusChange(task.id, task.status === 'complete' ? 'open' : 'complete')}
+          onClick={(e) => { e.stopPropagation(); onStatusChange(task.id, task.status === 'complete' ? 'open' : 'complete') }}
           className="mt-0.5 flex-shrink-0 text-gray-400 hover:text-green-500 transition-colors"
         >
           {task.status === 'complete'
@@ -1754,7 +1778,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
             <p className={`text-sm font-medium leading-snug ${task.status === 'complete' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
               {task.title}
             </p>
-            <button onClick={() => setExpanded(!expanded)} className="flex-shrink-0 text-gray-400 hover:text-gray-600 mt-0.5">
+            <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }} className="flex-shrink-0 text-gray-400 hover:text-gray-600 mt-0.5">
               <ChevronDown className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
             </button>
           </div>
@@ -1802,7 +1826,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
             {/* Work in Claude */}
             {onWorkInClaude && task.status !== 'complete' && (
               <button
-                onClick={() => onWorkInClaude(task)}
+                onClick={(e) => { e.stopPropagation(); onWorkInClaude(task) }}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-colors"
                 title="Work in Claude"
               >
@@ -1812,7 +1836,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
             )}
 
             {/* Status selector */}
-            <div className="relative ml-auto">
+            <div className="relative ml-auto" onClick={e => e.stopPropagation()}>
               <button
                 onClick={() => setStatusOpen(!statusOpen)}
                 className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
@@ -1843,7 +1867,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
 
           {/* Expanded details */}
           {expanded && (
-            <div className="mt-3 border-t border-gray-100 pt-3 space-y-2">
+            <div className="mt-3 border-t border-gray-100 pt-3 space-y-2" onClick={e => e.stopPropagation()}>
               {task.rationale && (
                 <div className="flex items-start gap-1.5 bg-blue-50 rounded-lg px-3 py-2">
                   <Info className="w-3.5 h-3.5 text-blue-500 mt-0.5 flex-shrink-0" />

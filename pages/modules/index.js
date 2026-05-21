@@ -2,7 +2,7 @@ import { useRouter } from 'next/router'
 import {
   CheckCircle2, Zap, Building2, Send, TrendingUp,
   Target, BarChart3, Users, Settings, AlertTriangle,
-  BarChart2, LayoutGrid,
+  BarChart2, LayoutGrid, Sliders,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 
@@ -75,9 +75,9 @@ const MODULES = [
     title: 'Sales Processes',
     href: '/modules/sales-processes',
     description: 'Edit ICP definition, discovery framework, stage exit criteria',
-    icon: Settings,
-    color: 'text-gray-600',
-    bg: 'bg-gray-100',
+    icon: Sliders,
+    color: 'text-cyan-600',
+    bg: 'bg-cyan-50',
   },
   {
     title: 'Data Quality',
@@ -88,8 +88,8 @@ const MODULES = [
     bg: 'bg-yellow-50',
   },
   {
-    title: 'Call Intelligence',
-    href: '/modules/sales-reports/call-intelligence',
+    title: 'Sales Reports',
+    href: '/modules/sales-reports',
     description: 'Team dashboard, ICP scores, discovery trends, objection themes',
     icon: BarChart2,
     color: 'text-green-600',

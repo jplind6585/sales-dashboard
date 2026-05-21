@@ -1,50 +1,66 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Save, CheckCircle2, ShieldCheck, Users } from 'lucide-react'
+import { ArrowLeft, Save, CheckCircle2, ShieldCheck, UserPlus, Mail } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
+
+const ROLE_OPTIONS = [
+  { value: 'ae', label: 'AE' },
+  { value: 'sdr', label: 'SDR' },
+  { value: 'manager', label: 'Manager' },
+]
 
 export default function SettingsPage() {
   const router = useRouter()
+  const [profile, setProfile] = useState(null)
+  const isAdmin = profile?.role === 'admin'
+
+  // Email sig
   const [emailSignature, setEmailSignature] = useState('')
   const [autoAppend, setAutoAppend] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [sigSaving, setSigSaving] = useState(false)
+  const [sigSaved, setSigSaved] = useState(false)
 
-  // Slack settings
+  // Slack
   const [slackUserId, setSlackUserId] = useState('')
   const [slackSaving, setSlackSaving] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
 
-  // Rep type
-  const [repType, setRepType] = useState(null) // 'sdr' | 'ae' | null
-  const [repTypeSaving, setRepTypeSaving] = useState(false)
-  const [repTypeSaved, setRepTypeSaved] = useState(false)
+  // Team (admin only)
+  const [teamMembers, setTeamMembers] = useState([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('ae')
+  const [inviteSending, setInviteSending] = useState(false)
+  const [inviteResult, setInviteResult] = useState(null)
 
-  // Load settings on mount
   useEffect(() => {
     const settings = getUserSettings()
     setEmailSignature(settings.emailSignature || '')
     setAutoAppend(settings.emailPreferences?.autoAppendSignature !== false)
-    // Load profile fields
+
     fetch('/api/me')
       .then(r => r.json())
       .then(d => {
+        if (d.profile) setProfile(d.profile)
         if (d.profile?.slack_user_id) setSlackUserId(d.profile.slack_user_id)
-        if (d.profile?.rep_type) {
-          setRepType(d.profile.rep_type)
-          if (typeof window !== 'undefined') localStorage.setItem('user_rep_type', d.profile.rep_type)
-        } else if (typeof window !== 'undefined') {
-          const local = localStorage.getItem('user_rep_type')
-          if (local) setRepType(local)
-        }
       })
-      .catch(() => {
-        if (typeof window !== 'undefined') {
-          const local = localStorage.getItem('user_rep_type')
-          if (local) setRepType(local)
-        }
-      })
+      .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(d => setTeamMembers(d.users || d || []))
+      .catch(() => {})
+  }, [isAdmin])
+
+  const handleSigSave = async () => {
+    setSigSaving(true)
+    saveUserSettings({ emailSignature, emailPreferences: { autoAppendSignature: autoAppend } })
+    setSigSaved(true)
+    setTimeout(() => setSigSaved(false), 3000)
+    setSigSaving(false)
+  }
 
   const handleSlackSave = async () => {
     setSlackSaving(true)
@@ -60,260 +76,214 @@ export default function SettingsPage() {
     finally { setSlackSaving(false) }
   }
 
-  const handleRepTypeSave = async (type) => {
-    setRepType(type)
-    if (typeof window !== 'undefined') localStorage.setItem('user_rep_type', type)
-    setRepTypeSaving(true)
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return
+    setInviteSending(true)
+    setInviteResult(null)
     try {
-      await fetch('/api/me', {
-        method: 'PATCH',
+      const r = await fetch('/api/admin/invite-user', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rep_type: type }),
+        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
       })
-      setRepTypeSaved(true)
-      setTimeout(() => setRepTypeSaved(false), 3000)
-    } catch {}
-    finally { setRepTypeSaving(false) }
+      const d = await r.json()
+      if (r.ok) {
+        setInviteResult({ ok: true, msg: `Invite sent to ${inviteEmail}` })
+        setInviteEmail('')
+      } else {
+        setInviteResult({ ok: false, msg: d.error || 'Invite failed' })
+      }
+    } catch (e) {
+      setInviteResult({ ok: false, msg: e.message })
+    } finally {
+      setInviteSending(false)
+    }
   }
 
-  const handleSave = async () => {
-    setIsSaving(true)
-    setSaveSuccess(false)
-
+  const handleRoleChange = async (userId, newRole) => {
     try {
-      const success = saveUserSettings({
-        emailSignature,
-        emailPreferences: {
-          autoAppendSignature: autoAppend,
-        },
+      await fetch('/api/admin/update-user', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, rep_type: newRole }),
       })
-
-      if (success) {
-        setSaveSuccess(true)
-        setTimeout(() => setSaveSuccess(false), 3000)
-      }
-    } catch (error) {
-      console.error('Error saving settings:', error)
-      alert('Failed to save settings')
-    } finally {
-      setIsSaving(false)
-    }
+      setTeamMembers(prev => prev.map(u => u.id === userId ? { ...u, rep_type: newRole } : u))
+    } catch {}
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/modules')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-                <p className="text-sm text-gray-600">Manage your preferences and email settings</p>
-              </div>
-            </div>
-          </div>
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-3">
+          <button onClick={() => router.push('/modules')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <ArrowLeft className="w-4 h-4 text-gray-500" />
+          </button>
+          <h1 className="text-base font-semibold text-gray-900">Settings</h1>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h2 className="text-lg font-semibold mb-6">Email Settings</h2>
+      <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
 
-          {/* Email Signature */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Signature
-            </label>
-            <p className="text-sm text-gray-600 mb-3">
-              This signature will be automatically added to all generated follow-up emails
-            </p>
+        {/* ── Email Signature ── */}
+        <div className="bg-white rounded-xl border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-900">Email Signature</h2>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoAppend}
+                  onChange={e => setAutoAppend(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded"
+                />
+                Auto-append to emails
+              </label>
+              <button
+                onClick={handleSigSave}
+                disabled={sigSaving}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {sigSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                {sigSaved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <textarea
               value={emailSignature}
-              onChange={(e) => setEmailSignature(e.target.value)}
-              placeholder="Best regards,&#10;James Lindberg&#10;Account Executive&#10;Banner&#10;james@withbanner.com&#10;(555) 123-4567"
-              rows={8}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+              onChange={e => setEmailSignature(e.target.value)}
+              placeholder={'Best regards,\nJames Lindberg\nBanner\njames@withbanner.com'}
+              rows={5}
+              className="w-full px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
             />
-            <p className="text-xs text-gray-500 mt-2">
-              {emailSignature.length} / 5000 characters
-            </p>
+            <div className="bg-gray-50 rounded-lg border px-3 py-2 text-sm text-gray-500 min-h-[100px]">
+              {emailSignature
+                ? <span className="text-gray-800 whitespace-pre-line">{emailSignature}</span>
+                : <span className="text-gray-400 text-xs">Preview will appear here</span>
+              }
+            </div>
           </div>
+        </div>
 
-          {/* Auto-append Toggle */}
-          <div className="mb-6">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoAppend}
-                onChange={(e) => setAutoAppend(e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <div>
-                <div className="text-sm font-medium text-gray-700">
-                  Automatically append signature to emails
-                </div>
-                <div className="text-xs text-gray-500">
-                  Signature will be added when you click "Send to Gmail"
-                </div>
+        {/* ── Slack ── */}
+        <div className="bg-white rounded-xl border p-5">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold text-gray-900 mb-1">Slack Member ID</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                In Slack: click your profile photo → ••• → <strong>Copy member ID</strong>. Looks like <code className="bg-gray-100 px-1 rounded">U01234ABCDE</code>
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={slackUserId}
+                  onChange={e => setSlackUserId(e.target.value)}
+                  placeholder="U01234ABCDE"
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                />
+                <button
+                  onClick={handleSlackSave}
+                  disabled={slackSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {slackSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                  {slackSaved ? 'Saved' : 'Save'}
+                </button>
+                {slackSaved && <span className="text-xs text-green-600">Daily digests will DM you.</span>}
               </div>
-            </label>
+            </div>
           </div>
+        </div>
 
-          {/* Save Button */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isSaving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Saving...
-                </>
-              ) : saveSuccess ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  Saved!
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  Save Settings
-                </>
-              )}
-            </button>
+        {/* ── Data Quality ── */}
+        <div className="bg-white rounded-xl border p-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Data Quality</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Unmatched calls, duplicate accounts, missing HubSpot links</p>
+          </div>
+          <button
+            onClick={() => router.push('/modules/data-quality')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-700 transition-colors"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Open Queue
+          </button>
+        </div>
 
-            {saveSuccess && (
-              <span className="text-sm text-green-600 font-medium">
-                Settings saved successfully
-              </span>
+        {/* ── Team Management (admin only) ── */}
+        {isAdmin && (
+          <div className="bg-white rounded-xl border p-5">
+            <h2 className="text-sm font-semibold text-gray-900 mb-4">Team</h2>
+
+            {/* Invite */}
+            <div className="flex items-end gap-2 mb-5 pb-5 border-b border-gray-100">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleInvite()}
+                  placeholder="name@withbanner.com"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={e => setInviteRole(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {ROLE_OPTIONS.map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={handleInvite}
+                disabled={inviteSending || !inviteEmail.trim()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                {inviteSending ? 'Sending…' : 'Send invite'}
+              </button>
+            </div>
+            {inviteResult && (
+              <p className={`text-xs mb-4 ${inviteResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                {inviteResult.msg}
+              </p>
+            )}
+
+            {/* User list */}
+            {teamMembers.length > 0 && (
+              <div className="space-y-2">
+                {teamMembers.map(u => (
+                  <div key={u.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{u.full_name || u.name || '—'}</p>
+                      <p className="text-xs text-gray-400">{u.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{u.role}</span>
+                      <select
+                        value={u.rep_type || ''}
+                        onChange={e => handleRoleChange(u.id, e.target.value)}
+                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                      >
+                        <option value="">— type —</option>
+                        {ROLE_OPTIONS.map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
+        )}
 
-          {/* Preview Section */}
-          {emailSignature && (
-            <div className="mt-8 pt-6 border-t">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Preview</h3>
-              <div className="bg-gray-50 rounded-lg p-4 border">
-                <div className="text-sm text-gray-600 mb-4">
-                  [Email content will appear here]
-                </div>
-                <div className="text-sm text-gray-800 whitespace-pre-line border-t pt-4">
-                  {emailSignature}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Rep Type */}
-        <div className="bg-white rounded-xl shadow-sm border p-6 mt-6">
-          <div className="flex items-center gap-2 mb-2">
-            <Users className="w-5 h-5 text-gray-500" />
-            <h2 className="text-lg font-semibold">Role Type</h2>
-          </div>
-          <p className="text-sm text-gray-600 mb-4">
-            Sets your view in the Today page and determines which AI-generated insights are most relevant for you.
-          </p>
-          <div className="flex gap-3">
-            {[
-              { value: 'sdr', label: 'SDR', desc: 'Call queue, pursuit tracking, activity goals' },
-              { value: 'ae', label: 'AE', desc: 'Meeting prep, deal progress, pipeline focus' },
-            ].map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => handleRepTypeSave(opt.value)}
-                className={`flex-1 p-4 rounded-xl border-2 text-left transition-colors ${
-                  repType === opt.value
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className={`text-sm font-semibold mb-1 ${repType === opt.value ? 'text-blue-700' : 'text-gray-800'}`}>
-                  {opt.label}
-                  {repType === opt.value && <span className="ml-2 text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded">Active</span>}
-                </div>
-                <div className="text-xs text-gray-500">{opt.desc}</div>
-              </button>
-            ))}
-          </div>
-          {repTypeSaved && (
-            <p className="text-sm text-green-600 font-medium mt-3 flex items-center gap-1">
-              <CheckCircle2 className="w-4 h-4" /> Role type saved
-            </p>
-          )}
-          {!repType && (
-            <p className="text-xs text-gray-400 mt-3">Not set — Today page will default to AE view</p>
-          )}
-        </div>
-
-        {/* Data Quality */}
-        <div className="bg-white rounded-xl shadow-sm border p-6 mt-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-lg font-semibold mb-1">Data Quality</h2>
-              <p className="text-sm text-gray-600">
-                Review unmatched calls, potential duplicate accounts, missing HubSpot links, and alias suggestions. Admin use.
-              </p>
-            </div>
-            <button
-              onClick={() => router.push('/modules/data-quality')}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors shrink-0 ml-6"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              Open Queue
-            </button>
-          </div>
-        </div>
-
-        {/* Slack Settings */}
-        <div className="bg-white rounded-xl shadow-sm border p-6 mt-6">
-          <h2 className="text-lg font-semibold mb-2">Slack</h2>
-          <p className="text-sm text-gray-600 mb-6">
-            Connect your Slack account to receive your daily task digest as a direct message.
-          </p>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Slack Member ID
-            </label>
-            <p className="text-sm text-gray-500 mb-2">
-              Find it in Slack: click your profile photo → 3 dots (•••) → <strong>Copy member ID</strong>. Looks like <code className="bg-gray-100 px-1 rounded">U01234ABCDE</code>.
-            </p>
-            <input
-              type="text"
-              value={slackUserId}
-              onChange={e => setSlackUserId(e.target.value)}
-              placeholder="U01234ABCDE"
-              className="w-full max-w-sm border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSlackSave}
-              disabled={slackSaving}
-              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {slackSaving ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : slackSaved ? (
-                <CheckCircle2 className="w-4 h-4" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              {slackSaved ? 'Saved!' : 'Save Slack ID'}
-            </button>
-            {slackSaved && <span className="text-sm text-green-600 font-medium">Daily digests will now DM you directly.</span>}
-          </div>
-        </div>
       </div>
     </div>
   )
