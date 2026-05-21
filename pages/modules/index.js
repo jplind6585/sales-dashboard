@@ -95,6 +95,14 @@ const MODULES = [
     color: 'text-green-600',
     bg: 'bg-green-50',
   },
+  {
+    title: 'Settings',
+    href: '/modules/settings',
+    description: 'Email signature, Slack ID, rep type, and team management',
+    icon: Settings,
+    color: 'text-gray-600',
+    bg: 'bg-gray-100',
+  },
 ]
 
 export default function ModulesIndex() {
