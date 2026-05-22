@@ -72,36 +72,44 @@ export default async function handler(req, res) {
   let processed = 0
   let failed = 0
 
-  for (const call of backlog) {
-    try {
-      const r = await fetch(`${baseUrl}/api/gong/intel-analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
-        body: JSON.stringify({
-          callId: call.gong_call_id,
-          title: call.title,
-          date: call.call_date,
-          callType: call.call_type,
-          repName: call.rep_name,
-          repEmail: call.rep_email,
-          durationSeconds: call.duration_seconds,
-          gongUrl: call.gong_url,
-          transcriptText: call.transcript_text || null,
-        }),
-      })
-      const d = await r.json().catch(() => ({}))
-      if (d.analysis) {
-        processed++
-        console.log(`[process-backlog] analyzed: ${call.title}`)
-      } else {
+  // Process in concurrent batches of 5 — each Claude call ~20s, so 5 concurrent = 75 calls in ~300s
+  const CONCURRENCY = 5
+  for (let i = 0; i < backlog.length; i += CONCURRENCY) {
+    const chunk = backlog.slice(i, i + CONCURRENCY)
+    await Promise.all(chunk.map(async (call) => {
+      try {
+        const r = await fetch(`${baseUrl}/api/gong/intel-analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+          body: JSON.stringify({
+            callId: call.gong_call_id,
+            title: call.title,
+            date: call.call_date,
+            callType: call.call_type,
+            repName: call.rep_name,
+            repEmail: call.rep_email,
+            durationSeconds: call.duration_seconds,
+            gongUrl: call.gong_url,
+            transcriptText: call.transcript_text || null,
+          }),
+        })
+        const d = await r.json().catch(() => ({}))
+        if (d.analysis) {
+          processed++
+          console.log(`[process-backlog] analyzed: ${call.title}`)
+        } else {
+          failed++
+          console.error(`[process-backlog] failed: ${call.title}`, d.error)
+        }
+      } catch (e) {
         failed++
-        console.error(`[process-backlog] failed: ${call.title}`, d.error)
+        console.error(`[process-backlog] error on ${call.gong_call_id}:`, e.message)
       }
-    } catch (e) {
-      failed++
-      console.error(`[process-backlog] error on ${call.gong_call_id}:`, e.message)
+    }))
+    // Brief pause between batches to avoid overwhelming Anthropic rate limits
+    if (i + CONCURRENCY < backlog.length) {
+      await new Promise(r => setTimeout(r, 500))
     }
-    await new Promise(r => setTimeout(r, 400))
   }
 
   const { count: remaining } = await db

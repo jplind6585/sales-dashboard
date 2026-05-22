@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart } from 'lucide-react'
+import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart, Database } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
@@ -69,6 +69,17 @@ const REPORTS = [
     available: true,
     status: 'live',
     tags: ['HubSpot', 'Admin', 'Audit'],
+  },
+  {
+    id: 'call-registry',
+    name: 'Call Registry',
+    description: 'Every Gong call in one table — date, rep, account, stage, analysis status, transcript availability, discovery score, ICP score. Filter by rep, status, or date range. The source of truth for call coverage.',
+    icon: Database,
+    href: '/modules/sales-reports/call-registry',
+    color: 'from-cyan-500 to-blue-600',
+    available: true,
+    status: 'live',
+    tags: ['Gong', 'Admin', 'All calls'],
   },
 ]
 
