@@ -28,7 +28,7 @@ export default async function handler(req, res) {
 
   const priorityAccountIds = (priorityAccounts || []).map(a => a.id)
 
-  const BATCH = 50
+  const BATCH = 75
   let backlog = []
 
   // Slot 1: up to BATCH calls from active-stage accounts (most recent first)

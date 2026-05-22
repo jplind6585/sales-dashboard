@@ -14,10 +14,10 @@ import {
   Sparkles
 } from 'lucide-react';
 import UserMenu from '../../components/auth/UserMenu';
+import ModulesNav from '../../components/layout/ModulesNav';
 import CompanyDetailModal from '../../components/outbound/CompanyDetailModalV2';
 import { getCompanies, calculatePercentProspected, updateCompany } from '../../lib/outboundStorage';
 import { VERTICALS, STATUS_OPTIONS, PRIORITY_OPTIONS } from '../../lib/outboundConstants';
-import { seedSampleData } from '../../lib/seedOutboundData';
 import { useAccountStore } from '../../stores/useAccountStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 
@@ -114,7 +114,6 @@ export default function OutboundEngine() {
 
   // Load companies on mount
   useEffect(() => {
-    seedSampleData(); // Seed sample data if empty
     loadCompanies();
   }, []);
 
@@ -209,6 +208,7 @@ export default function OutboundEngine() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <ModulesNav router={router} />
               <button
                 onClick={() => {/* TODO: Open new company modal */}}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

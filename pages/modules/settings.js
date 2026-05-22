@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { ArrowLeft, Save, CheckCircle2, ShieldCheck, UserPlus, Mail } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
 import ModulesNav from '../../components/layout/ModulesNav'
+import { STAGE_PROBABILITY, STAGE_LABELS, ACTIVE_STAGE_ORDER } from '../../lib/constants'
 
 const ROLE_OPTIONS = [
   { value: 'ae', label: 'AE' },
@@ -35,6 +36,11 @@ export default function SettingsPage() {
   const [inviteSending, setInviteSending] = useState(false)
   const [inviteResult, setInviteResult] = useState(null)
 
+  // Pipeline weights (admin only)
+  const [stageWeights, setStageWeights] = useState({ ...STAGE_PROBABILITY })
+  const [weightsSaving, setWeightsSaving] = useState(false)
+  const [weightsSaved, setWeightsSaved] = useState(false)
+
   useEffect(() => {
     const settings = getUserSettings()
     setEmailSignature(settings.emailSignature || '')
@@ -54,6 +60,15 @@ export default function SettingsPage() {
     fetch('/api/users')
       .then(r => r.json())
       .then(d => setTeamMembers(d.users || d || []))
+      .catch(() => {})
+
+    fetch('/api/sales-process')
+      .then(r => r.json())
+      .then(d => {
+        if (d.config?.stage_weights) {
+          setStageWeights(prev => ({ ...prev, ...d.config.stage_weights }))
+        }
+      })
       .catch(() => {})
   }, [isAdmin])
 
@@ -116,6 +131,24 @@ export default function SettingsPage() {
     } finally {
       setInviteSending(false)
     }
+  }
+
+  const handleWeightsSave = async () => {
+    setWeightsSaving(true)
+    try {
+      const normalized = Object.fromEntries(
+        Object.entries(stageWeights).map(([k, v]) => [k, Math.min(100, Math.max(0, Number(v) || 0))])
+      )
+      await fetch('/api/sales-process', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage_weights: normalized }),
+      })
+      setStageWeights(normalized)
+      setWeightsSaved(true)
+      setTimeout(() => setWeightsSaved(false), 3000)
+    } catch {}
+    finally { setWeightsSaving(false) }
   }
 
   const handleRoleChange = async (userId, newRole) => {
@@ -313,6 +346,46 @@ export default function SettingsPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Pipeline Weights (admin only) ── */}
+        {isAdmin && (
+          <div className="bg-white rounded-xl border p-5">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-semibold text-gray-900">Pipeline Confidence Weights</h2>
+              <button
+                onClick={handleWeightsSave}
+                disabled={weightsSaving}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {weightsSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                {weightsSaved ? 'Saved' : weightsSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">Base win probability (%) per stage. Drives the pipeline confidence score across all dashboards.</p>
+            <div className="space-y-2">
+              {ACTIVE_STAGE_ORDER.map(stageId => (
+                <div key={stageId} className="flex items-center gap-3">
+                  <span className="text-sm text-gray-700 w-40 shrink-0">{STAGE_LABELS[stageId]}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={stageWeights[stageId] ?? STAGE_PROBABILITY[stageId]}
+                    onChange={e => setStageWeights(prev => ({ ...prev, [stageId]: e.target.value }))}
+                    className="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-xs text-gray-400">%</span>
+                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(100, Math.max(0, Number(stageWeights[stageId]) || 0))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

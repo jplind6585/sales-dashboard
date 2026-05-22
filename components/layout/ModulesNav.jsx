@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useRouter as useNextRouter } from 'next/router'
 import {
   LayoutGrid, Zap, Building2, Send, TrendingUp, Users,
   Target, BarChart3, CheckCircle2, ChevronDown, ChevronUp,
@@ -8,11 +9,11 @@ const QUICK_MODULES = [
   { label: 'Today', href: '/modules/today', icon: Zap, color: 'text-amber-500' },
   { label: 'Tasks', href: '/modules/tasks', icon: CheckCircle2, color: 'text-blue-600' },
   { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-700' },
-  { label: 'Outbound Engine', href: '/modules/outbound-engine', icon: Send, color: 'text-purple-600' },
   { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
   { label: 'Rep Coaching', href: '/modules/coaching', icon: Users, color: 'text-indigo-600' },
-  { label: 'Account Pursuit', href: '/modules/pursuit', icon: Target, color: 'text-orange-500' },
   { label: 'Bottleneck', href: '/modules/bottleneck', icon: BarChart3, color: 'text-red-500' },
+  { label: 'Stage Analytics', href: '/modules/stage-analytics', icon: Target, color: 'text-orange-500' },
+  { label: 'Account Pursuit', href: '/modules/pursuit', icon: Send, color: 'text-purple-600' },
   { label: 'All Modules', href: '/modules', icon: LayoutGrid, color: 'text-gray-600' },
 ]
 
@@ -25,6 +26,8 @@ export default function ModulesNav({ router }) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  useEffect(() => { setOpen(false) }, [router?.pathname])
 
   const current = router?.pathname
 

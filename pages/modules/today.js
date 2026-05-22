@@ -12,6 +12,7 @@ import { getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import UserMenu from '../../components/auth/UserMenu';
 import ModulesNav from '../../components/layout/ModulesNav';
+import { PRIORITY_COLORS } from '../../lib/constants';
 
 // ─── Stage badge ──────────────────────────────────────────────────────────────
 
@@ -363,18 +364,18 @@ function MorningBriefCard({ fallbackTasks }) {
         setBrief(d.brief)
         localStorage.setItem('brief_cached_date', today)
         localStorage.setItem('brief_cached_data', JSON.stringify(d.brief))
+      } else {
+        const stale = localStorage.getItem('brief_cached_data')
+        if (stale) { try { setBrief(JSON.parse(stale)) } catch {} }
       }
-    } catch {}
+    } catch {
+      const stale = localStorage.getItem('brief_cached_data')
+      if (stale) { try { setBrief(JSON.parse(stale)) } catch {} }
+    }
     finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchBrief() }, [fetchBrief])
-
-  const PRIORITY_COLOR = {
-    1: 'text-red-600 bg-red-50 border-red-200',
-    2: 'text-amber-600 bg-amber-50 border-amber-200',
-    3: 'text-gray-500 bg-gray-50 border-gray-200',
-  }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -411,7 +412,7 @@ function MorningBriefCard({ fallbackTasks }) {
                   {fallbackTasks.slice(0, 3).map(task => (
                     <li key={task.id} className="flex items-start gap-2">
                       <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${
-                        task.priority === 1 ? PRIORITY_COLOR[1] : task.priority === 2 ? PRIORITY_COLOR[2] : PRIORITY_COLOR[3]
+                        task.priority === 1 ? PRIORITY_COLORS[1] : task.priority === 2 ? PRIORITY_COLORS[2] : PRIORITY_COLORS[3]
                       }`}>
                         {task.priority === 1 ? 'High' : task.priority === 2 ? 'Med' : 'Low'}
                       </span>
@@ -494,11 +495,6 @@ function TodaysTasksCard({ router, coldDeals, onTasksLoaded }) {
       .finally(() => setLoading(false))
   }, [])
 
-  const PRIORITY_COLOR = {
-    1: 'text-red-600 bg-red-50 border-red-200',
-    2: 'text-amber-600 bg-amber-50 border-amber-200',
-    3: 'text-gray-500 bg-gray-50 border-gray-200',
-  }
   const PRIORITY_LABEL = { 1: 'High', 2: 'Med', 3: 'Low' }
 
   return (
@@ -547,7 +543,7 @@ function TodaysTasksCard({ router, coldDeals, onTasksLoaded }) {
           <ul className="space-y-2">
             {tasks.map(task => (
               <li key={task.id} className="flex items-start gap-2">
-                <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${PRIORITY_COLOR[task.priority] || PRIORITY_COLOR[3]}`}>
+                <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${PRIORITY_COLORS[task.priority] || PRIORITY_COLORS[3]}`}>
                   {PRIORITY_LABEL[task.priority] || 'Low'}
                 </span>
                 <div className="min-w-0">
@@ -562,6 +558,144 @@ function TodaysTasksCard({ router, coldDeals, onTasksLoaded }) {
             ))}
           </ul>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Next Best Action Card ────────────────────────────────────────────────────
+
+const NBA_LOG_KEY = 'nba_log'
+
+function getNBALog() {
+  try { return JSON.parse(localStorage.getItem(NBA_LOG_KEY) || '[]') } catch { return [] }
+}
+
+function appendNBALog(entry) {
+  try {
+    const log = getNBALog()
+    log.unshift(entry)
+    localStorage.setItem(NBA_LOG_KEY, JSON.stringify(log.slice(0, 30)))
+  } catch {}
+}
+
+function getNBADismissedToday() {
+  const today = new Date().toISOString().split('T')[0]
+  try { return JSON.parse(localStorage.getItem(`nba_dismissed_${today}`) || '[]') } catch { return [] }
+}
+
+function dismissNBAToday(accountId) {
+  const today = new Date().toISOString().split('T')[0]
+  try {
+    const d = getNBADismissedToday()
+    if (!d.includes(accountId)) localStorage.setItem(`nba_dismissed_${today}`, JSON.stringify([...d, accountId]))
+  } catch {}
+}
+
+function FollowUpPrompt({ entry, onResolve }) {
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <p className="text-sm font-medium text-blue-900 mb-1">Quick follow-up</p>
+      <p className="text-sm text-blue-700 mb-3">
+        7 days ago you took action on <strong>{entry.accountName}</strong>. Did the deal move forward?
+      </p>
+      <div className="flex gap-2">
+        <button onClick={() => onResolve(entry, true)} className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700">
+          Yes, it did
+        </button>
+        <button onClick={() => onResolve(entry, false)} className="px-3 py-1.5 text-sm font-medium text-white bg-gray-600 rounded-lg hover:bg-gray-700">
+          Not yet
+        </button>
+        <button onClick={() => onResolve(entry, null)} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600">
+          Skip
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function NextBestActionCard({ router, insightsData }) {
+  const [dismissed, setDismissed] = useState(getNBADismissedToday)
+  const [done, setDone] = useState(false)
+  const [followUp, setFollowUp] = useState(null)
+
+  useEffect(() => {
+    // Check if there's a 7-day-old NBA log entry needing follow-up
+    const log = getNBALog()
+    const sevenDaysAgo = Date.now() - 7 * 86400000
+    const pending = log.find(e => !e.outcome && e.doneAt && new Date(e.doneAt).getTime() < sevenDaysAgo)
+    if (pending) setFollowUp(pending)
+  }, [])
+
+  const handleResolve = (entry, moved) => {
+    const log = getNBALog()
+    const updated = log.map(e => e.doneAt === entry.doneAt ? { ...e, outcome: moved === true ? 'moved' : moved === false ? 'stale' : 'skipped', resolvedAt: new Date().toISOString() } : e)
+    localStorage.setItem(NBA_LOG_KEY, JSON.stringify(updated))
+    setFollowUp(null)
+  }
+
+  if (followUp) {
+    return <FollowUpPrompt entry={followUp} onResolve={handleResolve} />
+  }
+
+  if (done) return null
+
+  // Pick the top action from idle queue (most overdue high-stage deal)
+  const idleQueue = insightsData?.idle_queue || []
+  const target = idleQueue.find(i => !dismissed.includes(i.account_id))
+  if (!target) return null
+
+  const stageLabel = (target.stage || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const daysCold = target.days_since_last_call
+
+  const handleDone = () => {
+    appendNBALog({
+      accountId: target.account_id,
+      accountName: target.name,
+      stage: target.stage,
+      action: target.suggested_angle,
+      doneAt: new Date().toISOString(),
+      outcome: null,
+    })
+    // Mark as dismissed for today too
+    dismissNBAToday(target.account_id)
+    setDone(true)
+  }
+
+  const handleSkip = () => {
+    dismissNBAToday(target.account_id)
+    setDismissed(getNBADismissedToday())
+  }
+
+  return (
+    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-5 text-white">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-200 mb-1">Next Best Action</p>
+          <p className="text-base font-bold leading-tight mb-1">
+            {daysCold != null
+              ? `Touch ${target.name} today — ${stageLabel} deal, ${daysCold}d no contact`
+              : `Follow up with ${target.name} — ${stageLabel}`}
+          </p>
+          <p className="text-sm text-blue-100">{target.suggested_angle}</p>
+        </div>
+        <button onClick={handleSkip} className="text-blue-300 hover:text-white mt-0.5">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="flex items-center gap-3 mt-4">
+        <button
+          onClick={() => router.push(`/modules/account-pipeline?account=${target.account_id}`)}
+          className="flex-1 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-lg text-center transition-colors"
+        >
+          Open account
+        </button>
+        <button
+          onClick={handleDone}
+          className="flex-1 py-2 bg-white text-blue-700 text-sm font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+        >
+          Done — I did this
+        </button>
       </div>
     </div>
   )
@@ -1072,7 +1206,10 @@ function AEView({ userId, providerToken, router, profile }) {
     <div className="space-y-6">
       <OnboardingCard profile={profile} router={router} />
 
-      {/* Row 1 — Deal Intelligence (full width) */}
+      {/* Row 1 — Next Best Action */}
+      <NextBestActionCard router={router} insightsData={insightsData} />
+
+      {/* Row 2 — Deal Intelligence (full width) */}
       <DealIntelligencePanel router={router} onInsightsLoaded={setInsightsData} />
 
       {/* Row 2 — three-col grid */}

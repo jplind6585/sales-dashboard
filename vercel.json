@@ -82,6 +82,14 @@
     {
       "path": "/api/cron/reengagement-picks",
       "schedule": "0 12 * * 1-5"
+    },
+    {
+      "path": "/api/cron/deal-expiry-alerts",
+      "schedule": "0 13 * * 1-5"
+    },
+    {
+      "path": "/api/cron/rep-checkin",
+      "schedule": "0 20 * * 0"
     }
   ]
 }

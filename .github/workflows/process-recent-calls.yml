@@ -2,8 +2,8 @@ name: Process Recent Gong Calls
 
 on:
   schedule:
-    # Every 30 minutes
-    - cron: '*/30 * * * *'
+    # Every 15 minutes (doubled from 30 min to clear backlog faster)
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
   process-backlog:
     runs-on: ubuntu-latest
     steps:
-      - name: Process unanalyzed call backlog
+      - name: Process unanalyzed call backlog (75 calls/run)
         run: |
           body=$(curl -s -w "\n%{http_code}" \
             -X POST "${{ secrets.PRODUCTION_URL }}/api/cron/process-backlog" \
@@ -38,3 +38,11 @@ jobs:
           response=$(echo "$body" | head -1)
           echo "Status: $status"
           echo "Response: $response"
+
+      - name: Run match-calls to link newly analyzed calls to accounts
+        run: |
+          curl -s -o /dev/null \
+            -X POST "${{ secrets.PRODUCTION_URL }}/api/hubspot/match-calls" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
+          echo "match-calls triggered"

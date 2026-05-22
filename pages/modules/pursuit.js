@@ -10,20 +10,16 @@ import {
   Mic,
   X,
   ChevronDown,
-  ChevronUp,
-  LayoutGrid,
   Building2,
-  TrendingUp,
-  Send,
   Users,
   MoreHorizontal,
   Target,
   CheckCircle2,
   Clock,
   Zap,
-  BarChart3,
 } from 'lucide-react';
 import UserMenu from '../../components/auth/UserMenu';
+import ModulesNav from '../../components/layout/ModulesNav';
 
 // ─── Storage Keys ─────────────────────────────────────────────────────────────
 
@@ -137,61 +133,6 @@ function TouchTypeIcon({ type, className = 'w-4 h-4' }) {
   if (!found) return null;
   const Icon = found.Icon;
   return <Icon className={className} />;
-}
-
-// ─── Modules quick-nav ────────────────────────────────────────────────────────
-
-const QUICK_MODULES = [
-  { label: 'Today', href: '/modules/today', icon: Zap, color: 'text-amber-500' },
-  { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-600' },
-  { label: 'Outbound Engine', href: '/modules/outbound-engine', icon: Send, color: 'text-purple-600' },
-  { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
-  { label: 'Rep Coaching', href: '/modules/coaching', icon: Users, color: 'text-indigo-600' },
-  { label: 'Bottleneck', href: '/modules/bottleneck', icon: BarChart3, color: 'text-red-500' },
-  { label: 'All Modules', href: '/modules', icon: LayoutGrid, color: 'text-gray-600' },
-];
-
-function ModulesNav({ router }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-      >
-        <LayoutGrid className="w-4 h-4" />
-        Modules
-        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 w-52 z-20">
-          {QUICK_MODULES.map((m) => (
-            <button
-              key={m.href}
-              onClick={() => {
-                router.push(m.href);
-                setOpen(false);
-              }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
-            >
-              <m.icon className={`w-4 h-4 ${m.color}`} />
-              {m.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ─── Add Account Modal ────────────────────────────────────────────────────────
@@ -1143,10 +1084,10 @@ export default function PursuitPage() {
                   <p className="text-xs text-gray-400 leading-tight">Top 50 named accounts</p>
                 </div>
               </div>
-              <ModulesNav router={router} />
             </div>
 
             <div className="flex items-center gap-3">
+              <ModulesNav router={router} />
               <button
                 onClick={() => setShowAddModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"

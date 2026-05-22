@@ -25,7 +25,9 @@ const STAGE_PRIORITY = {
 
 function extractCompanyFromTitle(title) {
   if (!title) return null;
-  let m = title.match(/^Banner\s*[-|]\s*(.+?)(?:\s*[:|]\s*\S.*)?$/i);
+  // "Banner - Company: Topic", "Banner | Company - Topic", "Banner/Company: Topic"
+  // Stop at `: ` or ` - ` which separate company from topic
+  let m = title.match(/^Banner\s*[-|/]\s*(.+?)(?:\s*[:|]\s*\S.*|\s+-\s+\S.*)?$/i);
   if (m) return m[1].trim();
   m = title.match(/^(.+?)\s*[|]\s*Banner\b/i);
   if (m) return m[1].trim();

@@ -133,6 +133,13 @@ export const useAccountStore = create((set, get) => ({
           )
         }
 
+        // Auto-fire playbooks whose stage_trigger matches the new stage
+        fetch('/api/playbooks/execute-for-stage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stage: newStage, accountId, userId }),
+        }).catch(() => {}) // non-fatal
+
         // Fire Slack notification to account's channel
         const updatedAccount = get().accounts.find(a => a.id === accountId)
         fetch('/api/slack/notify', {

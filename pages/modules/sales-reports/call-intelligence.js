@@ -13,6 +13,147 @@ import { useAuthStore } from '../../../stores/useAuthStore'
 import PeriodDelta from '../../../components/common/PeriodDelta'
 import ApiError from '../../../components/common/ApiError'
 
+// ─── Competitive Analytics Tab ────────────────────────────────────────────────
+
+function CompetitiveAnalyticsTab() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/gong/competitive-analytics')
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return (
+    <div className="flex items-center gap-2 py-8 text-sm text-gray-400">
+      <Loader2 className="w-4 h-4 animate-spin" /> Loading competitive data…
+    </div>
+  )
+
+  if (!data?.competitors?.length) return (
+    <div className="py-12 text-center text-sm text-gray-400">
+      No competitor mentions found in analyzed calls. Competitors are extracted automatically during call analysis.
+    </div>
+  )
+
+  const { competitors, totalCompetitiveDeals } = data
+
+  const winRateColor = (wr) => {
+    if (wr == null) return 'text-gray-400'
+    if (wr >= 50) return 'text-green-600'
+    if (wr >= 30) return 'text-amber-600'
+    return 'text-red-600'
+  }
+
+  const sentimentColor = (s) => {
+    if (s === 'positive') return 'text-green-600 bg-green-50'
+    if (s === 'negative') return 'text-red-600 bg-red-50'
+    return 'text-gray-600 bg-gray-100'
+  }
+
+  const sentimentLabel = (s) => s === 'positive' ? 'Positive for us' : s === 'negative' ? 'Risk' : 'Neutral'
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-4 mb-2">
+        <p className="text-sm text-gray-500">{competitors.length} competitors tracked · {totalCompetitiveDeals} deals with competitive mentions</p>
+      </div>
+
+      {competitors.map(c => (
+        <div key={c.name} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setExpanded(expanded === c.name ? null : c.name)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-base font-semibold text-gray-900">{c.name}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sentimentColor(c.overallSentiment)}`}>
+                {sentimentLabel(c.overallSentiment)}
+              </span>
+              <span className="text-xs text-gray-400">{c.totalMentions} mentions · {c.dealsWithMention} deals</span>
+            </div>
+            <div className="flex items-center gap-6">
+              {c.winRate != null && (
+                <div className="text-right">
+                  <p className={`text-xl font-bold ${winRateColor(c.winRate)}`}>{c.winRate}%</p>
+                  <p className="text-xs text-gray-400">win rate vs this competitor</p>
+                </div>
+              )}
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-medium text-green-600">{c.wonDeals}W / <span className="text-red-500">{c.lostDeals}L</span></p>
+                <p className="text-xs text-gray-400">{c.activeDeals} active</p>
+              </div>
+              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${expanded === c.name ? 'rotate-90' : ''}`} />
+            </div>
+          </button>
+
+          {expanded === c.name && (
+            <div className="border-t px-5 py-4 space-y-4">
+              {/* Win rate bar */}
+              {c.winRate != null && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium text-gray-600">Win rate when competing</span>
+                    <span className={`text-xs font-bold ${winRateColor(c.winRate)}`}>{c.winRate}%</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${c.winRate}%` }} />
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                    <span>{c.wonDeals} won</span>
+                    <span>{c.lostDeals} lost</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Recent contexts */}
+              {c.recentContexts.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">How they come up in calls</p>
+                  <div className="space-y-2">
+                    {c.recentContexts.map((ctx, i) => (
+                      <div key={i} className={`p-3 rounded-lg border-l-2 text-sm ${ctx.sentiment === 'negative' ? 'border-red-300 bg-red-50 text-red-800' : ctx.sentiment === 'positive' ? 'border-green-300 bg-green-50 text-green-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-gray-400">{ctx.date ? new Date(ctx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ctx.outcome === 'won' ? 'bg-green-100 text-green-700' : ctx.outcome === 'lost' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                            {ctx.outcome === 'won' ? 'Won deal' : ctx.outcome === 'lost' ? 'Lost deal' : 'Active'}
+                          </span>
+                        </div>
+                        {ctx.text}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Objection patterns */}
+              {c.objectionPatterns.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Competitive objections seen</p>
+                  <div className="space-y-2">
+                    {c.objectionPatterns.map((obj, i) => (
+                      <div key={i} className="p-3 rounded-lg bg-amber-50 border border-amber-100">
+                        <p className="text-sm text-gray-800 mb-1">{obj.text}</p>
+                        {obj.repResponse && (
+                          <p className="text-xs text-gray-500"><span className="font-medium">Rep responded:</span> {obj.repResponse}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
 function SentimentBadge({ sentiment }) {
@@ -757,6 +898,7 @@ export default function CallIntelligence() {
   const tabs = [
     { id: 'overview', label: 'Overview', disabled: !aggregate },
     { id: 'stage-breakdown', label: 'Stage Breakdown', disabled: false },
+    { id: 'competitive', label: 'Competitive', disabled: false },
     ...(goneColdDeals.length > 0 ? [{ id: 'cold', label: `Gone Cold (${goneColdDeals.length})`, disabled: false }] : []),
     { id: 'calls', label: `All Calls (${filteredCalls.length})`, disabled: false },
   ]
@@ -1886,6 +2028,11 @@ export default function CallIntelligence() {
                         </>
                       )}
                     </div>
+                  )}
+
+                  {/* ── Competitive tab ── */}
+                  {activeTab === 'competitive' && (
+                    <CompetitiveAnalyticsTab />
                   )}
 
                   {/* ── Gone Cold tab ── */}

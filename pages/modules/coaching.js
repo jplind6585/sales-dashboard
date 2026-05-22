@@ -8,12 +8,107 @@ import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { useAuthStore } from '../../stores/useAuthStore'
 
-const REPS = ['James Lindberg', 'Mark Murphy', 'Logan King', 'Tony Alic', 'Justin Goodkind', 'Jovan Arsovski']
-
 function TrendIcon({ direction }) {
   if (direction === 'up') return <TrendingUp className="w-3.5 h-3.5 text-green-500" />
   if (direction === 'down') return <TrendingDown className="w-3.5 h-3.5 text-red-500" />
   return <Minus className="w-3.5 h-3.5 text-gray-400" />
+}
+
+// ─── Meeting Quality Trend ────────────────────────────────────────────────────
+
+const TREND_METRICS = [
+  { key: 'discoveryScore', label: 'Discovery', max: 10, color: 'bg-blue-500', good: 'high' },
+  { key: 'nextStepRate', label: 'Next-Step %', max: 100, color: 'bg-green-500', good: 'high' },
+  { key: 'talkRatio', label: 'Talk Ratio %', max: 100, color: 'bg-amber-400', good: 'low' },
+]
+
+function MiniSparkline({ buckets, metricKey, max, color, good }) {
+  const values = buckets.map(b => b[metricKey])
+  const validValues = values.filter(v => v != null)
+  if (!validValues.length) return <span className="text-xs text-gray-300">—</span>
+
+  const peak = Math.max(...validValues, max * 0.1)
+  const recent = validValues[validValues.length - 1]
+  const prev = validValues[validValues.length - 2]
+  const improving = prev != null
+    ? (good === 'high' ? recent > prev : recent < prev)
+    : null
+
+  return (
+    <div className="flex items-end gap-0.5 h-8">
+      {buckets.map((b, i) => {
+        const v = b[metricKey]
+        const height = v != null ? Math.max((v / peak) * 100, 4) : 0
+        const isRecent = i === buckets.length - 1
+        return (
+          <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+            <div
+              className={`w-full rounded-t-sm transition-all ${isRecent ? color : 'bg-gray-200'}`}
+              style={{ height: `${height}%` }}
+              title={v != null ? `${b.label}: ${v}` : `${b.label}: no data`}
+            />
+          </div>
+        )
+      })}
+      {improving !== null && (
+        <span className={`text-xs ml-1 shrink-0 ${improving ? 'text-green-500' : 'text-red-400'}`}>
+          {improving ? '↑' : '↓'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function MeetingQualityTrend({ repName }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!repName) return
+    setLoading(true)
+    fetch(`/api/gong/rep-coaching-trend?repName=${encodeURIComponent(repName)}&weeks=12`)
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [repName])
+
+  if (!repName) return null
+  if (loading) return <div className="text-xs text-gray-400 py-2">Loading trend data…</div>
+  if (!data?.buckets?.length) return null
+
+  const buckets = data.buckets
+  const latestBucket = [...buckets].reverse().find(b => b.callCount > 0)
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-700">Meeting Quality Trend</h3>
+        <span className="text-xs text-gray-400">{data.totalCalls} calls · last 12 weeks</span>
+      </div>
+
+      <div className="space-y-4">
+        {TREND_METRICS.map(m => {
+          const latestVal = latestBucket?.[m.key]
+          return (
+            <div key={m.key}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-600">{m.label}</span>
+                <span className="text-xs text-gray-500">
+                  {latestVal != null ? `${latestVal}${m.max === 100 ? '%' : '/10'} (recent)` : 'No data'}
+                </span>
+              </div>
+              <MiniSparkline buckets={buckets} metricKey={m.key} max={m.max} color={m.color} good={m.good} />
+              <div className="flex justify-between mt-0.5">
+                <span className="text-xs text-gray-300">{buckets[0]?.label}</span>
+                <span className="text-xs text-gray-300">{buckets[buckets.length - 1]?.label}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 function MetricCard({ label, value, unit = '', trendObj, description, invert = false }) {
@@ -171,7 +266,8 @@ function CoachingCardRow({ card }) {
 export default function CoachingDashboard() {
   const router = useRouter()
   const { user } = useAuthStore()
-  const [selectedRep, setSelectedRep] = useState(REPS[0])
+  const [reps, setReps] = useState([])
+  const [selectedRep, setSelectedRep] = useState('')
   const [days, setDays] = useState(30)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -179,6 +275,17 @@ export default function CoachingDashboard() {
   const [currentFocus, setCurrentFocus] = useState(null)
   const [recentCards, setRecentCards] = useState(null)
   const [cardsOpen, setCardsOpen] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(d => {
+        const names = (d.users || d || []).map(u => u.full_name || u.name).filter(Boolean)
+        setReps(names)
+        if (names.length > 0 && !selectedRep) setSelectedRep(names[0])
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const stored = localStorage.getItem(`coaching_focus_${selectedRep}`)
@@ -252,7 +359,7 @@ export default function CoachingDashboard() {
               onChange={e => handleRepChange(e.target.value)}
               className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {REPS.map(r => <option key={r} value={r}>{r}</option>)}
+              {reps.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-2">
@@ -523,6 +630,9 @@ export default function CoachingDashboard() {
                     </div>
                   </div>
                 )}
+
+                {/* Meeting quality trend */}
+                <MeetingQualityTrend repName={selectedRep} />
               </>
             )}
           </>

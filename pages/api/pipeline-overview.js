@@ -1,17 +1,8 @@
 import { createClient } from '../../lib/supabase'
 
-// Stage-based win probability (%)
-const STAGE_PROBABILITY = {
-  qualifying: 5,
-  intro_scheduled: 10,
-  active_pursuit: 20,
-  demo: 35,
-  solution_validation: 55,
-  proposal: 70,
-  legal: 85,
-  closed_won: 100,
-  closed_lost: 0,
-}
+import { STAGE_PROBABILITY as STAGE_PROBABILITY_DEFAULT } from '../../lib/constants'
+
+let STAGE_PROBABILITY = STAGE_PROBABILITY_DEFAULT
 
 function accountConfidence(account) {
   const base = STAGE_PROBABILITY[account.stage] ?? 10
@@ -31,6 +22,14 @@ export default async function handler(req, res) {
   const supabase = createClient()
 
   try {
+    // ── Stage weights (from DB config if set, else hardcoded defaults) ────────
+    const { data: configRow } = await supabase.from('sales_process_config').select('stage_weights').limit(1).single()
+    if (configRow?.stage_weights && typeof configRow.stage_weights === 'object') {
+      STAGE_PROBABILITY = { ...STAGE_PROBABILITY_DEFAULT, ...configRow.stage_weights }
+    } else {
+      STAGE_PROBABILITY = STAGE_PROBABILITY_DEFAULT
+    }
+
     // ── Accounts ─────────────────────────────────────────────────────────────
     const { data: accounts, error: accountsError } = await supabase
       .from('accounts')

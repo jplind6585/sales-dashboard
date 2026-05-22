@@ -27,8 +27,9 @@ function stagePriority(stage) {
 function extractCompanyFromTitle(title) {
   if (!title) return null;
 
-  // "Banner - Company: Topic" or "Banner | Company - Topic"
-  let m = title.match(/^Banner\s*[-|]\s*(.+?)(?:\s*[:|]\s*\S.*)?$/i);
+  // "Banner - Company: Topic", "Banner | Company - Topic", "Banner/Company: Topic"
+  // Stop at `: ` or ` - ` which separate company name from call topic
+  let m = title.match(/^Banner\s*[-|/]\s*(.+?)(?:\s*[:|]\s*\S.*|\s+-\s+\S.*)?$/i);
   if (m) return m[1].trim();
 
   // "Company | Banner..."

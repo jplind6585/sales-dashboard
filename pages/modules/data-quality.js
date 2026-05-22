@@ -5,6 +5,7 @@ import {
   Search, ChevronRight, X, Plus, Tag, Globe, Undo2, Zap,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
+import ModulesNav from '../../components/layout/ModulesNav'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 const TABS = [
@@ -329,6 +330,7 @@ export default function DataQuality() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ModulesNav router={router} />
             <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
             </button>

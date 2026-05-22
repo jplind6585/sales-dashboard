@@ -11,7 +11,7 @@ import UserMenu from '../../components/auth/UserMenu';
 import ModulesNav from '../../components/layout/ModulesNav';
 
 // Constants
-import { TABS } from '../../lib/constants';
+import { TABS, STAGE_LABELS, STAGE_COLORS, ALL_STAGE_ORDER, ACTIVE_STAGE_ORDER, INACTIVE_STAGE_IDS, CLOSED_STAGE_IDS } from '../../lib/constants';
 
 // Layout components
 import AISidebar from '../../components/layout/AISidebar';
@@ -32,55 +32,284 @@ import InformationGapsTab from '../../components/tabs/InformationGapsTab';
 import ContentTab from '../../components/tabs/ContentTab';
 import ChatTab from '../../components/tabs/ChatTab';
 
-const STAGE_ORDER = [
-  'active_pursuit',
-  'qualifying',
-  'solution_validation',
-  'proposal',
-  'legal',
-  'demo',
-  'intro_scheduled',
-  'inactive_sdr_follow_up',
-  'inactive_ae_follow_up',
-  'closed_won',
-  'closed_lost',
-  'won',
-  'lost',
-]
+const INACTIVE_STAGES = new Set([...INACTIVE_STAGE_IDS, 'won', 'lost'])
+const CLOSED_STAGES = new Set([...CLOSED_STAGE_IDS, 'won', 'lost'])
 
-const INACTIVE_STAGES = new Set(['inactive_sdr_follow_up', 'inactive_ae_follow_up'])
-const CLOSED_STAGES = new Set(['closed_won', 'closed_lost', 'won', 'lost'])
+// ─── Journey Tab ──────────────────────────────────────────────────────────────
 
-const STAGE_LABELS = {
-  active_pursuit: 'Active Pursuit',
-  qualifying: 'Qualifying',
-  intro_scheduled: 'Intro Sched.',
-  demo: 'Demo',
-  solution_validation: 'Sol. Val.',
-  proposal: 'Proposal',
-  legal: 'Legal',
-  inactive_sdr_follow_up: 'Inactive SDR',
-  inactive_ae_follow_up: 'Inactive AE',
-  won: 'Won',
-  lost: 'Lost',
-  closed_won: 'Won',
-  closed_lost: 'Lost',
+function JourneyTab({ account }) {
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!account?.id) return
+    fetch(`/api/accounts/stage-history?accountId=${account.id}`)
+      .then(r => r.json())
+      .then(d => setHistory(d.history || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [account?.id])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-gray-400">
+        Loading journey…
+      </div>
+    )
+  }
+
+  if (history.length === 0) {
+    return (
+      <div className="text-center py-12 text-sm text-gray-400">
+        No stage history recorded yet.
+      </div>
+    )
+  }
+
+  const totalDays = history.reduce((sum, h) => sum + (h.days_in_prior_stage || 0), 0)
+
+  return (
+    <div className="p-6 space-y-1">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-900">Stage Journey</h3>
+        {totalDays > 0 && (
+          <span className="text-xs text-gray-400">{totalDays} days total tracked</span>
+        )}
+      </div>
+
+      <div className="relative">
+        {/* Vertical connector */}
+        <div className="absolute left-[15px] top-6 bottom-6 w-px bg-gray-200" />
+
+        <div className="space-y-0">
+          {history.map((step, i) => {
+            const isLast = i === history.length - 1
+            const fromLabel = STAGE_LABELS[step.from_stage] || step.from_stage || '—'
+            const toLabel = STAGE_LABELS[step.to_stage] || step.to_stage || '—'
+            const isWon = step.to_stage === 'closed_won' || step.to_stage === 'won'
+            const isLost = step.to_stage === 'closed_lost' || step.to_stage === 'lost'
+            const dotColor = isWon ? 'bg-green-500' : isLost ? 'bg-red-400' : 'bg-blue-500'
+
+            return (
+              <div key={step.id} className="flex items-start gap-4 py-3">
+                <div className={`w-[30px] flex-shrink-0 flex items-center justify-center pt-0.5`}>
+                  <div className={`w-3 h-3 rounded-full border-2 border-white shadow ${dotColor} z-10`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-gray-900">{toLabel}</span>
+                    {step.days_in_prior_stage != null && (
+                      <span className="text-xs text-gray-400">after {step.days_in_prior_stage}d in {fromLabel}</span>
+                    )}
+                    {isLast && !isWon && !isLost && (
+                      <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">current</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-gray-400">
+                      {step.changed_at ? new Date(step.changed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                    </span>
+                    {step.changed_by_name && (
+                      <span className="text-xs text-gray-400">· {step.changed_by_name}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }
 
-const STAGE_COLORS = {
-  active_pursuit: 'bg-indigo-100 text-indigo-700',
-  qualifying: 'bg-blue-100 text-blue-700',
-  intro_scheduled: 'bg-sky-100 text-sky-700',
-  demo: 'bg-purple-100 text-purple-700',
-  solution_validation: 'bg-orange-100 text-orange-700',
-  proposal: 'bg-yellow-100 text-yellow-700',
-  legal: 'bg-pink-100 text-pink-700',
-  inactive_sdr_follow_up: 'bg-gray-100 text-gray-500',
-  inactive_ae_follow_up: 'bg-gray-100 text-gray-500',
-  won: 'bg-green-100 text-green-700',
-  lost: 'bg-red-100 text-red-500',
-  closed_won: 'bg-green-100 text-green-700',
-  closed_lost: 'bg-red-100 text-red-500',
+// ─── CS Handover Tab ──────────────────────────────────────────────────────────
+
+function CSHandoverTab({ account }) {
+  const [brief, setBrief] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const chatEndRef = useRef(null)
+
+  useEffect(() => {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  const generate = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/accounts/cs-handover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: account.id }),
+      })
+      const data = await res.json()
+      if (data.brief) setBrief(data.brief)
+    } catch { /* silent */ }
+    finally { setLoading(false) }
+  }
+
+  const sendChat = async () => {
+    const msg = chatInput.trim()
+    if (!msg || chatLoading) return
+    const updated = [...chatMessages, { role: 'user', content: msg }]
+    setChatMessages(updated)
+    setChatInput('')
+    setChatLoading(true)
+    try {
+      const res = await fetch('/api/accounts/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: account.id, messages: updated }),
+      })
+      const data = await res.json()
+      if (data.message) setChatMessages(prev => [...prev, { role: 'assistant', content: data.message }])
+    } catch { /* silent */ }
+    finally { setChatLoading(false) }
+  }
+
+  if (!brief) {
+    return (
+      <div className="p-6">
+        <div className="max-w-lg mx-auto text-center py-12">
+          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Deal Closed — Great work!</h3>
+          <p className="text-sm text-gray-500 mb-6">
+            Generate a CS handover brief from all calls, commitments, and deal context so your CS team can hit the ground running.
+          </p>
+          <button
+            onClick={generate}
+            disabled={loading}
+            className="px-6 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {loading ? 'Generating…' : 'Generate Handover Brief'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const Section = ({ title, children }) => (
+    <div className="bg-white border rounded-xl overflow-hidden mb-4">
+      <div className="px-4 py-2.5 border-b bg-gray-50">
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{title}</span>
+      </div>
+      <div className="px-4 py-3">{children}</div>
+    </div>
+  )
+
+  const List = ({ items }) => (
+    <ul className="space-y-1.5">
+      {(items || []).map((item, i) => (
+        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+          <span className="text-gray-400 mt-0.5">•</span>{item}
+        </li>
+      ))}
+    </ul>
+  )
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h3 className="font-semibold text-gray-900">CS Handover Brief</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Generated from {brief.callCount} analyzed calls · {brief.generatedAt ? new Date(brief.generatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</p>
+        </div>
+        <button onClick={generate} disabled={loading} className="text-xs text-gray-400 hover:text-gray-600">
+          {loading ? 'Regenerating…' : 'Regenerate'}
+        </button>
+      </div>
+
+      <Section title="What was sold">
+        <p className="text-sm text-gray-700">{brief.what_was_sold}</p>
+      </Section>
+
+      <Section title="Key contacts">
+        <List items={brief.key_contacts} />
+      </Section>
+
+      {brief.integrations_promised?.length > 0 && (
+        <Section title="Integrations & commitments">
+          <List items={brief.integrations_promised} />
+        </Section>
+      )}
+
+      {brief.implementation_timeline && (
+        <Section title="Implementation timeline">
+          <p className="text-sm text-gray-700">{brief.implementation_timeline}</p>
+        </Section>
+      )}
+
+      {brief.known_risks?.length > 0 && (
+        <Section title="Risks & watch-outs for CS">
+          <List items={brief.known_risks} />
+        </Section>
+      )}
+
+      {brief.open_questions?.length > 0 && (
+        <Section title="Open questions to resolve">
+          <List items={brief.open_questions} />
+        </Section>
+      )}
+
+      {brief.tone_notes && (
+        <Section title="Relationship notes">
+          <p className="text-sm text-gray-600 italic">{brief.tone_notes}</p>
+        </Section>
+      )}
+
+      {/* Follow-up chat */}
+      <div className="mt-6 bg-white border rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b bg-gray-50">
+          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Ask about the deal</span>
+        </div>
+        <div className="p-4">
+          {chatMessages.length > 0 && (
+            <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+              {chatMessages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
+                    m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {m.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 px-3 py-2 rounded-xl text-sm text-gray-400">…</div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendChat()}
+              placeholder="e.g. What integration did we promise? What's the timeline?"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <button
+              onClick={sendChat}
+              disabled={chatLoading || !chatInput.trim()}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              Ask
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function CompetitorTags({ account, onSave }) {
@@ -287,7 +516,7 @@ export default function Home() {
   // Derive unique stages in pipeline order
   const uniqueStages = useMemo(() => {
     const present = new Set(accounts.map(a => a.stage).filter(Boolean))
-    return STAGE_ORDER.filter(s => present.has(s))
+    return ALL_STAGE_ORDER.filter(s => present.has(s))
   }, [accounts])
 
   // Filter + search + sort accounts
@@ -350,8 +579,8 @@ export default function Home() {
       })
     } else if (sortBy === 'stage') {
       filtered.sort((a, b) => {
-        const aIdx = STAGE_ORDER.indexOf(a.stage)
-        const bIdx = STAGE_ORDER.indexOf(b.stage)
+        const aIdx = ALL_STAGE_ORDER.indexOf(a.stage)
+        const bIdx = ALL_STAGE_ORDER.indexOf(b.stage)
         return aIdx - bIdx
       })
     }
@@ -567,6 +796,10 @@ export default function Home() {
         return <ContentTab account={selectedAccount} />;
       case 'chat':
         return <ChatTab account={selectedAccount} />;
+      case 'journey':
+        return <JourneyTab account={selectedAccount} />;
+      case 'cs_handover':
+        return <CSHandoverTab account={selectedAccount} />;
       default:
         return null;
     }
@@ -580,9 +813,9 @@ export default function Home() {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push('/modules')}
+              onClick={() => router.back()}
               className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-              title="Back to modules"
+              title="Go back"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -659,7 +892,7 @@ export default function Home() {
                   onChange={e => setFilterStage(e.target.value)}
                   className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
                 >
-                  <option value="">All stages</option>
+                  <option value="">All active</option>
                   {uniqueStages.map(s => (
                     <option key={s} value={s}>{STAGE_LABELS[s] || s}</option>
                   ))}
@@ -709,8 +942,18 @@ export default function Home() {
             {/* Account list */}
             <div className="overflow-y-auto flex-1 p-2">
               {filteredAccounts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 text-sm">
-                  {accounts.length === 0 ? 'No accounts yet.' : 'No matches.'}
+                <div className="text-center py-8 px-3">
+                  <p className="text-sm text-gray-500">
+                    {accounts.length === 0 ? 'No accounts yet.' : `No accounts match${search ? ` "${search}"` : ''}.`}
+                  </p>
+                  {(search || filterStage || filterOwner !== myOwnerName) && (
+                    <button
+                      onClick={() => { setSearch(''); setFilterStage(''); setFilterOwner(myOwnerName) }}
+                      className="mt-2 text-xs text-blue-600 hover:underline"
+                    >
+                      Clear filters
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -969,7 +1212,7 @@ export default function Home() {
 
                   {/* Tab navigation */}
                   <div className="flex gap-4 border-b">
-                    {TABS.map(tab => (
+                    {TABS.filter(tab => !tab.closedWonOnly || selectedAccount?.stage === 'closed_won').map(tab => (
                       <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}

@@ -4,7 +4,7 @@ import {
   CheckCircle2, Circle, Clock, AlertCircle, ChevronDown,
   Plus, Users, Filter, RefreshCw, Zap,
   Calendar, Building2, BarChart3, X, ChevronRight,
-  LayoutGrid, TrendingUp, Send, ChevronUp, Sparkles,
+  LayoutGrid, TrendingUp, Send, Sparkles,
   Target, BanIcon, Info, Star, MessageSquare, ArrowRight,
   Loader2, CornerDownLeft, Phone, Mic, Square, CheckCheck,
   Copy, Search
@@ -14,58 +14,10 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import UserMenu from '../../components/auth/UserMenu';
+import ModulesNav from '../../components/layout/ModulesNav';
+import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../lib/constants';
 import SmartSuggestionsPanel from '../../components/smart-suggestions/SmartSuggestionsPanel';
 import TaskCompleteModal from '../../components/tasks/TaskCompleteModal';
-
-// ─── Modules quick-nav ────────────────────────────────────────────────────────
-const QUICK_MODULES = [
-  { label: 'Today', href: '/modules/today', icon: Zap, color: 'text-amber-500' },
-  { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-600' },
-  { label: 'Outbound Engine', href: '/modules/outbound-engine', icon: Send, color: 'text-purple-600' },
-  { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
-  { label: 'Rep Coaching', href: '/modules/coaching', icon: Users, color: 'text-indigo-600' },
-  { label: 'Account Pursuit', href: '/modules/pursuit', icon: Target, color: 'text-orange-500' },
-  { label: 'Bottleneck', href: '/modules/bottleneck', icon: BarChart3, color: 'text-red-500' },
-  { label: 'All Modules', href: '/modules', icon: LayoutGrid, color: 'text-gray-600' },
-]
-
-function ModulesNav({ router }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-      >
-        <LayoutGrid className="w-4 h-4" />
-        Modules
-        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 w-52 z-20">
-          {QUICK_MODULES.map(m => (
-            <button
-              key={m.href}
-              onClick={() => { router.push(m.href); setOpen(false) }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
-            >
-              <m.icon className={`w-4 h-4 ${m.color}`} />
-              {m.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Work in Claude (per-task AI chat side panel) ────────────────────────────
 
@@ -1539,12 +1491,8 @@ function DismissModal({ task, onClose, onDismiss }) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PRIORITY_LABEL = { 1: 'High', 2: 'Medium', 3: 'Low' }
-const PRIORITY_COLOR = {
-  1: 'text-red-600 bg-red-50 border-red-200',
-  2: 'text-amber-600 bg-amber-50 border-amber-200',
-  3: 'text-gray-500 bg-gray-50 border-gray-200',
-}
+const PRIORITY_LABEL = PRIORITY_LABELS
+const PRIORITY_COLOR = PRIORITY_COLORS
 const TYPE_LABEL = {
   triggered:  'Triggered',
   assigned:   'Assigned',

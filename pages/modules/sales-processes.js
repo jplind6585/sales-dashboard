@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
 import UserMenu from '../../components/auth/UserMenu';
+import ModulesNav from '../../components/layout/ModulesNav';
 
 const HARDCODED_CONFIG = {
   icp_definition: `# Banner ICP Definition
@@ -862,6 +863,7 @@ export default function SalesProcesses() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <ModulesNav router={router} />
               {user && <UserMenu />}
             </div>
           </div>

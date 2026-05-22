@@ -1,9 +1,20 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList } from 'lucide-react'
+import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
 const REPORTS = [
+  {
+    id: 'ceo-dashboard',
+    name: 'CEO Dashboard',
+    description: 'Pipeline confidence score, win rate, top deals to watch, rep breakdown, and win/loss insights from debriefs. The one view that tells you if the business is on track.',
+    icon: LineChart,
+    href: '/modules/sales-reports/ceo-dashboard',
+    color: 'from-slate-700 to-gray-900',
+    available: true,
+    status: 'live',
+    tags: ['Pipeline', 'Win/Loss', 'Forecast'],
+  },
   {
     id: 'team-dashboard',
     name: 'Team Dashboard',

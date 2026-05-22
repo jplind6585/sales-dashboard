@@ -11,23 +11,11 @@ import {
   Activity,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
+import ModulesNav from '../../components/layout/ModulesNav'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { STAGE_LABELS } from '../../lib/constants'
 
 // ── Config ────────────────────────────────────────────────────────────────────
-
-const STAGE_LABELS = {
-  qualifying: 'Qualifying',
-  active_pursuit: 'Active Pursuit',
-  intro_scheduled: 'Intro Scheduled',
-  demo: 'Demo',
-  solution_validation: 'Solution Validation',
-  proposal: 'Proposal',
-  legal: 'Legal',
-  closed_won: 'Closed Won',
-  closed_lost: 'Closed Lost',
-  inactive_sdr_follow_up: 'Inactive – SDR',
-  inactive_ae_follow_up: 'Inactive – AE',
-}
 
 const STAGE_ORDER = [
   'qualifying', 'active_pursuit', 'intro_scheduled', 'demo',
@@ -602,6 +590,7 @@ export default function StageAnalytics() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <ModulesNav router={router} />
             <button
               onClick={() => loadData(true)}
               disabled={refreshing}

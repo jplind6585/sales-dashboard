@@ -607,6 +607,176 @@ function memoryBadgeClass(type) {
   return MEMORY_TYPE_BADGE[type] || 'bg-gray-100 text-gray-600'
 }
 
+// ─── Win/Loss Debrief Modal ───────────────────────────────────────────────────
+
+const LOST_REASONS = [
+  'Price / budget',
+  'Chose a competitor',
+  'No decision / status quo',
+  'Timing not right',
+  'Wrong stakeholder / champion lost',
+  'Product gaps',
+  'Lost executive support',
+]
+
+const WON_FACTORS = [
+  'Strong champion',
+  'Best product fit',
+  'Competitive pricing',
+  'Fast time-to-value',
+  'Relationship / trust',
+  'Clear ROI story',
+  'Sales process execution',
+]
+
+const LOST_FACTORS = [
+  'Weak champion',
+  'Cheaper alternative',
+  'Product gaps',
+  'Slow sales cycle',
+  'Economic buyer not engaged',
+  'No compelling event',
+  'Lost to status quo',
+]
+
+function WinLossDebriefModal({ stage, accountName, existingDebrief, onSave, onCancel }) {
+  const isWon = stage === 'closed_won'
+  const [primaryReason, setPrimaryReason] = useState(existingDebrief?.primary_reason || '')
+  const [selectedFactors, setSelectedFactors] = useState(existingDebrief?.factors || [])
+  const [whatWentWell, setWhatWentWell] = useState(existingDebrief?.what_went_well || '')
+  const [improve, setImprove] = useState(existingDebrief?.what_to_improve || '')
+  const [notes, setNotes] = useState(existingDebrief?.notes || '')
+  const [saving, setSaving] = useState(false)
+
+  const factors = isWon ? WON_FACTORS : LOST_FACTORS
+
+  const toggleFactor = (f) => {
+    setSelectedFactors(prev =>
+      prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]
+    )
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    await onSave({
+      outcome: isWon ? 'won' : 'lost',
+      closed_at: new Date().toISOString(),
+      primary_reason: primaryReason,
+      factors: selectedFactors,
+      what_went_well: whatWentWell,
+      what_to_improve: improve,
+      notes,
+    })
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className={`px-6 py-5 rounded-t-2xl ${isWon ? 'bg-green-50 border-b border-green-100' : 'bg-red-50 border-b border-red-100'}`}>
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className={`text-lg font-bold ${isWon ? 'text-green-900' : 'text-red-900'}`}>
+                {isWon ? 'Deal Won!' : 'Deal Lost'}
+              </h2>
+              <p className="text-sm text-gray-600 mt-0.5">{accountName} — capture what happened while it's fresh</p>
+            </div>
+            <button onClick={onCancel} className="p-1.5 hover:bg-black/5 rounded-lg text-gray-400">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {!isWon && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Primary reason lost</label>
+              <div className="flex flex-wrap gap-2">
+                {LOST_REASONS.map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setPrimaryReason(r)}
+                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                      primaryReason === r ? 'bg-red-600 text-white border-red-600' : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {isWon ? 'What made the difference?' : 'Key contributing factors'}
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {factors.map(f => (
+                <button
+                  key={f}
+                  onClick={() => toggleFactor(f)}
+                  className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                    selectedFactors.includes(f)
+                      ? isWon ? 'bg-green-600 text-white border-green-600' : 'bg-gray-700 text-white border-gray-700'
+                      : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              {isWon ? 'What did we do particularly well?' : 'What could we have done differently?'}
+            </label>
+            <textarea
+              value={isWon ? whatWentWell : improve}
+              onChange={e => isWon ? setWhatWentWell(e.target.value) : setImprove(e.target.value)}
+              rows={2}
+              placeholder={isWon ? "e.g. Champion prep, demo customization..." : "e.g. Should have gotten to EB sooner..."}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              {isWon ? 'CS handover notes (integrations promised, timelines, commitments)' : 'Re-engagement notes (when / how to come back)'}
+            </label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              placeholder={isWon
+                ? "e.g. Promised API integration in Q3, 60-day onboarding, key contact is Sarah..."
+                : "e.g. Revisit in Q4 when new budget cycle opens, stay in touch with Mark..."
+              }
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+        </div>
+
+        <div className="px-6 pb-5 flex items-center justify-between">
+          <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700">
+            Skip for now
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={`px-5 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-colors ${
+              isWon ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-900'
+            }`}
+          >
+            {saving ? 'Saving…' : 'Save debrief'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
   const metrics = account?.metrics || {};
   const businessAreas = account?.businessAreas || {};
@@ -632,6 +802,9 @@ const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
   const [obsText, setObsText] = useState('');
   const [obsSaved, setObsSaved] = useState(false);
   const [obsSaving, setObsSaving] = useState(false);
+
+  // Win/loss debrief modal state
+  const [debriefStage, setDebriefStage] = useState(null);
 
   // Account memory state
   const [accountMemories, setAccountMemories] = useState([]);
@@ -663,9 +836,12 @@ const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
   };
 
   const handleFieldChange = (field, value) => {
-    if (onUpdateAccount) {
-      onUpdateAccount({ [field]: value });
+    if (!onUpdateAccount) return;
+    if (field === 'stage' && (value === 'closed_won' || value === 'closed_lost')) {
+      setDebriefStage(value);
+      return;
     }
+    onUpdateAccount({ [field]: value });
   };
 
   const getStageColor = (stageId) => {
@@ -681,8 +857,26 @@ const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
     }
   };
 
+  const handleDebriefSave = async (debriefData) => {
+    await onUpdateAccount({ stage: debriefStage, debrief: debriefData });
+    setDebriefStage(null);
+  };
+
   return (
     <div className="space-y-6">
+      {debriefStage && (
+        <WinLossDebriefModal
+          stage={debriefStage}
+          accountName={account?.name}
+          existingDebrief={account?.debrief}
+          onSave={handleDebriefSave}
+          onCancel={() => {
+            onUpdateAccount({ stage: debriefStage });
+            setDebriefStage(null);
+          }}
+        />
+      )}
+
       {/* Top Row: Deal Health + Stage/Vertical/Ownership */}
       <div className="grid grid-cols-3 gap-4">
         {/* Deal Health Card */}
@@ -818,6 +1012,15 @@ const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
           <div className="text-2xl font-bold">{openGaps}</div>
         </div>
       </div>
+
+      {/* Mutual Action Plan (demo / solution_validation / proposal) */}
+      <MutualActionPlan account={account} onUpdateAccount={onUpdateAccount} />
+
+      {/* Deal Close Plan (proposal + legal only) */}
+      <ClosePlanTracker account={account} onUpdateAccount={onUpdateAccount} />
+
+      {/* Stage Exit Criteria */}
+      <StageExitChecklist account={account} onUpdateAccount={onUpdateAccount} />
 
       {/* Suggested Next Actions */}
       <SuggestedActions account={account} />
@@ -1115,6 +1318,362 @@ function StageHistory({ account }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Mutual Action Plan ───────────────────────────────────────────────────────
+
+function MutualActionPlan({ account, onUpdateAccount }) {
+  const stage = account?.stage
+  const showMAP = ['demo', 'solution_validation', 'proposal'].includes(stage)
+  if (!showMAP) return null
+
+  const [loading, setLoading] = useState(false)
+  const [map, setMap] = useState(account?.mapData || null)
+
+  useEffect(() => {
+    if (account?.mapData) setMap(account.mapData)
+  }, [account?.id])
+
+  const generate = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/accounts/generate-map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: account.id }),
+      })
+      const data = await res.json()
+      if (data.map) {
+        setMap(data.map)
+        onUpdateAccount({ mapData: data.map })
+      }
+    } catch { /* silent */ }
+    finally { setLoading(false) }
+  }
+
+  if (!map) {
+    return (
+      <div className="bg-white border rounded-xl p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Mutual Action Plan</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Generate a MAP to align on next steps and close date</p>
+          </div>
+          <button
+            onClick={generate}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {loading ? 'Generating…' : 'Generate MAP'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const today = new Date()
+  const addDays = (days) => {
+    const d = new Date(today)
+    d.setDate(d.getDate() + days)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  return (
+    <div className="bg-white border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-blue-50">
+        <div>
+          <span className="text-sm font-semibold text-blue-900">Mutual Action Plan</span>
+          {map.target_close && (
+            <span className="ml-2 text-xs text-blue-600">Target close: {map.target_close}</span>
+          )}
+        </div>
+        <button onClick={generate} disabled={loading} className="text-xs text-blue-500 hover:text-blue-700 font-medium">
+          {loading ? 'Regenerating…' : 'Regenerate'}
+        </button>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {map.goal && (
+          <p className="text-sm text-gray-700 italic border-l-2 border-blue-200 pl-3">{map.goal}</p>
+        )}
+
+        {(map.milestones || []).map((week, wi) => (
+          <div key={wi}>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{week.week}</p>
+            <div className="space-y-1.5">
+              {(week.actions || []).map((action, ai) => (
+                <div key={ai} className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${action.critical ? 'border-orange-200 bg-orange-50' : 'border-gray-100 bg-gray-50'}`}>
+                  <div className={`mt-0.5 text-xs font-medium px-1.5 py-0.5 rounded shrink-0 ${
+                    action.owner === 'Banner' ? 'bg-blue-100 text-blue-700' :
+                    action.owner === 'Prospect' ? 'bg-purple-100 text-purple-700' :
+                    'bg-gray-200 text-gray-600'
+                  }`}>
+                    {action.owner}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-800 leading-snug">{action.action}</p>
+                    {action.due_offset_days != null && (
+                      <p className="text-xs text-gray-400 mt-0.5">by {addDays(action.due_offset_days)}</p>
+                    )}
+                  </div>
+                  {action.critical && (
+                    <span className="text-xs text-orange-500 font-medium shrink-0">Critical</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {map.success_criteria?.length > 0 && (
+          <div className="border-t pt-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Success criteria</p>
+            <ul className="space-y-1">
+              {map.success_criteria.map((c, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                  <CheckCircle className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />{c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {map.risks?.length > 0 && (
+          <div className="border-t pt-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Risks to watch</p>
+            <ul className="space-y-1">
+              {map.risks.map((r, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                  <span className="text-orange-400 mt-0.5">▲</span>{r}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Deal Close Plan ─────────────────────────────────────────────────────────
+
+const CLOSE_PLAN_FIELDS = [
+  { id: 'next_call', label: 'Next scheduled call', type: 'date', placeholder: 'Date of next call' },
+  { id: 'sign_by', label: 'Target signature date', type: 'date', placeholder: 'Expected close date' },
+  { id: 'decision_maker', label: 'Decision-maker confirmed', type: 'text', placeholder: 'Name and title' },
+  { id: 'legal_contact', label: 'Legal / procurement contact', type: 'text', placeholder: 'Name and email' },
+  { id: 'blockers', label: 'Known blockers', type: 'textarea', placeholder: 'Security review, budget approval, board sign-off…' },
+  { id: 'champion_status', label: 'Champion status', type: 'text', placeholder: 'Actively selling internally, went quiet, needs executive support…' },
+  { id: 'competitor_status', label: 'Competitive situation', type: 'text', placeholder: 'Sole vendor, vs. Smartsheet, no competition…' },
+  { id: 'next_action', label: 'Rep\'s next action', type: 'text', placeholder: 'What you\'re doing today to push this forward' },
+]
+
+function ClosePlanTracker({ account, onUpdateAccount }) {
+  const stage = account?.stage
+  if (stage !== 'proposal' && stage !== 'legal') return null
+
+  const [plan, setPlan] = useState(account?.closePlan || {})
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    setPlan(account?.closePlan || {})
+  }, [account?.id])
+
+  const save = async () => {
+    setSaving(true)
+    await onUpdateAccount({ closePlan: plan })
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const filledCount = CLOSE_PLAN_FIELDS.filter(f => plan[f.id]?.trim()).length
+
+  return (
+    <div className="bg-white border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-amber-50">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-amber-600" />
+          <span className="text-sm font-semibold text-amber-900">Close Plan</span>
+          <span className="text-xs text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full font-medium">
+            {filledCount}/{CLOSE_PLAN_FIELDS.length}
+          </span>
+        </div>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="text-xs text-amber-700 hover:text-amber-900 font-medium disabled:opacity-50"
+        >
+          {saved ? 'Saved' : saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+      <div className="p-4 space-y-3">
+        {CLOSE_PLAN_FIELDS.map(field => (
+          <div key={field.id}>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{field.label}</label>
+            {field.type === 'textarea' ? (
+              <textarea
+                value={plan[field.id] || ''}
+                onChange={e => setPlan(prev => ({ ...prev, [field.id]: e.target.value }))}
+                placeholder={field.placeholder}
+                rows={2}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+            ) : (
+              <input
+                type={field.type}
+                value={plan[field.id] || ''}
+                onChange={e => setPlan(prev => ({ ...prev, [field.id]: e.target.value }))}
+                placeholder={field.type === 'date' ? '' : field.placeholder}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Stage Exit Criteria ──────────────────────────────────────────────────────
+
+const STAGE_EXIT_CRITERIA = {
+  qualifying: [
+    { id: 'decision_maker', label: 'Contact is a decision-maker or has a clear path to one' },
+    { id: 'budget_exists', label: 'Budget exists or can be created — confirmed, not assumed' },
+    { id: 'pain_identified', label: 'Specific pain or initiative identified and articulated by the prospect' },
+    { id: 'timeline_confirmed', label: 'Timeline and urgency confirmed (not just "sometime this year")' },
+    { id: 'no_disqualifiers', label: 'No hard disqualifiers (wrong vertical, too small, wrong structure)' },
+  ],
+  intro_scheduled: [
+    { id: 'invite_accepted', label: 'Calendar invite sent and accepted by all attendees' },
+    { id: 'objectives_shared', label: 'Meeting objectives defined and shared with prospect ahead of call' },
+    { id: 'research_done', label: 'Pre-call research complete: org chart, recent news, active initiatives' },
+    { id: 'attendees_confirmed', label: 'Key attendees confirmed on both sides' },
+  ],
+  active_pursuit: [
+    { id: 'metrics_defined', label: 'Metrics: quantified business impact of solving the problem' },
+    { id: 'economic_buyer_id', label: 'Economic Buyer identified by name and title' },
+    { id: 'decision_criteria', label: 'Decision criteria understood — what does "winning" look like to them' },
+    { id: 'decision_process', label: 'Decision process mapped: who else is involved, legal/procurement steps' },
+    { id: 'pain_depth', label: 'Pain depth established: consequence of not solving is understood' },
+    { id: 'champion_identified', label: 'Champion identified — someone actively selling for us internally' },
+    { id: 'two_stakeholders', label: '2+ stakeholders engaged beyond the first contact' },
+  ],
+  demo: [
+    { id: 'demo_customized', label: 'Demo customized to their specific workflows and pain points' },
+    { id: 'eb_attending', label: 'Economic Buyer or Champion attending the demo' },
+    { id: 'success_criteria', label: 'Success criteria defined pre-demo ("what does a great demo look like to you?")' },
+    { id: 'technical_reqs', label: 'Technical and integration requirements documented' },
+    { id: 'next_step_agreed', label: 'Next step explicitly agreed before the call ends' },
+  ],
+  solution_validation: [
+    { id: 'champion_engaged', label: 'Champion actively engaged and advocates internally' },
+    { id: 'eval_criteria_doc', label: 'Evaluation criteria formally documented and agreed upon' },
+    { id: 'all_evaluators_id', label: 'All evaluators and influencers identified' },
+    { id: 'workflows_mapped', label: 'CapEx workflows mapped to Banner capabilities — no open "can you do X?" questions' },
+    { id: 'business_case_started', label: 'Business case started with Champion input' },
+    { id: 'competition_known', label: 'Competitive situation known — are we the only vendor being evaluated?' },
+  ],
+  proposal: [
+    { id: 'eb_engaged', label: 'Economic Buyer directly engaged — not just through Champion' },
+    { id: 'all_dms_id', label: 'All decision-makers identified and relationship established' },
+    { id: 'implementation_agreed', label: 'Implementation timeline agreed and realistic' },
+    { id: 'legal_process_known', label: 'Legal and procurement process mapped with names and steps' },
+    { id: 'champion_reviewed', label: 'Champion has reviewed the proposal and actively supports it' },
+    { id: 'verbal_commit', label: 'Verbal commitment on scope and pricing received before sending docs' },
+  ],
+  legal: [
+    { id: 'msa_sent', label: 'MSA/contract sent to the legal contact (not just Champion)' },
+    { id: 'procurement_mapped', label: 'Procurement process fully mapped — no surprises expected' },
+    { id: 'signature_timeline', label: 'Timeline to signature confirmed with a specific date' },
+    { id: 'security_addressed', label: 'Security and compliance requirements addressed and documented' },
+    { id: 'exec_sponsor', label: 'Executive sponsor engaged and aware of the deal closing' },
+  ],
+}
+
+function StageExitChecklist({ account, onUpdateAccount }) {
+  const stage = account?.stage
+  const criteria = STAGE_EXIT_CRITERIA[stage]
+  const [saving, setSaving] = useState(false)
+
+  if (!criteria) return null
+
+  const saved = account?.stageExitCriteria?.[stage] || {}
+  const completedCount = criteria.filter(c => saved[c.id]).length
+
+  const toggle = async (criterionId) => {
+    const current = account?.stageExitCriteria || {}
+    const stageChecks = { ...(current[stage] || {}) }
+    stageChecks[criterionId] = !stageChecks[criterionId]
+    const updated = { ...current, [stage]: stageChecks }
+    setSaving(true)
+    try {
+      await onUpdateAccount({ stageExitCriteria: updated })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const allDone = completedCount === criteria.length
+  const progressPct = Math.round((completedCount / criteria.length) * 100)
+
+  return (
+    <div className="bg-white border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2">
+          <CheckCircle className={`w-4 h-4 ${allDone ? 'text-green-500' : 'text-gray-400'}`} />
+          <span className="text-sm font-semibold text-gray-800">Stage Exit Criteria</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+            allDone ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {completedCount}/{criteria.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {saving && <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin" />}
+          <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${allDone ? 'bg-green-500' : 'bg-blue-500'}`}
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="border-t px-4 py-3 space-y-2">
+        {criteria.map(c => (
+          <button
+            key={c.id}
+            onClick={() => toggle(c.id)}
+            className="w-full flex items-start gap-3 text-left group"
+          >
+            <div className={`mt-0.5 w-4 h-4 rounded border shrink-0 flex items-center justify-center transition-colors ${
+              saved[c.id]
+                ? 'bg-blue-600 border-blue-600'
+                : 'border-gray-300 group-hover:border-blue-400'
+            }`}>
+              {saved[c.id] && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 8">
+                  <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+            <span className={`text-sm leading-5 ${saved[c.id] ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+              {c.label}
+            </span>
+          </button>
+        ))}
+        {allDone && (
+          <div className="mt-2 pt-2 border-t border-green-100 flex items-center gap-1.5 text-xs text-green-600 font-medium">
+            <CheckCircle className="w-3.5 h-3.5" />
+            All criteria met — ready to advance stage
+          </div>
+        )}
+      </div>
     </div>
   )
 }
