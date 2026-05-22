@@ -2,11 +2,8 @@
 // Generates a structured CS handover brief for a closed_won account.
 // Synthesizes all analyzed calls, debrief data, stakeholders, and commitments.
 
-import Anthropic from '@anthropic-ai/sdk';
-import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
+import { apiError, apiSuccess, logRequest, validateAnthropicKey, callAnthropic, parseClaudeJson } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
-
-const client = new Anthropic();
 
 export default async function handler(req, res) {
   logRequest(req, 'accounts/cs-handover');
@@ -15,6 +12,9 @@ export default async function handler(req, res) {
   const auth = createServerSupabaseClient(req, res);
   const { data: { user } } = await auth.auth.getUser();
   if (!user) return apiError(res, 401, 'Unauthorized');
+
+  const apiKey = validateAnthropicKey(res);
+  if (!apiKey) return;
 
   const { accountId } = req.body;
   if (!accountId) return apiError(res, 400, 'accountId required');
@@ -99,17 +99,14 @@ Generate a structured CS handover brief. Return JSON with exactly these fields:
 Be specific and actionable. Pull from actual call data. Do not invent details not supported by the data.`
 
   try {
-    const response = await client.messages.create({
+    const text = await callAnthropic(apiKey, {
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+      maxTokens: 1500,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = response.content[0].text;
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return apiError(res, 500, 'Failed to parse handover brief');
-
-    const brief = JSON.parse(match[0]);
+    const brief = parseClaudeJson(text);
+    if (!brief) return apiError(res, 500, 'Failed to parse handover brief');
 
     return apiSuccess(res, {
       brief: {

@@ -2,11 +2,8 @@
 // Generates a Mutual Action Plan for demo/solution_validation stage accounts.
 // Uses account context + call data + stakeholders to build a realistic MAP.
 
-import Anthropic from '@anthropic-ai/sdk';
-import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
+import { apiError, apiSuccess, logRequest, validateAnthropicKey, callAnthropic, parseClaudeJson } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
-
-const client = new Anthropic();
 
 export default async function handler(req, res) {
   logRequest(req, 'accounts/generate-map');
@@ -15,6 +12,9 @@ export default async function handler(req, res) {
   const auth = createServerSupabaseClient(req, res);
   const { data: { user } } = await auth.auth.getUser();
   if (!user) return apiError(res, 401, 'Unauthorized');
+
+  const apiKey = validateAnthropicKey(res);
+  if (!apiKey) return;
 
   const { accountId } = req.body;
   if (!accountId) return apiError(res, 400, 'accountId required');
@@ -105,17 +105,14 @@ Return JSON:
 Use 3-5 weeks of milestones. Be specific and actionable based on the actual deal context.`
 
   try {
-    const response = await client.messages.create({
+    const text = await callAnthropic(apiKey, {
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      maxTokens: 2000,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = response.content[0].text;
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return apiError(res, 500, 'Failed to parse MAP');
-
-    const map = JSON.parse(match[0]);
+    const map = parseClaudeJson(text);
+    if (!map) return apiError(res, 500, 'Failed to parse MAP');
 
     // Save to accounts.map_data
     await db.from('accounts').update({ map_data: { ...map, generated_at: new Date().toISOString() } }).eq('id', accountId);
