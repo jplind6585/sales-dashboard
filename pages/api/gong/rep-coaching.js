@@ -25,14 +25,14 @@ export default async function handler(req, res) {
   const [currentRes, prevRes, processConfig] = await Promise.all([
     db.from('gong_call_analyses')
       .select('gong_call_id, analysis, analyzed_at, account_id')
-      .ilike('analysis->>rep_name', repName)
+      .ilike('rep_name', `%${repName.split(' ')[0]}%`)
       .gte('analyzed_at', since)
       .not('analysis', 'is', null)
       .order('analyzed_at', { ascending: false })
       .limit(50),
     db.from('gong_call_analyses')
       .select('gong_call_id, analysis, analyzed_at')
-      .ilike('analysis->>rep_name', repName)
+      .ilike('rep_name', `%${repName.split(' ')[0]}%`)
       .gte('analyzed_at', prevSince)
       .lt('analyzed_at', since)
       .not('analysis', 'is', null)

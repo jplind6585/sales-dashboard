@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     // Gong calls per rep from gong_call_analyses
     const { data: calls } = await db
       .from('gong_call_analyses')
-      .select('rep_email, call_date, duration_seconds, analysis')
+      .select('rep_email, rep_name, call_date, duration_seconds, analysis')
       .gte('call_date', lookback)
       .not('ignored', 'is', true)
       .not('analyzed_at', 'is', null);
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     for (const call of (calls || [])) {
       const email = call.rep_email?.toLowerCase();
       if (!email) continue;
-      if (!gongByRep[email]) gongByRep[email] = { calls: 0, durationSecs: 0, withNextStep: 0, discoveryScores: [] };
+      if (!gongByRep[email]) gongByRep[email] = { calls: 0, durationSecs: 0, withNextStep: 0, discoveryScores: [], repName: call.rep_name || null };
       gongByRep[email].calls++;
       gongByRep[email].durationSecs += call.duration_seconds || 0;
       if (call.analysis?.next_steps_mentioned?.length > 0) gongByRep[email].withNextStep++;
@@ -61,12 +61,19 @@ export default async function handler(req, res) {
       oremByRep[name].uploads.push({ weekOf: row.week_of, totalCalls: row.total_calls, connected: row.connected_calls });
     }
 
-    // Build unified rep leaderboard
+    // Build profile lookup (email → profile) for enrichment
+    const profileByEmail = {};
+    for (const p of (profiles || [])) {
+      if (p.email) profileByEmail[p.email.toLowerCase()] = p;
+    }
+
+    // Build unified rep leaderboard — start from Gong data so all reps appear
+    // even if they haven't logged into the dashboard and created a profile yet
     const repMap = {};
-    for (const profile of (profiles || [])) {
-      const email = profile.email?.toLowerCase();
-      const nameLower = (profile.full_name || '').toLowerCase();
-      const gong = gongByRep[email] || { calls: 0, durationSecs: 0, withNextStep: 0, discoveryScores: [] };
+    for (const [email, gong] of Object.entries(gongByRep)) {
+      const profile = profileByEmail[email];
+      const displayName = profile?.full_name || gong.repName || email;
+      const nameLower = displayName.toLowerCase();
       const orem = oremByRep[nameLower] || oremByRep[nameLower.split(' ')[0]] || { totalCalls: 0, connected: 0 };
 
       const avgDiscovery = gong.discoveryScores.length
@@ -74,9 +81,9 @@ export default async function handler(req, res) {
         : null;
 
       repMap[email] = {
-        name: profile.full_name,
-        email: profile.email,
-        repType: profile.rep_type,
+        name: displayName,
+        email,
+        repType: profile?.rep_type || null,
         gongCalls: gong.calls,
         avgCallMinutes: gong.calls > 0 ? Math.round((gong.durationSecs / gong.calls) / 60) : 0,
         nextStepRate: gong.calls > 0 ? Math.round((gong.withNextStep / gong.calls) * 100) : 0,
@@ -86,6 +93,27 @@ export default async function handler(req, res) {
         oremConnectRate: orem.totalCalls > 0 ? Math.round((orem.connected / orem.totalCalls) * 100) : null,
         score: gong.calls * 10 + orem.totalCalls,
       };
+    }
+
+    // Also include reps who have Orem data but no Gong calls in this period
+    for (const [nameLower, orem] of Object.entries(oremByRep)) {
+      const emailMatch = Object.keys(repMap).find(e => {
+        const n = (repMap[e].name || '').toLowerCase();
+        return n === nameLower || n.startsWith(nameLower.split(' ')[0]);
+      });
+      if (!emailMatch) {
+        const profile = Object.values(profileByEmail).find(p => (p.full_name || '').toLowerCase().includes(nameLower.split(' ')[0]));
+        const key = `orem:${nameLower}`;
+        repMap[key] = {
+          name: profile?.full_name || nameLower,
+          email: profile?.email || null,
+          repType: profile?.rep_type || null,
+          gongCalls: 0, avgCallMinutes: 0, nextStepRate: 0, avgDiscoveryScore: null,
+          oremTotalCalls: orem.totalCalls, oremConnected: orem.connected,
+          oremConnectRate: orem.totalCalls > 0 ? Math.round((orem.connected / orem.totalCalls) * 100) : null,
+          score: orem.totalCalls,
+        };
+      }
     }
 
     const leaderboard = Object.values(repMap)

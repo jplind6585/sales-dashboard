@@ -208,14 +208,11 @@ export default function CEODashboard() {
                   {winLossInsights.topWonFactors.length > 0 && (
                     <div className="mb-4">
                       <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">Why we win</p>
-                      <div className="space-y-1.5">
-                        {winLossInsights.topWonFactors.map(f => (
-                          <div key={f.factor} className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 bg-green-50 rounded-full overflow-hidden">
-                              <div className="h-full bg-green-400 rounded-full" style={{ width: `${(f.count / winLossInsights.topWonFactors[0].count) * 100}%` }} />
-                            </div>
-                            <span className="text-xs text-gray-600 w-40 truncate">{f.factor}</span>
-                            <span className="text-xs text-gray-400 w-4 text-right">{f.count}</span>
+                      <div className="space-y-2">
+                        {winLossInsights.topWonFactors.map((f, i) => (
+                          <div key={i}>
+                            <p className="text-xs text-gray-500 font-medium">{f.account}</p>
+                            <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{f.reason}</p>
                           </div>
                         ))}
                       </div>
@@ -224,15 +221,22 @@ export default function CEODashboard() {
                   {winLossInsights.topLostReasons.length > 0 && (
                     <div>
                       <p className="text-xs font-medium text-red-600 uppercase tracking-wide mb-2">Why we lose</p>
-                      <div className="space-y-1.5">
-                        {winLossInsights.topLostReasons.map(r => (
-                          <div key={r.reason} className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 bg-red-50 rounded-full overflow-hidden">
-                              <div className="h-full bg-red-400 rounded-full" style={{ width: `${(r.count / winLossInsights.topLostReasons[0].count) * 100}%` }} />
-                            </div>
-                            <span className="text-xs text-gray-600 w-40 truncate">{r.reason}</span>
-                            <span className="text-xs text-gray-400 w-4 text-right">{r.count}</span>
+                      <div className="space-y-2">
+                        {winLossInsights.topLostReasons.map((r, i) => (
+                          <div key={i}>
+                            <p className="text-xs text-gray-500 font-medium">{r.account}</p>
+                            <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{r.reason}</p>
                           </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {winLossInsights.topCompetitorLosses?.length > 0 && (
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Competitors in lost deals</p>
+                      <div className="flex flex-wrap gap-2">
+                        {winLossInsights.topCompetitorLosses.map(c => (
+                          <span key={c.competitor} className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">{c.competitor} ({c.count})</span>
                         ))}
                       </div>
                     </div>
@@ -255,8 +259,8 @@ export default function CEODashboard() {
                         <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${c.stage === 'closed_won' ? 'bg-green-500' : 'bg-red-400'}`} />
                         <div className="flex-1 min-w-0">
                           <span className="text-sm font-medium text-gray-900">{c.name}</span>
-                          {c.hasDebrief && c.debriefReason && (
-                            <p className="text-xs text-gray-400 mt-0.5">{c.debriefReason}</p>
+                          {c.hasDebrief && (c.wonOn || c.lostOn) && (
+                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{c.wonOn || c.lostOn}</p>
                           )}
                           {!c.hasDebrief && (
                             <p className="text-xs text-amber-500 mt-0.5">No debrief captured</p>

@@ -108,9 +108,10 @@ export default async function handler(req, res) {
       stage: a.stage,
       updatedAt: a.updated_at,
       hasDebrief: !!a.debrief,
-      debriefOutcome: a.debrief?.outcome || null,
-      debriefReason: a.debrief?.primary_reason || null,
-      debriefFactors: a.debrief?.factors || [],
+      wonOn: a.debrief?.what_we_won_on || null,
+      lostOn: a.debrief?.what_we_lost_on || null,
+      competitor: a.debrief?.competitor || null,
+      keyLessons: a.debrief?.key_lessons || null,
     }));
 
   // Per-rep breakdown
@@ -125,26 +126,25 @@ export default async function handler(req, res) {
   }
   const repBreakdown = Object.values(repMap).sort((a, b) => b.lateStage - a.lateStage);
 
-  // Win/loss reasons summary from debriefs
-  const lostReasonCounts = {};
-  const wonFactorCounts = {};
+  // Win/loss insights from debriefs (what_we_won_on / what_we_lost_on / competitor)
+  const lostReasons = [];
+  const wonReasons = [];
+  const competitorLosses = {};
   for (const a of accounts) {
     if (!a.debrief) continue;
-    if (a.stage === 'closed_lost' && a.debrief.primary_reason) {
-      lostReasonCounts[a.debrief.primary_reason] = (lostReasonCounts[a.debrief.primary_reason] || 0) + 1;
+    if (a.stage === 'closed_lost') {
+      if (a.debrief.what_we_lost_on) lostReasons.push({ account: a.name, reason: a.debrief.what_we_lost_on });
+      if (a.debrief.competitor) competitorLosses[a.debrief.competitor] = (competitorLosses[a.debrief.competitor] || 0) + 1;
     }
-    if (a.stage === 'closed_won' && a.debrief.factors?.length) {
-      for (const f of a.debrief.factors) {
-        wonFactorCounts[f] = (wonFactorCounts[f] || 0) + 1;
-      }
+    if (a.stage === 'closed_won' && a.debrief.what_we_won_on) {
+      wonReasons.push({ account: a.name, reason: a.debrief.what_we_won_on });
     }
   }
-  const topLostReasons = Object.entries(lostReasonCounts)
+  const topLostReasons = lostReasons.slice(0, 5);
+  const topWonFactors = wonReasons.slice(0, 5);
+  const topCompetitorLosses = Object.entries(competitorLosses)
     .sort((a, b) => b[1] - a[1]).slice(0, 5)
-    .map(([reason, count]) => ({ reason, count }));
-  const topWonFactors = Object.entries(wonFactorCounts)
-    .sort((a, b) => b[1] - a[1]).slice(0, 5)
-    .map(([factor, count]) => ({ factor, count }));
+    .map(([competitor, count]) => ({ competitor, count }));
 
   return apiSuccess(res, {
     summary: {
@@ -163,6 +163,7 @@ export default async function handler(req, res) {
     winLossInsights: {
       topLostReasons,
       topWonFactors,
+      topCompetitorLosses,
       totalDebriefed: accounts.filter(a => a.debrief).length,
     },
   });

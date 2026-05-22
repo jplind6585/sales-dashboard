@@ -28,19 +28,16 @@ export default async function handler(req, res) {
 
   const { data: calls, error } = await db
     .from('gong_call_analyses')
-    .select('call_date, analysis, rep_email')
+    .select('call_date, analysis, rep_email, rep_name')
     .gte('call_date', lookback)
     .not('analyzed_at', 'is', null)
     .not('ignored', 'is', true)
+    .ilike('rep_name', `%${repName.split(' ')[0]}%`)
     .order('call_date', { ascending: true });
 
   if (error) return apiError(res, 500, error.message);
 
-  // Filter to this rep
-  const repCalls = (calls || []).filter(c => {
-    const name = c.analysis?.rep_name || c.analysis?.gong_rep_name || '';
-    return name.toLowerCase().includes(repName.toLowerCase().split(' ')[0].toLowerCase());
-  });
+  const repCalls = calls || [];
 
   if (!repCalls.length) {
     return apiSuccess(res, { buckets: [], repName, totalCalls: 0 });
