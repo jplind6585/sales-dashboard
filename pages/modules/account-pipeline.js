@@ -525,10 +525,13 @@ export default function Home() {
     const dayMs = 24 * 60 * 60 * 1000
 
     const filtered = accounts.filter(a => {
-      // By default hide inactive + closed stages unless toggled or explicitly filtered
       if (!filterStage) {
         if (CLOSED_STAGES.has(a.stage)) return false
-        if (!showInactive && INACTIVE_STAGES.has(a.stage)) return false
+        if (INACTIVE_STAGES.has(a.stage)) return false
+      } else if (filterStage === '__inactive') {
+        if (!INACTIVE_STAGES.has(a.stage)) return false
+      } else if (filterStage === '__closed') {
+        if (!CLOSED_STAGES.has(a.stage)) return false
       } else {
         if (a.stage !== filterStage) return false
       }
@@ -587,7 +590,7 @@ export default function Home() {
     // Default 'az': already in name order from API
 
     return filtered
-  }, [accounts, search, filterStage, filterOwner, showInactive, sortBy, callStats])
+  }, [accounts, search, filterStage, filterOwner, sortBy, callStats])
 
   const activeCount = filteredAccounts.length
   const hasFilters = search || filterStage || filterOwner || filterCompetitor || sortBy !== 'az'
@@ -892,10 +895,26 @@ export default function Home() {
                   onChange={e => setFilterStage(e.target.value)}
                   className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
                 >
-                  <option value="">All active</option>
-                  {uniqueStages.map(s => (
-                    <option key={s} value={s}>{STAGE_LABELS[s] || s}</option>
-                  ))}
+                  <option value="">Active deals</option>
+                  <optgroup label="Active">
+                    <option value="active_pursuit">Active Pursuit</option>
+                    <option value="qualifying">Qualifying</option>
+                    <option value="intro_scheduled">Intro Scheduled</option>
+                    <option value="demo">Demo</option>
+                    <option value="solution_validation">Solution Validation</option>
+                    <option value="proposal">Proposal</option>
+                    <option value="legal">Legal</option>
+                  </optgroup>
+                  <optgroup label="Inactive">
+                    <option value="__inactive">All Inactive</option>
+                    <option value="inactive_sdr_follow_up">↳ SDR Follow Up</option>
+                    <option value="inactive_ae_follow_up">↳ AE Follow Up</option>
+                  </optgroup>
+                  <optgroup label="Closed">
+                    <option value="__closed">All Closed</option>
+                    <option value="closed_won">↳ Closed Won</option>
+                    <option value="closed_lost">↳ Closed Lost</option>
+                  </optgroup>
                 </select>
                 {uniqueOwners.length > 1 && filterOwner === '' && (
                   <select
@@ -1012,16 +1031,9 @@ export default function Home() {
               )}
             </div>
 
-            {/* Inactive accounts toggle + campaign trigger */}
+            {/* Campaign trigger (shown when viewing inactive accounts) */}
             <div className="p-3 border-t flex-shrink-0 space-y-2">
-              <button
-                onClick={() => setShowInactive(v => !v)}
-                className={`flex items-center gap-2 text-xs transition-colors ${showInactive ? 'text-gray-700 font-medium' : 'text-gray-400 hover:text-gray-600'}`}
-              >
-                {showInactive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                {showInactive ? 'Hide inactive' : 'Show inactive'}
-              </button>
-              {showInactive && (
+              {(filterStage === '__inactive' || filterStage === 'inactive_sdr_follow_up' || filterStage === 'inactive_ae_follow_up') && (
                 <button
                   onClick={() => { setCampaignMode(m => !m); setSelectedForCampaign(new Set()) }}
                   className={`flex items-center gap-2 text-xs font-medium transition-colors ${campaignMode ? 'text-indigo-700' : 'text-indigo-500 hover:text-indigo-700'}`}
