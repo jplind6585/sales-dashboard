@@ -11,14 +11,13 @@ jobs:
       - name: Process all unanalyzed calls until backlog is empty
         run: |
           iteration=0
-          max_iterations=80
+          max_iterations=100
           total_processed=0
           total_failed=0
           consecutive_errors=0
 
           while [ $iteration -lt $max_iterations ]; do
-            # --max-time 330 gives Vercel function 5 min + 30s buffer
-            body=$(curl -s --max-time 330 -w "\n%{http_code}" \
+            body=$(curl -s --max-time 290 -w "\n%{http_code}" \
               -X POST "${{ secrets.PRODUCTION_URL }}/api/cron/process-backlog" \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
               -H "Content-Type: application/json")
@@ -27,21 +26,21 @@ jobs:
 
             echo "Iteration $iteration — HTTP $status"
 
-            # 504 means function timed out mid-batch — some calls were analyzed, just retry
-            if [ "$status" = "504" ]; then
+            # Treat 5xx and curl timeout (000) as transient — back off and retry
+            if [ "$status" = "504" ] || [ "$status" = "503" ] || [ "$status" = "502" ] || [ "$status" = "500" ] || [ "$status" = "000" ]; then
               consecutive_errors=$((consecutive_errors + 1))
-              echo "  504 timeout (mid-batch timeout) — retrying ($consecutive_errors consecutive)"
-              if [ $consecutive_errors -ge 5 ]; then
-                echo "ERROR: 5 consecutive 504s — something is wrong, aborting"
+              echo "  Transient error $status (${consecutive_errors} consecutive) — backing off 30s"
+              if [ $consecutive_errors -ge 6 ]; then
+                echo "ERROR: 6 consecutive errors — aborting"
                 exit 1
               fi
+              sleep 30
               iteration=$((iteration + 1))
-              sleep 15
               continue
             fi
 
             if [ "$status" != "200" ]; then
-              echo "ERROR: HTTP $status — $response"
+              echo "ERROR: Unexpected HTTP $status — $response"
               exit 1
             fi
 
@@ -61,23 +60,22 @@ jobs:
             fi
 
             iteration=$((iteration + 1))
-            sleep 8
+            sleep 5
           done
 
           if [ $iteration -eq $max_iterations ]; then
-            echo "WARNING: Hit max iterations ($max_iterations). Re-run to continue."
+            echo "WARNING: Hit max iterations. Re-run to continue. Processed so far: $total_processed"
           fi
 
       - name: Link all calls to accounts
         run: |
-          echo "Running match-calls to link all calls to accounts..."
+          echo "Linking all calls to accounts..."
           body=$(curl -s -w "\n%{http_code}" \
             -X POST "${{ secrets.PRODUCTION_URL }}/api/hubspot/match-calls" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json")
           status=$(echo "$body" | tail -1)
           response=$(echo "$body" | head -1)
-          echo "HTTP $status — $response"
           matched=$(echo "$response" | jq -r '.matched // 0')
           total=$(echo "$response" | jq -r '.total // 0')
-          echo "Linked $matched of $total unlinked calls to accounts"
+          echo "HTTP $status — Linked $matched of $total unlinked calls"
