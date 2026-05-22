@@ -11,12 +11,14 @@ jobs:
       - name: Process all unanalyzed calls until backlog is empty
         run: |
           iteration=0
-          max_iterations=60
+          max_iterations=80
           total_processed=0
           total_failed=0
+          consecutive_errors=0
 
           while [ $iteration -lt $max_iterations ]; do
-            body=$(curl -s -w "\n%{http_code}" \
+            # --max-time 330 gives Vercel function 5 min + 30s buffer
+            body=$(curl -s --max-time 330 -w "\n%{http_code}" \
               -X POST "${{ secrets.PRODUCTION_URL }}/api/cron/process-backlog" \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
               -H "Content-Type: application/json")
@@ -24,17 +26,29 @@ jobs:
             response=$(echo "$body" | head -1)
 
             echo "Iteration $iteration — HTTP $status"
-            echo "Response: $response"
+
+            # 504 means function timed out mid-batch — some calls were analyzed, just retry
+            if [ "$status" = "504" ]; then
+              consecutive_errors=$((consecutive_errors + 1))
+              echo "  504 timeout (mid-batch timeout) — retrying ($consecutive_errors consecutive)"
+              if [ $consecutive_errors -ge 5 ]; then
+                echo "ERROR: 5 consecutive 504s — something is wrong, aborting"
+                exit 1
+              fi
+              iteration=$((iteration + 1))
+              sleep 15
+              continue
+            fi
 
             if [ "$status" != "200" ]; then
-              echo "ERROR: Expected 200, got $status — aborting"
+              echo "ERROR: HTTP $status — $response"
               exit 1
             fi
 
+            consecutive_errors=0
             processed=$(echo "$response" | jq -r '.processed // 0')
             failed=$(echo "$response" | jq -r '.failed // 0')
             remaining=$(echo "$response" | jq -r '.remaining // 0')
-            message=$(echo "$response" | jq -r '.message // ""')
 
             total_processed=$((total_processed + processed))
             total_failed=$((total_failed + failed))
@@ -42,23 +56,21 @@ jobs:
             echo "  processed=$processed failed=$failed remaining=$remaining total_so_far=$total_processed"
 
             if [ "$remaining" -eq 0 ]; then
-              echo "✓ Backlog cleared. Total analyzed: $total_processed, failed: $total_failed"
+              echo "Backlog cleared. Total analyzed: $total_processed, failed: $total_failed"
               break
             fi
 
             iteration=$((iteration + 1))
-            # Brief pause between batches to respect Anthropic rate limits
             sleep 8
           done
 
           if [ $iteration -eq $max_iterations ]; then
             echo "WARNING: Hit max iterations ($max_iterations). Re-run to continue."
-            echo "Total processed: $total_processed failed: $total_failed"
           fi
 
       - name: Link all calls to accounts
         run: |
-          echo "Running match-calls to link all imported calls to accounts..."
+          echo "Running match-calls to link all calls to accounts..."
           body=$(curl -s -w "\n%{http_code}" \
             -X POST "${{ secrets.PRODUCTION_URL }}/api/hubspot/match-calls" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
@@ -68,4 +80,4 @@ jobs:
           echo "HTTP $status — $response"
           matched=$(echo "$response" | jq -r '.matched // 0')
           total=$(echo "$response" | jq -r '.total // 0')
-          echo "✓ Linked $matched of $total unlinked calls to accounts"
+          echo "Linked $matched of $total unlinked calls to accounts"
