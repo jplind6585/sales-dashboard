@@ -28,7 +28,7 @@ function daysSince(dateStr) {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24))
 }
 
-function scoreForReengagement(lastAnalysis, daysSinceContact) {
+function scoreForReengagement(lastAnalysis, daysSinceContact, accountStage) {
   let score = 0
   const a = lastAnalysis?.analysis || {}
 
@@ -40,8 +40,7 @@ function scoreForReengagement(lastAnalysis, daysSinceContact) {
   else if (icpScore) score += 0
 
   // Stage reached
-  const stage = lastAnalysis?.deal_stage_at_call || null
-  score += STAGE_WEIGHT[stage] || 0
+  score += STAGE_WEIGHT[accountStage] || 0
 
   // Sentiment on last call
   if (a.sentiment === 'positive') score += 25
@@ -82,7 +81,7 @@ async function generateReengagementHook(account, lastAnalysis) {
 
   const lines = [
     `Account: ${account.name}`,
-    `Stage when last touched: ${(lastAnalysis?.deal_stage_at_call || account.stage || '').replace(/_/g, ' ')}`,
+    `Stage when last touched: ${(account.stage || '').replace(/_/g, ' ')}`,
     daysSinceCall != null ? `Days since last call: ${daysSinceCall}` : 'Days since last call: unknown',
     a.summary ? `Last call summary: ${String(a.summary).slice(0, 250)}` : null,
     (a.buying_signals || []).length ? `Buying signals from last call: ${a.buying_signals.slice(0, 2).join('; ')}` : null,
@@ -215,7 +214,7 @@ export default async function handler(req, res) {
   // Get the most recent analyzed call per account (need call_date for recency)
   const { data: analyses } = await db
     .from('gong_call_analyses')
-    .select('account_id, analysis, call_date, analyzed_at, deal_stage_at_call')
+    .select('account_id, analysis, call_date, analyzed_at')
     .in('account_id', accountIds)
     .not('analysis', 'is', null)
     .order('call_date', { ascending: false })
@@ -234,7 +233,7 @@ export default async function handler(req, res) {
     .map(account => {
       const lastAnalysis = latestByAccount[account.id]
       const daysSinceContact = daysSince(lastAnalysis.call_date)
-      const score = scoreForReengagement(lastAnalysis, daysSinceContact)
+      const score = scoreForReengagement(lastAnalysis, daysSinceContact, account.stage)
       return { account, lastAnalysis, daysSinceContact, score }
     })
     .filter(item => item.score > 0) // excludes <30 days (score = -1) and very low fit

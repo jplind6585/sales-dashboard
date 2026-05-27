@@ -150,31 +150,33 @@ export default async function handler(req, res) {
   const now = new Date().toISOString();
   let matched = 0;
 
-  const upserts = callIds.map(gongCallId => {
-    const emails = participantMap[gongCallId] || [];
-    let bestDeal = null;
+  // Pre-load HubSpot dealId → account.id map for inline account linking
+  const serviceDb = getSupabase();
+  const { data: accountRows } = await serviceDb
+    .from('accounts')
+    .select('id, hubspot_deal_id')
+    .not('hubspot_deal_id', 'is', null);
+  const dealToAccount = Object.fromEntries((accountRows || []).map(a => [a.hubspot_deal_id, a.id]));
 
+  // Mark all calls as checked; collect any account links found
+  const upserts = callIds.map(gongCallId => ({ gong_call_id: gongCallId, hubspot_checked_at: now }));
+  const accountLinks = [];
+
+  for (const gongCallId of callIds) {
+    const emails = participantMap[gongCallId] || [];
     for (const email of emails) {
       const deals = emailDealMap[email];
       if (!deals?.length) continue;
-      // Prefer open deals (no close date) over closed ones
       const openDeal = deals.find(d => !d.dealCloseDate);
-      bestDeal = openDeal || deals[0];
+      const bestDeal = openDeal || deals[0];
+      if (bestDeal) {
+        matched++;
+        const accountId = dealToAccount[bestDeal.dealId];
+        if (accountId) accountLinks.push({ gong_call_id: gongCallId, account_id: accountId });
+      }
       break;
     }
-
-    if (bestDeal) matched++;
-
-    return {
-      gong_call_id: gongCallId,
-      hubspot_deal_id: bestDeal?.dealId || null,
-      hubspot_deal_stage: bestDeal?.dealStage || null,
-      deal_stage_at_call: bestDeal?.dealStage || null,
-      deal_name: bestDeal?.dealName || null,
-      deal_close_date: bestDeal?.dealCloseDate || null,
-      hubspot_checked_at: now,
-    };
-  });
+  }
 
   for (let i = 0; i < upserts.length; i += 100) {
     await db
@@ -182,38 +184,14 @@ export default async function handler(req, res) {
       .upsert(upserts.slice(i, i + 100), { onConflict: 'gong_call_id' });
   }
 
-  // Link account_id for any calls we just matched to a HubSpot deal
-  const matchedDealIds = upserts.filter(u => u.hubspot_deal_id).map(u => u.gong_call_id);
   let accountsLinked = 0;
-  if (matchedDealIds.length) {
-    const serviceDb = getSupabase();
-    const { data: linked } = await serviceDb.rpc('link_accounts_by_deal', { call_ids: matchedDealIds }).catch(() => ({ data: null }));
-    if (!linked) {
-      // Fallback: manual UPDATE via raw SQL equivalent using JS loop
-      const { data: accountRows } = await serviceDb
-        .from('accounts')
-        .select('id, hubspot_deal_id')
-        .not('hubspot_deal_id', 'is', null);
-      if (accountRows?.length) {
-        const dealToAccount = Object.fromEntries(accountRows.map(a => [a.hubspot_deal_id, a.id]));
-        for (const u of upserts) {
-          if (u.hubspot_deal_id && dealToAccount[u.hubspot_deal_id]) {
-            await serviceDb
-              .from('gong_call_analyses')
-              .update({
-                account_id: dealToAccount[u.hubspot_deal_id],
-                match_method: 'hubspot_contact_email',
-                match_confidence: 0.95,
-              })
-              .eq('gong_call_id', u.gong_call_id)
-              .is('account_id', null);
-            accountsLinked++;
-          }
-        }
-      }
-    } else {
-      accountsLinked = linked;
-    }
+  for (const link of accountLinks) {
+    const { error } = await serviceDb
+      .from('gong_call_analyses')
+      .update({ account_id: link.account_id, match_method: 'hubspot_contact_email', match_confidence: 0.95 })
+      .eq('gong_call_id', link.gong_call_id)
+      .is('account_id', null);
+    if (!error) accountsLinked++;
   }
 
   console.log(`[intel-enrich] matched ${matched} of ${callIds.length} calls to HubSpot deals; linked ${accountsLinked} account_ids`);

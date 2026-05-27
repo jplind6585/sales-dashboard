@@ -68,7 +68,7 @@ export default async function handler(req, res) {
 
     const { data: rows, error: dbError } = await db
       .from('gong_call_analyses')
-      .select('gong_call_id, analysis, analyzed_at, ignored, ignore_reason, hubspot_deal_id, hubspot_deal_stage, hubspot_checked_at, deal_close_date, deal_name, account_id, scoring_version');
+      .select('gong_call_id, analysis, analyzed_at, ignored, ignore_reason, hubspot_checked_at, account_id, scoring_version');
 
     if (dbError) {
       console.error('intel-calls: Supabase read error:', dbError);
@@ -79,23 +79,13 @@ export default async function handler(req, res) {
         analyzedAt: row.analyzed_at,
         ignored: row.ignored || false,
         ignoreReason: row.ignore_reason || null,
-        hubspotDealId: row.hubspot_deal_id || null,
-        dealStage: row.hubspot_deal_stage || null,
         hubspotCheckedAt: row.hubspot_checked_at || null,
-        dealCloseDate: row.deal_close_date || null,
-        dealName: row.deal_name || null,
         accountId: row.account_id || null,
         scoringVersion: row.scoring_version || null,
       };
     });
 
-    // Exclude post-sale calls: calls that happened after their deal's close date
-    // (requires HubSpot enrichment to have run first; un-enriched calls are always included)
-    const filtered = allCalls.filter(call => {
-      const closeDate = cachedMap[call.id]?.dealCloseDate;
-      if (!closeDate) return true;
-      return new Date(call.started || 0) <= new Date(closeDate);
-    });
+    const filtered = allCalls;
 
     const getCallType = (title) => {
       const t = (title || '').toLowerCase();
