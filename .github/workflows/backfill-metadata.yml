@@ -1,0 +1,64 @@
+name: Backfill Missing Call Metadata
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Patch title, call_date, gong_url for rows missing metadata
+        run: |
+          iteration=0
+          max_iterations=20
+          total_updated=0
+          consecutive_errors=0
+
+          while [ $iteration -lt $max_iterations ]; do
+            body=$(curl -s --max-time 60 -w "\n%{http_code}" \
+              -X POST "${{ secrets.PRODUCTION_URL }}/api/gong/backfill-metadata" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              -H "Content-Type: application/json")
+            status=$(echo "$body" | tail -1)
+            response=$(echo "$body" | head -1)
+
+            echo "Iteration $iteration — HTTP $status"
+
+            if [ "$status" = "500" ] || [ "$status" = "502" ] || [ "$status" = "503" ] || [ "$status" = "504" ] || [ "$status" = "000" ]; then
+              consecutive_errors=$((consecutive_errors + 1))
+              echo "  Transient error $status (${consecutive_errors} consecutive) — backing off 15s"
+              if [ $consecutive_errors -ge 5 ]; then
+                echo "ERROR: 5 consecutive errors — aborting"
+                exit 1
+              fi
+              sleep 15
+              iteration=$((iteration + 1))
+              continue
+            fi
+
+            if [ "$status" != "200" ]; then
+              echo "ERROR: Unexpected HTTP $status — $response"
+              exit 1
+            fi
+
+            consecutive_errors=0
+            updated=$(echo "$response" | jq -r '.updated // 0')
+            remaining=$(echo "$response" | jq -r '.remaining // 0')
+            done_flag=$(echo "$response" | jq -r '.done // false')
+
+            total_updated=$((total_updated + updated))
+            echo "  updated=$updated remaining=$remaining total_so_far=$total_updated"
+
+            if [ "$done_flag" = "true" ] || [ "$remaining" -eq 0 ]; then
+              echo "Done. Total rows patched: $total_updated"
+              break
+            fi
+
+            iteration=$((iteration + 1))
+            sleep 3
+          done
+
+          if [ $iteration -eq $max_iterations ]; then
+            echo "WARNING: Hit max iterations. Re-run to continue."
+          fi

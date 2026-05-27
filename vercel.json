@@ -18,6 +18,9 @@
     "pages/api/gong/backfill-historical.js": {
       "maxDuration": 300
     },
+    "pages/api/gong/backfill-metadata.js": {
+      "maxDuration": 60
+    },
     "pages/api/cron/process-backlog.js": {
       "maxDuration": 300
     }
