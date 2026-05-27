@@ -45,7 +45,7 @@
     },
     {
       "path": "/api/cron/nightly-intel",
-      "schedule": "0 2 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/deal-risk-alerts",
