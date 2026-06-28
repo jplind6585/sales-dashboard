@@ -67,7 +67,7 @@ Return JSON:
   let analysis
   try {
     const raw = await callAnthropic(apiKey, {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       maxTokens: 2000,
       messages: [{ role: 'user', content: prompt }],
     })

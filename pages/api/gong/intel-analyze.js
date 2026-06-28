@@ -13,6 +13,8 @@ import {
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess';
 import { sendSlackMessage } from '../../../lib/slack';
+import { sendCallCoachingDM } from '../../../lib/coaching';
+import { isAutoProcessRep } from '../../../lib/repConfig';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -155,10 +157,9 @@ async function autoInsertTranscript({ accountId, callId, transcriptText, date, c
   }
 }
 
-// Rep email → user UUID mapping. Only auto-analyze reps get tasks created.
-const AUTO_TASK_REP_USER_IDS = {
-  'james@withbanner.com': '8c969178-4d4e-494f-a8d7-752276fb683c',
-};
+// Auto-tasks + coaching only fire for calls no older than this — prevents a
+// historical backlog drain from flooding task lists or DMing stale coaching.
+const AUTO_TASK_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 
 const PROSPECT_STEP_PREFIXES = [
   'prospect to ', 'customer to ', 'client to ', 'they will ', 'they to ',
@@ -177,9 +178,23 @@ function isRepOwnedStep(step) {
   return !isProspectStep(step);
 }
 
-async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, durationSeconds, db }) {
+async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory, db }) {
+  // Governance: only auto-process reps get auto-tasks, and never from CS-category calls.
+  if (!isAutoProcessRep(repEmail) && !isAutoProcessRep(repName)) return;
+  if (callCategory === 'cs') return;
   if (!repEmail) return;
-  const userId = AUTO_TASK_REP_USER_IDS[repEmail.toLowerCase()];
+
+  // Freshness gate: never flood the task list from a historical backlog drain.
+  const isRecentEnough = date && (Date.now() - new Date(date).getTime()) < AUTO_TASK_MAX_AGE_MS;
+  if (!isRecentEnough) return;
+
+  // Resolve the rep's user_id + Slack ID from profiles — no hardcoded UUID map.
+  const { data: repProfile } = await db
+    .from('profiles')
+    .select('id, slack_user_id')
+    .ilike('email', repEmail)
+    .maybeSingle();
+  const userId = repProfile?.id;
   if (!userId) return;
 
   const repSteps = (analysis.next_steps_mentioned || []).filter(isRepOwnedStep);
@@ -269,7 +284,8 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, anal
       },
     ];
 
-    const channel = process.env.SLACK_MANAGER_CHANNEL;
+    // Send to the rep's own DM (push to the person who owns the work), not the manager channel.
+    const channel = repProfile?.slack_user_id || process.env.SLACK_MANAGER_CHANNEL;
     await sendSlackMessage({ blocks }, channel);
   } catch (e) {
     console.error('[intel-analyze] Slack notification failed:', e.message);
@@ -481,14 +497,33 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
     if (upsertError) {
       console.error('intel-analyze: Supabase write failed for', callId, upsertError.message, upsertError.code, upsertError.details);
     } else {
-      // Auto-create tasks — non-blocking
-      autoCreateTasksFromAnalysis({ callId, title, date, repEmail, analysis, durationSeconds, db }).catch(e =>
+      const callCat = deriveCallCategory(deriveDerivedCallType(title));
+      // Auto-create tasks — non-blocking (gated by rep config + category + freshness inside)
+      autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory: callCat, db }).catch(e =>
         console.error('[intel-analyze] autoCreateTasksFromAnalysis error:', e.message)
       );
-      // Match to account, then insert transcript row so Account Management shows it automatically
-      tryMatchCallToAccount(callId, title, db)
-        .then(accountId => autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db }))
-        .catch(e => console.error('[intel-analyze] match+transcript chain error:', e.message));
+      // Match to account, insert transcript, then fire a per-call coaching DM.
+      // Coaching is centralized here so EVERY analysis path (poller, backlog, nightly) feeds it —
+      // gated to auto-process reps, sales calls, and fresh calls (no backlog spam).
+      (async () => {
+        let accountId = await tryMatchCallToAccount(callId, title, db);
+        if (!accountId) {
+          const { data: row } = await db.from('gong_call_analyses').select('account_id').eq('gong_call_id', callId).maybeSingle();
+          accountId = row?.account_id || null;
+        }
+        await autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db });
+
+        const autoProcess = isAutoProcessRep(repEmail) || isAutoProcessRep(repName);
+        const isFreshForCoaching = date && (Date.now() - new Date(date).getTime()) < AUTO_TASK_MAX_AGE_MS;
+        if (autoProcess && callCat !== 'cs' && isFreshForCoaching && repEmail) {
+          let accountName = null;
+          if (accountId) {
+            const { data: acct } = await db.from('accounts').select('name').eq('id', accountId).maybeSingle();
+            accountName = acct?.name || null;
+          }
+          await sendCallCoachingDM({ analysis, callTitle: title, callDate: date, accountName, repEmail, gongCallId: callId });
+        }
+      })().catch(e => console.error('[intel-analyze] match+transcript+coaching chain error:', e.message));
     }
 
     // Always return the analysis even if the DB write failed —

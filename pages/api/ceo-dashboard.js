@@ -39,6 +39,7 @@ export default async function handler(req, res) {
     db.from('accounts').select('id, name, stage, owner_name, risk_score, debrief, close_date, updated_at'),
     db.from('gong_call_analyses')
       .select('account_id, call_date')
+      .or('call_category.is.null,call_category.neq.cs')
       .order('call_date', { ascending: false }),
     db.from('sales_process_config').select('stage_weights').limit(1).single(),
   ]);

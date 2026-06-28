@@ -161,7 +161,7 @@ Return ONLY valid JSON with this exact structure:
 Be hyper-specific. Use actual names from the stakeholder list. Reference actual pain points and objections from the call history. If data is missing, write what to do to fill the gap rather than being vague.`
 
   const raw = await callAnthropic(apiKey, {
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     maxTokens: 3000,
     messages: [{ role: 'user', content: prompt }],
   })

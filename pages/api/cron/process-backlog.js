@@ -4,6 +4,7 @@
 // Protected by CRON_SECRET.
 
 import { getSupabase } from '../../../lib/supabase'
+import { isExcludedRep } from '../../../lib/repConfig'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end()
@@ -59,6 +60,9 @@ export default async function handler(req, res) {
     const fill = (general || []).filter(c => !exclude.has(c.gong_call_id)).slice(0, BATCH - backlog.length)
     backlog = [...backlog, ...fill]
   }
+
+  // Governance: never analyze excluded (CS / non-sales) reps' calls.
+  backlog = backlog.filter(c => !isExcludedRep(c.rep_name))
 
   if (!backlog?.length) {
     const { count } = await db

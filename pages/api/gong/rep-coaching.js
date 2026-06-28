@@ -24,18 +24,20 @@ export default async function handler(req, res) {
 
   const [currentRes, prevRes, processConfig] = await Promise.all([
     db.from('gong_call_analyses')
-      .select('gong_call_id, analysis, analyzed_at, account_id')
+      .select('gong_call_id, title, analysis, analyzed_at, account_id')
       .ilike('rep_name', `%${repName.split(' ')[0]}%`)
       .gte('analyzed_at', since)
       .not('analysis', 'is', null)
+      .or('call_category.is.null,call_category.neq.cs')
       .order('analyzed_at', { ascending: false })
       .limit(50),
     db.from('gong_call_analyses')
-      .select('gong_call_id, analysis, analyzed_at')
+      .select('gong_call_id, title, analysis, analyzed_at')
       .ilike('rep_name', `%${repName.split(' ')[0]}%`)
       .gte('analyzed_at', prevSince)
       .lt('analyzed_at', since)
       .not('analysis', 'is', null)
+      .or('call_category.is.null,call_category.neq.cs')
       .limit(50),
     getSalesProcessConfig(),
   ]);
@@ -108,10 +110,10 @@ export default async function handler(req, res) {
   const callEvidence = currentCalls.slice(0, 10).map(c => {
     const a = c.analysis || {};
     return [
-      `Call: "${a.call_title || 'untitled'}" (${c.analyzed_at?.slice(0, 10)})`,
+      `Call: "${c.title || 'untitled'}" (${c.analyzed_at?.slice(0, 10)})`,
       a.summary ? `Summary: ${a.summary.slice(0, 300)}` : '',
       a.discovery_score != null ? `Discovery score: ${a.discovery_score}/10` : '',
-      a.talk_ratio != null ? `Talk ratio: ${a.talk_ratio}%` : '',
+      a.rep_talk_ratio != null ? `Talk ratio: ${a.rep_talk_ratio}%` : '',
       (a.next_steps_mentioned || []).length
         ? `Next steps defined: ${a.next_steps_mentioned.slice(0, 3).join(' | ')}`
         : 'Next steps: NONE DEFINED',
@@ -171,7 +173,7 @@ Respond with ONLY valid JSON:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -188,10 +190,10 @@ Respond with ONLY valid JSON:
     const a = c.analysis || {};
     return {
       gongCallId: c.gong_call_id,
-      title: a.call_title || 'Untitled call',
+      title: c.title || 'Untitled call',
       date: c.analyzed_at,
       discoveryScore: a.discovery_score ?? null,
-      talkRatio: a.talk_ratio ?? null,
+      talkRatio: a.rep_talk_ratio ?? null,
       hasNextSteps: (a.next_steps_mentioned || []).length > 0,
       hasRedFlags: (a.red_flags || []).length > 0,
       summary: a.summary?.slice(0, 200) || null,

@@ -1,29 +1,54 @@
 # Sales Dashboard — Roadmap
 
-_Last updated: 2026-05-05_
+_Last updated: 2026-06-27 (rebuilt from the 47-agent platform audit — see [`PLATFORM_AUDIT_2026-06-27.md`](PLATFORM_AUDIT_2026-06-27.md))_
 
 ---
 
-## 🎯 Current Build Priority
+## 🎯 Current Build Priority (audit-driven sequence)
 
-This is the active sequence. Don't start the next item until the current one is done.
+The full vision is mostly built — but built FOR James. The sequence below fixes the handoff blockers first, cleans up safely, then closes the architectural vision gaps. Don't start a later phase until the earlier one is done.
 
-### 1. Sales Reports + Call Intelligence ← TONIGHT
-- Per-call coaching card for reps (specific, actionable — not a generic summary)
-- Auto-ingest Gong calls → analyze → produce coaching + to-dos
-- Filterable dashboard: by rep, call type, time period (week / month / 6mo / year)
-- Coaching triggers: weak discovery, vague next steps, disqualification signals ("we'll send info")
-- Goal: reps improve call-by-call automatically, no waiting for manual review
+### ✅ Phase 1 — De-James the engine + stop metric pollution (SHIPPED 2026-06-27)
+- ✅ `call_category != 'cs'` (null-safe `.or`) added to all 5 analytics endpoints
+- ✅ rep-coaching field-name bug fixed (`rep_talk_ratio`, row-level `title`)
+- ✅ `lib/repConfig.js` created; `AUTO_TASK_REP_USER_IDS` replaced with a profiles-by-email lookup
+- ✅ coaching DM + auto-tasks centralized in `intel-analyze` (all paths), gated to auto-process reps + sales calls + 72h freshness, idempotent
+- ✅ matched account name threaded into coaching DM; `sent_at` now written
+- ✅ fresh-call Slack routed to the rep's own DM (not manager channel)
+- ✅ rep-filtering enforced (excluded list) in nightly-intel + process-backlog
+- ✅ BONUS: retired model `claude-sonnet-4-20250514` → `claude-sonnet-4-6` across 10 files; `CLAUDE_MODELS` constant added
+- ⏳ Remaining decision for James: promote Mark / SDRs to `AUTO_PROCESS_REPS` when their loop should turn on (CS calls auto-skip regardless)
 
-### 2. Account Management
-- Deepen the AI side — surface insights to reps rather than requiring them to dig
-- AI sidebar upgrades, smarter deal health, context-aware suggestions
+### Phase 2 — Verified-safe cleanup + consolidation
+Do this before the big features so the team isn't editing 4 copies of the same logic. Every item was confirmed by the audit verification pass.
+- ✅ Deleted confirmed-dead files (2026-06-27): parent-dir Vite prototype, `AssistantModal.jsx`, `CompanyDetailModal.jsx` (V1), `seedOutboundData.js` + `bulkImportCompanies`, `NLTaskBar` + `tasks-nl.js` + `tasks/voice-create.js`, `getRecurringTemplates`, `commandParser.js` + `ManualNoteModal.jsx` + the dead `useAccountsLocalStorage` offline branch (useAccounts.js 1094→501 lines)
+- ✅ Added `CLAUDE_MODELS` constant + killed the deprecated model (done in Phase 1)
+- ⏳ Consolidate verified duplicates: `getCallType` (5 copies → 1), account-matching block → `lib/callMatching.js`, `scoreAccount` → `lib/dealRisk.js`, Gong auto-task helper, ceo-dashboard `STAGE_PROBABILITY` import
+- ⏳ Fix latent bugs: `complete-assist` auth guard, `generate-next-actions` `getSupabase` misuse, make `CRON_SECRET` mandatory, sync `.env.local.example`
+- ⏳ Point `deal-risk-alerts` + `intel-risk` at stored `risk_score`; stagger `score-deal-risk` to run first
+- ⏳ Switch hourly full-mode `nightly-intel` → daily-full + quick intraday trigger
 
-### 3. Tasks
-- Most important module long-term — this is the rep's daily driver
-- "Work in Claude" button per task
-- Smart Suggestions from Gong (alongside Gmail + Calendar)
-- Stage-triggered checklists customized to Banner's actual process
+### Phase 3 — Real-time spine + close output (a)
+- Build `pages/api/gong/webhook` — receive call-end, trigger `intel-analyze` within minutes (T1), governed by rep-config
+- Wire output (a): write extracted MEDDICC/stakeholders/gaps back to the account from the pipeline (converge the disconnected `analyze-transcript` flow)
+- Raise/remove the `.limit(600)` account cap in inline matching
+- Add coaching triggers as actions (weak discovery → coach pain; vague next-step → `no_next_step` momentum; soft-close → DQ flag)
+- Persist 30-day coaching focus + improvement to DB (replace localStorage); add manager-role gate to coaching module
+
+### Phase 4 — Assistant everywhere + action-capable
+- Mount one shared assistant globally (`_app.js`/`ModulesNav`) — reachable from every module
+- Give the write-capable assistant the rich per-account context ChatTab already assembles; retire the redundant read-only ChatTab
+- Broaden action vocabulary beyond the single selected account: cross-account bulk stage updates, conversational task creation, next-step edits by deal name
+- Add missing action-label preview cases in AISidebar
+- Route the 3 read-only chat endpoints' shared scaffolding through `callAnthropic`
+
+### Phase 5 — SDR / T3 onto Supabase + lead-to-close attribution
+- Add missing `lead_pipeline` match columns + `sourced_by` on accounts; auto-set at account creation
+- Migrate Outbound Engine + Account Pursuit + Today SDR view off localStorage onto Supabase (manager visibility + AI rollup)
+- Wire the "Add Company" button (currently a no-op TODO)
+- Build auto handoff brief on qualifying → intro_scheduled (T3)
+- Surface Lead Intelligence loss reasons / show-rate-by-source into the manager weekly brief
+- Decompose the 4 god-components opportunistically as features touch them (not a standalone refactor sprint)
 
 ---
 

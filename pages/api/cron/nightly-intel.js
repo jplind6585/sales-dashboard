@@ -11,6 +11,7 @@
 
 import { createGongHeaders } from '../../../lib/apiUtils';
 import { getSupabase } from '../../../lib/supabase';
+import { isExcludedRep } from '../../../lib/repConfig';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -138,7 +139,13 @@ export default async function handler(req, res) {
   const existingMap = new Map((existingRows || []).map(r => [r.gong_call_id, r]));
 
   // ── Phase 1: Import new calls ─────────────────────────────────────────────────
-  const newCalls = allCalls.filter(c => !existingMap.has(c.id));
+  // Governance: excluded (CS / non-sales) reps never enter the system at all.
+  const newCalls = allCalls
+    .filter(c => !existingMap.has(c.id))
+    .filter(c => {
+      const user = userMap[c.primaryUserId];
+      return !isExcludedRep(user?.name) && !isExcludedRep(user?.email);
+    });
   let imported = 0;
 
   if (newCalls.length > 0) {
@@ -181,6 +188,10 @@ export default async function handler(req, res) {
 
   const toAnalyze = allCalls
     .filter(call => !doneIds.has(call.id))
+    .filter(call => {
+      const user = userMap[call.primaryUserId];
+      return !isExcludedRep(user?.name) && !isExcludedRep(user?.email);
+    })
     .slice(0, analyzeCap);
 
   const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL

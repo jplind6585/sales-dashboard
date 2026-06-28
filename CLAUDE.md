@@ -2,6 +2,31 @@
 
 This file is read automatically at the start of every Claude Code session. Keep it up to date as features ship, bugs are fixed, and decisions are made. Do not let it go stale.
 
+> **Full platform audit (2026-06-27): see [`PLATFORM_AUDIT_2026-06-27.md`](PLATFORM_AUDIT_2026-06-27.md).** Scorecard, ranked gaps, verified cleanup, and the sequenced path forward. Read it before planning new work.
+
+---
+
+## North Star (the bar to build against)
+
+This is **not a CRM with buttons**. Three hard requirements drive every decision:
+
+1. **AI-first / push-don't-pull** — surface work TO reps automatically; don't make them go find it. AI does the work conversationally instead of a button per action. Reps should be on calls, not managing the tool.
+2. **The AI Assistant should be everywhere + action-capable** — persistent on every module, and able to WRITE through conversation ("move these 6 accounts to proposal", "change the next step on UDR", "add a task for the team"), not just answer/navigate.
+3. **Call Intelligence is the engine underneath everything** — every Gong call auto-ingests → analyzes → produces FOUR outputs at once: (a) updates account MEDDICC/stakeholders/gaps, (b) creates Tasks from next steps, (c) rolls into dashboard analytics, (d) generates rep + account coaching.
+
+**Phase 1 shipped (2026-06-27) — handoff blockers fixed:**
+- ✅ **Engine de-Jamesed**: rep governance now lives in `lib/repConfig.js` (auto-process / historical / excluded). Auto-tasks resolve the rep's `user_id` from `profiles` by email (no hardcoded UUID map), and the per-call coaching DM + auto-tasks are centralized in `intel-analyze.js` so EVERY analysis path (poller, backlog, nightly) feeds them — gated to auto-process reps, sales-category calls, and a 72h freshness window (no backlog spam, idempotent via `call_coaching_cards`). To onboard a rep to the full loop, add them to `AUTO_PROCESS_REPS`. **Mark is intentionally still manual** — promote him in repConfig when desired.
+- ✅ **CS-call pollution fixed**: `call_category != 'cs'` (null-safe `.or`) now filters rep-coaching, rep-coaching-trend, competitive-analytics, intel-aggregate, ceo-dashboard.
+- ✅ **Rep-filtering enforced**: the excluded list (Leah/David/Julian/Kyle/Amber/Josh/Kelly/Wendy/Chris) is now enforced in `nightly-intel` (import + analyze) and `process-backlog`.
+- ✅ **Coaching field bug + fresh-call routing**: rep-coaching reads `rep_talk_ratio`/row-level `title` (was the never-emitted `talk_ratio`/`call_title`); coaching DM carries the matched account name; the fresh-call auto-task Slack now goes to the **rep's own DM**, not the manager channel.
+- ✅ **Deprecated model fixed**: retired `claude-sonnet-4-20250514` replaced with `claude-sonnet-4-6` across all 10 remaining files; model ids now centralized in `CLAUDE_MODELS` (lib/constants.js), referenced by the `apiUtils` default.
+
+**Still open (where we still fall short — see ROADMAP phases 3–5):**
+- **Output (a) is unbuilt**: the Gong pipeline never writes MEDDICC/stakeholders/gaps back to the account. That extraction lives in a disconnected client-side `analyze-transcript.js` flow that persists nothing server-side. So it's "3½ outputs," not 4. (Phase 3)
+- **No real-time / no Gong webhook**: processing is polling (hourly `nightly-intel` cron in full mode + a 15-min GitHub Actions poll). The vision's <30min webhook (T1) does not exist. (Phase 3)
+- **The assistant can only write in one place** (account-pipeline `AISidebar`, one selected account); it is not mounted globally and the other chat surfaces are read-only. (Phase 4)
+- **Deal-risk has 3 divergent formulas**: `score-deal-risk`/`rescore` write `accounts.risk_score` (the intended source), but `deal-risk-alerts` + `intel-risk` recompute a different formula on the sparse `transcripts` table. Point them at the stored score. (Phase 2)
+
 ---
 
 ## Who This Is For
@@ -212,7 +237,7 @@ The default landing page after login. Not a secondary module — the front of th
 ---
 
 ### Account Pipeline (`pages/modules/account-pipeline.js`)
-Core deal tracking. Accounts have 6 tabs.
+Core deal tracking. Accounts have **9 tabs** (Overview, Transcripts, Stakeholders, Information Gaps, Content, Current State, Chat, Journey, CS Handover — the last is `closedWonOnly`). Tabs defined in `lib/constants.js`.
 
 **Stages (internal names):** `qualifying` → `intro_scheduled` → `active_pursuit` → `demo` → `solution_validation` → `proposal` → `legal` → `closed_won` / `closed_lost`
 
@@ -265,7 +290,7 @@ Manager / CEO view. Read-only aggregate view.
 - Stale accounts panel — flags accounts with no transcript activity in 14+ days
 - Data served from `GET /api/pipeline-overview`
 
-**Note:** No deal monetary values are tracked. Confidence is entirely signal-based.
+**Note:** `deal_value` IS tracked (synced from HubSpot) and drives $ pipeline / weighted-pipeline figures across pipeline-overview, ceo-dashboard, stage-analytics, and team-dashboard. The confidence *score* is signal-based, but dollar amounts are real and live.
 
 ---
 
@@ -344,16 +369,27 @@ Manager view showing where deals stall. Reads `GET /api/bottleneck`.
 - **`#sales_operations`** — SDR booking channel. Messages parsed by `sales-ops-feed` into: `{ sdrName, action, accountName, contactName, contactTitle, ae, dateTime, contextBullets }`. Bookings for James surfaced in Smart Suggestions panel as purple prep cards.
 - **`pursuit_[accountname]`** — per-account channel. Messages shown in OverviewTab "Slack Channel Activity" collapsible section. Bot already posts there on stage changes and task completions.
 
-### Vercel Cron
-Defined in `vercel.json`:
+### Vercel Cron (17 jobs — defined in `vercel.json`)
 - `0 8 * * 1-5` → `/api/send-daily-digest` (Mon–Fri 8am)
+- `0 11 * * 1-5` → `/api/cron/deal-pulse` (Mon–Fri 11am UTC / 7am EST)
+- `0 13 * * 1-5` → `/api/cron/deal-expiry-alerts` (Mon–Fri 1pm)
+- `0 20 * * 0` → `/api/cron/rep-checkin` (Sunday 8pm)
+- `0 21 * * 1-5` → `/api/cron/sdr-activity` (Mon–Fri 9pm)
+- `0 22 * * 1-5` → `/api/cron/rep-pulse` (Mon–Fri 10pm)
+- `0 1 * * *` → `/api/cron/sync-hubspot` (nightly 1am — upserts HubSpot deals → accounts, re-matches calls)
+- `30 1 * * *` → `/api/cron/enrich-calls-bulk` (nightly 1:30am — contact-email HubSpot lookup)
+- `0 * * * *` → `/api/cron/nightly-intel` (**HOURLY**, despite the name — runs full 150-day import+analyze sweep every hour. ⚠️ audit flag: this is wasteful; should be daily-full + a quick intraday trigger)
+- `30 3 * * *` → `/api/cron/nightly-deal-insights` (nightly 3:30am)
+- `0 3 * * *` → `/api/cron/deal-risk-alerts` (nightly 3am — ⚠️ recomputes a *different* risk formula than the stored `risk_score`)
+- `0 4 * * *` → `/api/cron/score-deal-risk` (nightly 4am — writes `accounts.risk_score`, the intended single source)
+- `0 4 * * *` → `/api/sheets/sync-leads` (nightly 4am — Google Sheets → lead_pipeline)
+- `0 12 * * 1-5` → `/api/cron/reengagement-picks` (Mon–Fri noon)
+- `30 7 * * 1` → `/api/cron/weekly-brief` (Monday 7:30am)
+- `30 7 * * 1` → `/api/cron/weekly-task-audit` (Monday 7:30am)
 - `0 2 1 * *` → `/api/cron/cleanup-inactive-users` (1st of month, 2am)
-- `0 1 * * *` → `/api/cron/sync-hubspot` (nightly 1am, upserts HubSpot deals → accounts then re-matches calls)
-- `30 1 * * *` → `/api/cron/enrich-calls-bulk` (nightly 1:30am, enriches unchecked calls via contact-email HubSpot lookup)
-- `0 2 * * *` → `/api/cron/nightly-intel` (nightly, analyzes unanalyzed James calls)
-- `0 3 * * *` → `/api/cron/deal-risk-alerts` (nightly, sends high-risk deal Slack alert)
-- All secured with `CRON_SECRET` Bearer auth
-- `intel-analyze-batch.js` and `enrich-calls-bulk.js` have `maxDuration: 300` (5 min Vercel function override)
+- **GitHub Actions** (every 15 min) → `process-recent-calls.yml`; (manual) → `drain-backlog.yml`, `backfill-historical.yml`, `run-nightly-intel.yml`
+- Real-time post-call processing is **polling, not a webhook** — no Gong webhook exists (see North Star reality check).
+- All secured with `CRON_SECRET` Bearer auth (⚠️ audit flag: ~11 crons use an `if (secret && ...)` bypass that skips the check when the env var is unset — make mandatory).
 
 ---
 
@@ -405,7 +441,7 @@ Migration files are in `supabase/migrations/` for reference.
 
 ## Key Design Decisions & Constraints
 
-- **No deal monetary values** — pipeline confidence is purely signal-based (stage + calls + stakeholders + champion). No deal size field exists.
+- **Deal values are tracked** — `accounts.deal_value` syncs from HubSpot and drives $ pipeline across the manager/CEO views. The pipeline *confidence score* is signal-based (stage + calls + stakeholders + champion), but dollar amounts are real.
 - **Outbound Engine uses localStorage** — not Supabase. Data is per-browser. Known limitation, Phase 2 will address.
 - **Manager role is informal** — role field controls UI visibility (team task view, Pipeline Overview access) but there's no strict server-side permission enforcement beyond auth checks.
 - **MEDDICC** is the qualification framework used throughout. Stands for: Metrics, Economic Buyer, Decision Criteria, Decision Process, Identify Pain, Champion, Competition.
@@ -416,7 +452,11 @@ Migration files are in `supabase/migrations/` for reference.
 
 ---
 
-## Backlog (as of 2026-05-09)
+## Backlog & Priorities
+
+**The live, audit-driven priority sequence is in [`ROADMAP.md`](ROADMAP.md) and [`PLATFORM_AUDIT_2026-06-27.md`](PLATFORM_AUDIT_2026-06-27.md).** Headline order: (1) de-James the engine + filter CS calls [handoff-blocking], (2) verified dead-code purge + consolidate duplicated logic, (3) Gong webhook + account write-back, (4) global action-capable assistant, (5) SDR tools onto Supabase.
+
+### Legacy backlog (as of 2026-05-09 — partially superseded by the audit)
 
 ### High Priority — Tasks
 - **Commitment status check (Gmail/Calendar verification)** — for tasks sourced from Gong commitments, check Gmail sent folder for emails to that contact after the call date; check Calendar for events with that company. Show "Email sent?" / "Meeting booked?" status on the task row. Most complex tasks feature — needs per-stakeholder email matching.
@@ -481,134 +521,13 @@ The `sales_process_config` table is a single row that drives all AI analysis. Ev
 
 ---
 
-## Recently Shipped (reverse chronological)
+## Recently Shipped
 
-- **2026-05-21** — 13-feature VP-of-Sales build (session 2):
-  - **Playbook auto-trigger on stage advance**: New `POST /api/playbooks/execute-for-stage` — takes `{ stage, accountId, userId }`, queries `task_playbooks` by `stage_trigger = stage AND active = true`, executes matching playbooks with deduplication (skips if open tasks already exist for that playbook+account). `useAccountStore.js` fires this as fire-and-forget after every stage change.
-  - **Stage exit criteria checklist** (`OverviewTab.jsx`): `StageExitChecklist` component with hardcoded best-practice criteria per stage (qualifying: 5 items, intro_scheduled: 4, active_pursuit: 7, demo: 5, solution_validation: 6, proposal: 6, legal: 5). Checkboxes saved to `accounts.stage_exit_criteria` JSONB column. Visible on all active stages.
-  - **Win/loss debrief modal** (`OverviewTab.jsx`): `WinLossDebriefModal` — intercepts `closed_won`/`closed_lost` stage change in `handleFieldChange`, gates the save, shows debrief form. Structured fields: what_we_won_on, what_we_lost_on, competitor, decision_maker, deal_size_range, timeline_from_first_call, key_lessons. Saved to `accounts.debrief` JSONB column.
-  - **CS Handover tab**: Hidden until `stage === 'closed_won'` (filtered via `closedWonOnly: true` flag on tab in `lib/constants.js`). `CSHandoverTab` component in `account-pipeline.js`. `POST /api/accounts/cs-handover` — aggregates 30 analyzed calls, stakeholders, debrief, MEDDICC, then uses Sonnet 4.6 to generate structured brief: `what_was_sold`, `key_contacts`, `integrations_promised`, `implementation_timeline`, `known_risks`, `open_questions`, `tone_notes`. Also opens full account chat for CS team.
-  - **Deal close plan tracker** (`OverviewTab.jsx`): `ClosePlanTracker` component — shows for `proposal`/`legal` stages. 8 structured fields: decision_maker_confirmed, legal_contact, legal_process, paper_process, signature_authority, contract_start_date, implementation_owner, red_flags. Saved to `accounts.close_plan` JSONB column.
-  - **Mutual Action Plan generator** (`OverviewTab.jsx`): `MutualActionPlan` component — shows for `demo`/`solution_validation`/`proposal` stages. "Generate MAP" button calls `POST /api/accounts/generate-map` — aggregates MEDDICC, pain points, next steps, commitments from up to 10 analyzed calls, generates via Sonnet 4.6: `milestones` (week-by-week), `success_criteria`, `risks`, `target_close`. Saved to `accounts.map_data` JSONB column.
-  - **Deal expiry alerts cron** (`pages/api/cron/deal-expiry-alerts.js`): Mon–Fri 1pm UTC. Finds active deals where `close_date` has passed OR closes within 7 days with no activity in 7+ days. Sends Slack blocks to manager channel with two sections: expired deals + expiring-soon deals.
-  - **Rep check-in Sunday cron** (`pages/api/cron/rep-checkin.js`): Sunday 8pm UTC. DM per rep: their active deals with score + Sunday reflection prompts. Manager version: late-stage deals sorted by `(stage_weight * daysSince)` to surface most overdue high-stage deals.
-  - **CEO Dashboard** (`/modules/sales-reports/ceo-dashboard.js` + `GET /api/ceo-dashboard`): 4-stat hero (active deals, pipeline confidence, win rate 90d, stale deals). Pipeline by stage bar chart. Top deals to watch + rep pipeline breakdown. Win/loss insights from `debrief` JSONB + recent closes with debrief data. Stage weights read from DB.
-  - **Next Best Action card in Today** (`today.js`): `NextBestActionCard` — fetches top idle account from deal-insights API, shows recommended action with "Done — I did this" button. Tracks completions in localStorage `nba_log` (`{ accountId, accountName, stage, action, doneAt }`). 7-day follow-up prompt: `FollowUpPrompt` component asks "Did this deal move forward?" when it's been 7 days since a tracked action. Per-day dismissal stored in `nba_dismissed_${date}`.
-  - **Meeting quality trend in coaching** (`coaching.js`): `MeetingQualityTrend` component — `GET /api/gong/rep-coaching-trend` groups 12 weeks of calls into 2-week buckets; returns `label, callCount, discoveryScore, talkRatio, nextStepRate, champHealthScore`. `MiniSparkline` component renders bar-chart sparklines with up/down direction arrows for 3 metrics: discovery score, next-step rate, talk ratio.
-  - **Competitive analytics tab** (`call-intelligence.js`): `CompetitiveAnalyticsTab` — new "Competitive" tab. `GET /api/gong/competitive-analytics` aggregates `competitor_mentions` across all analyzed calls, cross-refs with account `stage` (closed_won/lost) to compute per-competitor win rate, dominant sentiment, recent context quotes, objection patterns. Shows competitor cards with win/loss bar + objection examples.
-  - **Rep activity leaderboard** (`/modules/sales-reports/activity-leaderboard.js` + `/api/activity-leaderboard`): Unified leaderboard combining Gong data (call count, avg duration, next-step rate, discovery score) + Orem phone system data. GET returns leaderboard sorted by score. POST: admin-only CSV ingestion → `orem_activity_uploads` table. Flexible `findColumn()` helper handles different CSV header formats. Period selector 7/30/90 days. Orem columns hidden if no data.
-  - **DB migrations applied**: `stage_exit_criteria JSONB`, `debrief JSONB`, `close_plan JSONB`, `map_data JSONB` added to accounts table. New `orem_activity_uploads` table (`rep_name`, `total_calls`, `connected_calls`, `week_of`, `uploaded_by`, `created_at`).
-  - **New crons**: `0 13 * * 1-5` → `/api/cron/deal-expiry-alerts`; `0 20 * * 0` → `/api/cron/rep-checkin`
+The detailed build changelog lived here and grew to ~130 lines duplicating git history. For what shipped and when, use `git log --oneline`. Major arcs:
 
-- **2026-05-21** — Team readiness + platform cleanup (two-session build):
-  - **Team invite flow**: `POST /api/admin/invite-user` — admin-only endpoint using `auth.admin.inviteUserByEmail`; sends magic link with `role: rep, rep_type` metadata. `PATCH /api/admin/update-user` to change rep type.
-  - **Shared ModulesNav component** (`components/layout/ModulesNav.jsx`): active-state highlighting, auto-close on route change (useEffect on `router.pathname`), mousedown outside handler. Now used on all module pages — Today, Tasks, Account Pipeline, Pipeline Overview, Rep Coaching, Bottleneck, Settings, Data Quality, Sales Processes, Outbound Engine, Account Pursuit, Stage Analytics.
-  - **Call analysis for all reps**: Removed `AUTO_ANALYZE_REPS` filter from `nightly-intel.js` — now processes all reps, not just James.
-  - **Account Pipeline defaults to current user**: Profile fetch on load sets `filterOwner` to `profile.full_name`. "My accounts / All" toggle buttons. Clear filters button on empty results.
-  - **Onboarding card in Today**: Shows if `profile.slack_user_id` not set or `user_rep_type` not set. Auto-dismisses when both done. Persists dismissal to localStorage.
-  - **Slack test DM**: `POST /api/slack/test-dm` + "Send test DM" button in Settings (appears when Slack ID filled). Returns descriptive error messages.
-  - **Stage names match HubSpot everywhere**: `STAGE_LABELS` canonical definition in `lib/constants.js`. Imported by account-pipeline, pipeline-overview, stage-analytics. `inactive_sdr_follow_up` = "Inactive SDR Follow Up" (Pre Pursuit override, will go away).
-  - **Stage probability weights in admin Settings**: Admin-only "Pipeline Confidence Weights" card shows ACTIVE stages with editable % inputs + visual progress bars. Saves to `sales_process_config.stage_weights` (JSONB). `pipeline-overview.js` reads from DB first, falls back to hardcoded constants. `stage_weights` column added to `sales_process_config` via migration.
-  - **PRIORITY_COLORS shared constant**: Defined in `lib/constants.js`. `today.js` and `tasks.js` now import instead of inline-defining. Local aliases `PRIORITY_LABEL = PRIORITY_LABELS` and `PRIORITY_COLOR = PRIORITY_COLORS` in tasks.js preserve existing references.
-  - **Morning brief cache fix**: If API returns no brief, falls back to any cached data (even stale). Prevents blank state on force-refresh failures.
-  - **Coaching page dynamic reps**: Removed hardcoded `REPS` array; fetches from `/api/users` on load. `reps` state drives dropdown.
-  - **Remove outbound seed data**: Removed `seedSampleData()` call and import from `outbound-engine.js`. Clean slate for new team members.
-  - **Account Journey tab**: New "Journey" tab in Account Pipeline — fetches from `GET /api/accounts/stage-history` → displays full `account_stage_history` as a vertical timeline (from_stage, to_stage, days in prior stage, changed by, date). `account_stage_history` table already had 325 rows.
-  - **`lib/constants.js` comprehensive**: Added `STAGE_LABELS`, `ACTIVE_STAGE_ORDER`, `INACTIVE_STAGE_IDS`, `CLOSED_STAGE_IDS`, `ALL_STAGE_ORDER`, `STAGE_COLORS`, `STAGE_PROBABILITY`, `PRIORITY_COLORS`, `PRIORITY_LABELS`, `TABS` (including Journey tab).
-
-- **2026-05-19** — Backfill completion + call intelligence infrastructure:
-  - **2-year historical backfill complete**: 3,832 calls stored, 3,788 with real transcript (98.7%). Required two workflow runs — first had BATCH_SIZE=20 bug (missed ~30 calls/page), second with BATCH_SIZE=100 captured everything.
-  - **Ignored calls**: Calls marked `ignored=true` with `ignore_reason` ('no_show' for < 2 min duration, 'internal' for no [PROSPECT] speaker). 1,135 no-shows + 122 internal = 1,257 ignored. Stay in DB as "don't re-fetch" ledger. All crons filter these out. `nightly-intel.js` updated to skip ignored calls.
-  - **process-backlog bumped to 50/run**: Was 10. Now passes `transcript_text` from DB to `intel-analyze` → skips Gong re-fetch entirely. Saves ~5-8s per call. maxDuration: 300 added to vercel.json.
-  - **intel-analyze optimization**: If `transcriptText` in request body, skips both Gong API calls. Falls back to Gong fetch for new calls.
-  - **Account linking SQL pass**: Added first-word matching directly via SQL. 884 → 1,434 calls linked (37.4%).
-  - **Key bug fixed**: `analyzed_at` column has `DEFAULT now()` — backfill was inserting rows without explicit null, so process-backlog never found them. Fixed to `analyzed_at: null`.
-  - **Key infra fix**: `SUPABASE_SERVICE_ROLE_KEY` wrong in Vercel caused "Invalid API key" on all DB writes. Service role key must be the secret key from Supabase Settings → API, not the anon key.
-
-- **2026-05-18** — Big build (phase 2):
-  - **Call backlog processing**: New `pages/api/cron/process-backlog.js` — queries DB for `analyzed_at IS NULL AND ignored = false`, takes 10 most recent, calls intel-analyze per call with 400ms delay. GitHub Actions workflow (`process-recent-calls.yml`) runs it every 30 min alongside the existing `process-recent` job.
-  - **Transcript storage**: Added `transcript_text TEXT` column to `gong_call_analyses`. `intel-analyze.js` now saves full formatted transcript to this column on every analysis. Permanent storage, no re-fetching needed.
-  - **2-year historical import** (`pages/api/gong/backfill-historical.js`): Paginated endpoint that imports all Gong calls (2 years default). For each call: batch-fetches transcripts + party details, formats with speaker labels, upserts to `gong_call_analyses` with `transcript_text` stored, does inline account matching. Leaves `analyzed_at` null so process-backlog picks up AI analysis. GitHub Actions workflow (`backfill-historical.yml`) loops until done, then triggers match-calls for auto-linking.
-  - **Nightly reengagement picks** (`pages/api/cron/reengagement-picks.js`): Scores cold accounts (30+ days no call) by ICP score, stage reached, sentiment, buying signals, champion health. Picks top 5, generates personalized re-opening hooks via Claude Haiku, sends Slack DM to James. Runs Mon-Fri noon UTC.
-  - **Reengage button rebuild** (`pages/api/accounts/reengagement.js`): Now pulls all 30 analyzed calls (was 5), aggregates full history (themes, objections, buying signals, ICP trend, all next steps, transcript excerpt from most recent call), feeds to Sonnet 4.6 for highly specific non-generic brief.
-  - **Today as landing page**: Auth callback (`pages/api/auth/callback.js`) and `pages/index.js` now redirect to `/modules/today` instead of `/modules/tasks`. Today page already has TodaysTasksCard with top-5 tasks + "View all" link.
-  - **HubSpot audit log** (`pages/modules/sales-reports/hubspot-audit.js`): New Sales Reports page — paginated table of all HubSpot writes (searchable/filterable by account/action/success). `GET /api/hubspot/sync-log` endpoint. `log-note.js` now writes to `hubspot_sync_log` on every note (success + fail). `sync-hubspot.js` logs nightly sync runs.
-  - **Account pipeline engagement filters** (`pages/modules/account-pipeline.js`): New sort dropdown — A-Z, Last contacted (most recent first), Most conversations (call count), Cold 30+ days, Stage. Loads call stats from `GET /api/accounts/call-stats` on mount. Shows days-since or call-count in sidebar list when relevant sort is active.
-  - **Account health strip**: Shows on selected account header — green/amber/red dot + days since last call + total call count.
-  - **HubSpot audit log table** — `hubspot_sync_log` created with: id, created_at, action, account_id, account_name, hubspot_deal_id, payload JSONB, result JSONB, triggered_by, success.
-
-- **2026-05-18** — Quick wins (4 features):
-  - **Open in Gmail from Work in Claude**: `detectDraftedEmail()` in `tasks.js` scans every assistant message for a `Subject:` line. When found, "Open in Gmail" button appears below the message. Clicking opens `mail.google.com/mail/u/0/?view=cm&su=...&body=...` with the body pre-filled including the rep's email signature (from `localStorage.email_signature`). If the task has an `accountId`, a HubSpot note is auto-logged via `POST /api/hubspot/log-note` (no checkbox — fires automatically). Shows "Logged to HubSpot" / "Will log to HubSpot" text next to button.
-  - **HubSpot note logging** (`pages/api/hubspot/log-note.js`): POST `{ accountId, subject }` — looks up account's `hubspot_deal_id`, creates HubSpot note via `/crm/v3/objects/notes` associated to the deal. Association type ID 214 = note-to-deal.
-  - **Gmail suggestions — due date extraction**: Updated `pages/api/gmail/suggestions.js` prompt to include `dueDate: "YYYY-MM-DD or null"` in the JSON schema. `handleAddEmailTask` in `SmartSuggestionsPanel.jsx` now passes `dueDate` when creating the task.
-  - **Auto-create prep tasks on calendar sync**: `SmartSuggestionsPanel.jsx` — after sync() loads calendar events, auto-creates "Prep for: [event title]" tasks for owned meetings with `needsPrep: true` (within 48 hours). Tracks created events in `autoPrepCreatedRef` (daily localStorage set `auto_prep_created`) to prevent duplicates across re-syncs. Also fires on cache-load via `useEffect`. Shows amber "Auto-created N prep task(s)" notice. User can still click "AI Brief" for the full AI-generated brief.
-
-- **2026-05-09** — Big build (phase 1):
-  - **Today page** (`/modules/today`): role-aware landing (SDR/AE/Manager). SDR view: daily call targets from `sdr_touches_today` localStorage, call queue from `pursuit_accounts` localStorage, touch logging (call/email/linkedin/meeting/voicemail + outcome). AE view: morning brief, top-5 tasks, today's calendar with AI Brief, top-3 stale pipeline accounts. Manager view: team activity table, at-risk late-stage accounts. Role toggle saves to localStorage + profiles.rep_type.
-  - **Account Pursuit Dashboard** (`/modules/pursuit`): top-50 named SDR account tracking. 100% localStorage. Coverage score = touches30d / 8 × 100%. Touch log with type + outcome. Right detail panel with SVG arc gauge + full history. Add Account modal with rank/hypothesis/vertical.
-  - **Bottleneck Tracker** (`/modules/bottleneck` + `/api/bottleneck`): funnel visualization, stage-to-stage conversion rates, bottleneck detection (highest absolute drop), stall alerts (21+ days in late stages), per-rep breakdown table.
-  - **intel-analyze.js**: added `pain_depth_score` (1-10) + `champion_health_score` (1-10) to Claude prompt + scoring guides. Both fields now stored in every new `gong_call_analyses` row.
-  - **OverviewTab.jsx**: `CompetitorIntel` component — lazy-fetches `/api/gong/account-competitors?accountId=X`, aggregates mentions across all calls, collapsible battle card with sentiment badge + context quotes. `RunPlaybook` button — fetches active playbooks, executes via `/api/playbooks/execute`, shows result inline.
-  - **Settings**: rep_type SDR/AE selector — saves to localStorage + `profiles.rep_type` via `/api/me` PATCH (column requires migration).
-  - **Crons**: `sdr-activity` (9pm UTC weekdays) posts team call/accounts/meetings leaderboard to Slack manager channel. `rep-pulse` (10pm UTC weekdays) sends private Slack DM per rep with today's calls, AI coaching insight, tomorrow's top account.
-  - **New APIs**: `/api/gong/account-competitors`, `/api/playbooks/execute`, `/api/calendar/prep-brief`, `/api/tasks/call-commitments`, `/api/bottleneck`
-  - **DB migration pending**: `supabase/migrations/20260509_big_build_schema.sql` — needs Supabase MCP re-auth to run. Adds: `profiles.rep_type`, `account_pursuit_lists`, `account_touches`, `meeting_quality_scores`, `daily_insights` tables. Run this migration as first action next session.
-
-- **2026-05-09** — Tasks intelligence upgrade (4 features):
-  - **From Recent Calls panel**: `GET /api/tasks/call-commitments` — queries `gong_call_analyses` for past 7 days by rep_email, extracts `commitments[]` and `next_steps_mentioned[]`, cross-references existing tasks to skip already-added items, returns account names. `CallCommitmentsPanel` component in tasks.js auto-fetches on load, shows orange badge panel above Smart Suggestions, dismissals persist to localStorage.
-  - **Morning brief with real data**: Rewrote `GET /api/rep/morning-brief` to pull active accounts (excluding closed stages), compute last call date per account via `gong_call_analyses`, identify stale accounts (no call in 14+ days), build late-stage deal list (demo/proposal/legal), pass all real account names into Claude Haiku prompt. Fallback uses stale accounts list.
-  - **AI Prep Brief modal**: `POST /api/calendar/prep-brief` — fuzzy-matches meeting title to pipeline accounts (word overlap score), fetches last 3 calls + stakeholders for matched account, generates brief via Sonnet 4.6 (opening recommendation, objectives, talking points, discovery questions, watch-outs, closing ask). `PrepBriefModal` component opens from "AI Brief" button on calendar events. "Add prep task with brief" writes full brief into task description.
-  - **Warmy sender blocklist**: `SmartSuggestionsPanel.jsx` — `blockedSenders` array loaded from localStorage `email_sender_blocklist` on mount; "Block sender" button in expanded suggestion panel blocks by sender name, persists to localStorage, filters all suggestions from that sender. Auto-filters `(no subject)` emails. Metrics strip shows blocked count + "clear all" link.
-
-- **2026-05-09** — OAuth login flow fixed (server-side PKCE):
-  - Root cause: `setAll` in `createServerSupabaseClient` was hard-coding `HttpOnly` flag, hiding session tokens from browser's `document.cookie` read by `createBrowserClient`.
-  - Fix: `lib/supabase.js` — `setAll` now only adds `HttpOnly` if `options.httpOnly === true` (Supabase never sets this for auth tokens).
-  - New `pages/api/auth/sign-in.js` — generates Google OAuth URL server-side via `createServerSupabaseClient` so PKCE code verifier is stored in a proper server-set cookie, not via `document.cookie`.
-  - New `pages/api/auth/callback.js` — exchanges code for session server-side; `@withbanner.com` domain check; auto-provisions profile on first sign-in; fires Gong onboarding sync; uses explicit `res.setHeader + res.writeHead(302) + res.end()` to preserve Set-Cookie headers.
-  - `lib/auth.js` `signInWithGoogle()` — now calls `/api/auth/sign-in` to get URL then redirects, instead of calling `supabase.auth.signInWithOAuth` client-side.
-  - `pages/modules/tasks.js` — switched from `getUser()` (network call, fails cold) to `getSession()` (reads cookies locally, reliable).
-  - Vercel deployment was also blocked by `0 */2 * * 1-5` cron schedule (Hobby plan rejects non-daily crons) — removed that entry from `vercel.json`.
-
-- **2026-05-06** — Deal Pulse cron (`pages/api/cron/deal-pulse.js`): scores James's active accounts for attention needed (overdue tasks +40 each, days since last call up to +80, stage weight, open next steps, red flags), picks top 3, calls Claude Haiku per account for urgency_reason + specific action + draft opener, sends Slack blocks to SLACK_MANAGER_CHANNEL (D02PGNHTR53). Cron: Mon–Fri 11am UTC (7am EST). Manual trigger: POST /api/cron/deal-pulse with Authorization: Bearer {CRON_SECRET}.
-
-- **2026-05-06** — Chat tab added to Account Pipeline:
-  - `pages/api/accounts/chat.js` — POST endpoint; loads account, calls, tasks, stakeholders, open gaps, notes, and sales process config in parallel; builds a comprehensive system prompt with aggregated MEDDIC across all calls; trims to last 14 messages before sending; uses Sonnet 4.6, maxTokens 2000
-  - `components/tabs/ChatTab.jsx` — persistent per-account chat UI; localStorage-backed (key: `account_chat_{id}`, trim to 30); auto-generates opening deal briefing on first open; 4 suggested prompt chips that auto-send; simple bold/newline markdown rendering; animated typing indicator; "New conversation" button clears and regenerates; error messages shown inline as system messages
-  - `lib/constants.js` — Chat tab added as 7th tab in TABS array
-  - `pages/modules/account-pipeline.js` — ChatTab imported and rendered in tab switch; no icons needed (TABS are label-only)
-
-- **2026-05-06** — Account management 6-feature build:
-  - **DB migrations**: `tier` column on accounts (default 'active'); `email` + `hubspot_contact_id` on stakeholders; " - New Deal" suffix stripped from all 551 account names
-  - **sync-deals.js**: `cleanDealName()` helper strips " - New Deal" on every import going forward
-  - **lib/db/accounts.js**: `getAccounts()` now lightweight (no joins, sorted by name, no user_id filter); new `getAccountDetail()` does full join select; `tier` added to both transform functions
-  - **useAccountStore**: `accountDetails` cache map; `fetchAccountDetail` action; `getSelectedAccount` uses cache; all mutation actions mirror updates into `accountDetails`; `reset` clears cache
-  - **useAccounts hook**: `setSelectedAccount` triggers `fetchAccountDetail`; `fetchAccountDetail` exposed in hook return
-  - **account-pipeline.js**: Full sidebar rewrite — search, stage/tier/owner filters, tier icons, active count badge, show-archived toggle; tier selector in account header; owner/deal value in header; lazy detail loading with spinner; Reengage button + modal (email + call script); `handleBulkAddStakeholders` wired to StakeholdersTab
-  - **pages/api/hubspot/account-contacts.js**: new endpoint — GET ?accountId=X, fetches HubSpot contacts for a deal, batch-reads contact properties
-  - **pages/api/accounts/reengagement.js**: new endpoint — POST {accountId}, Claude generates reengagement brief (why_reengage, cold_email, cold_call_script, talking_points)
-  - **StakeholdersTab.jsx**: "Import from HubSpot" button (when hubspotDealId set), contact checklist, `onBulkAddStakeholders` prop; shows email field on stakeholder cards
-
-- **2026-05-06** — Three-feature build: auto-surfaced Gong calls, weekly brief, rep coaching dashboard:
-  - **Auto-surfaced calls in Account Pipeline**: TranscriptsTab now fetches `/api/gong/account-calls?accountId=X` on mount; shows AI-analyzed calls auto-linked to account alongside manually imported transcripts; attention score surfaces calls needing follow-up (unresolved next steps +40, recent +30, risk flags +20, commitments +15, MEDDICC gaps +10); default shows top 5 by score with "show all" expand; GongCallCard component shows summary, next steps, commitments, MEDDICC grid, buying signals, objections with expandable detail; header shows call count, auto-linked count, needs-attention badge
-  - **Pipeline Weekly Brief**: `GET /api/manager/weekly-brief` aggregates last 7 days accounts + calls + tasks → Sonnet 4.6 generates structured brief (headline, pipeline_pulse, watch_list, rep_coaching signals, wins, 3 priorities); `?send=slack` DMs James via existing Slack bot; `api/cron/weekly-brief.js` runs Monday 7:30am UTC; "Weekly Brief" button in Pipeline Overview header renders brief inline as collapsible panel; coaching signals per rep include call-evidence-backed observation + 1:1 opener script
-  - **Rep Coaching Dashboard** (`/modules/coaching`): new module, manager-only; rep selector + time window (14/30/60/90d); metric cards (call count, avg discovery score, talk ratio, next-step rate, red flag rate) with trend arrows vs prior period; `GET /api/gong/rep-coaching?repName=X&days=N` computes metrics + calls Claude for coaching card (strengths, observations with expand, 30-day focus area, 1:1 opener, leading indicators); evidence calls list with discovery score + talk ratio + next-step chips; "Rep Coaching" link added to tasks quick-nav and pipeline-overview header; vercel.json: weekly-brief cron at 30 7 * * 1
-- **2026-05-06** — Call enrichment + triage infrastructure: intel-enrich.js updated (CRON_SECRET bypass, affiliation case bug fixed 'external'→'External', account_id linking after HubSpot deal upsert via hubspot_deal_id→accounts JOIN); cron/enrich-calls-bulk.js (nightly 1:30am UTC, batches all unchecked calls through intel-enrich, maxDuration 300s); api/admin/match-triage.js (GET low-confidence links <85%, POST confirm/reject/override); Data Quality page: new "Low Confidence" tab shows auto-links needing review with Confirm/Remove Link buttons; vercel.json: enrich-calls-bulk cron added at 30 1 * * *, function timeout added
-- **2026-05-06** — HubSpot → accounts sync: accounts table populated with 551 active HubSpot deals (Sales Opportunities pipeline); sync-deals.js rewritten to create accounts from HubSpot (was match-only); match-calls.js new endpoint for bulk Gong call→account fuzzy matching; intel-analyze.js updated with inline account matching on every new call analysis; cron/sync-hubspot.js runs nightly at 1am UTC (before nightly-intel); accounts table schema: user_id now nullable, hubspot_owner_id + owner_name columns added, unique constraint on hubspot_deal_id; James's profile inserted as 'manager' role (enables viewing all accounts via is_manager_or_admin()); manager UPDATE policy added to accounts RLS; 100 of 1243 Gong calls matched to accounts (title/sig-word fuzzy SQL); remaining calls need intel-enrich.js (contact-email matching) post-deployment
-- **2026-05-06** — Tasks v2 (session 2): Work in Claude side panel (fixed right panel, localStorage conversation persistence per task, /api/work-in-claude.js using Sonnet 4.6); NL task creation bar above filter row (/api/tasks-nl.js Haiku-parses text → structured fields, editable preview card before create); AI priority score (computeTaskPriority() client-side 0-100 urgency score, sorts within each type group); commitment extraction added to intel-analyze.js (new 'commitments' field in JSON schema, separate gong_commitment source_type with priority 1 vs gong_next_step priority 2)
-- **2026-05-06** — Tasks v2 (session 1): 23 tasks seeded (4 named + 19 Gong-extracted from James's last 4 weeks); schema: primary_action/rationale/source_type/dismissed_at added to tasks, task_dismissals table, account_insights table; auto-task creation from intel-analyze.js (next steps → tasks for James on each new analysis); Rep Morning Brief (/api/rep/morning-brief, Haiku-generated daily brief cached in localStorage, TodaysFocus card in tasks.js); dismissal flow (POST /api/tasks/[id] action=dismiss, DismissModal with reason picker, logs to task_dismissals); rationale shown in task expansion; lib/db/tasks.js updated for all new fields; getTasks() excludes dismissed by default
-- **2026-05-05** — Call Intelligence v2 (session 2): Feature 9 stage filter + Stage Breakdown tab; Feature 1 action cards (coaching_task_create + outreach_batch_create executors, confirmation modal, executed_actions log); intel-execute-action.js (new); Feature 3 Deals at Risk widget (intel-risk.js, accounts + transcripts tables); Feature 4 Pre-call AI brief (generate-pre-call-brief.js, PreCallBrief component in OverviewTab.jsx); nightly cron infrastructure (nightly-intel.js, deal-risk-alerts.js); CRON_SECRET bypass added to intel-analyze.js; vercel.json updated with 2 new crons (2am, 3am UTC daily)
-- **2026-05-05** — Call Intelligence v2 (session 1): PeriodDelta component, stage filter, stage breakdown tab, action cards, intel-execute-action.js, intel-aggregate weekly_actions, HubSpot enrichment fixes (intel-enrich.js now populates deal_stage_at_call)
-- **2026-04-15** — Cross-assign tasks: "Assign to" dropdown in New Task modal; `GET /api/users` endpoint
-- **2026-04-15** — Smart Suggestions expand on click: clicking a suggestion shows why it was surfaced, source email, sender, context
-- **2026-04-15** — Smart Suggestions auto-sync: panel syncs automatically on page load (no more manual "Sync Now")
-- **2026-04-15** — Fixed server-side auth bug: task create and filters were silently failing (401) because `getSupabase()` used `createBrowserClient` server-side with no cookie access. Fixed with `createServerSupabaseClient(req, res)` using `createServerClient` from `@supabase/ssr`.
-- **2026-04-15** — Multi-channel Slack routing: bot token + `chat.postMessage`, channel derived from account name, explicit override field on account
-- **2026-04-15** — Pipeline confidence score: weighted win probability hero card + per-rep confidence in Pipeline Overview
-- **2026-04-15** — Rep Slack DM routing: daily digest routes to rep's personal Slack DM if `slack_user_id` set in Settings
-- **2026-04-15** — Slack channel field on accounts: explicit override or auto-derived from account name
-- **2026-04-15** — Stage changes fire Slack notification to account's channel in real time
-
----
+- **Phase 1–2 big builds (May 2026)** — Today landing page, Account Pursuit, Bottleneck Tracker, call-intelligence v2 (transcript storage, 2-yr backfill, matching, process-backlog drain), CEO Dashboard, deal-risk scoring, reengagement, HubSpot audit log, 13-feature VP-of-sales build (playbooks, stage-exit checklists, win/loss debrief, CS handover, MAP generator).
+- **May 27** — showed unanalyzed calls in Transcripts tab; dropped 5 dead HubSpot columns from `gong_call_analyses`; fixed the 1,056-call no-show bug.
+- See [`PLATFORM_AUDIT_2026-06-27.md`](PLATFORM_AUDIT_2026-06-27.md) for the current verified state and gaps.
 
 ## How to Work With This Codebase
 

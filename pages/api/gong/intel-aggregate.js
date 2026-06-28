@@ -43,6 +43,7 @@ export default async function handler(req, res) {
       .from('gong_call_analyses')
       .select('*')
       .or('ignored.is.null,ignored.eq.false')
+      .or('call_category.is.null,call_category.neq.cs')
       .not('analysis', 'is', null)
       .order('call_date', { ascending: false });
 
