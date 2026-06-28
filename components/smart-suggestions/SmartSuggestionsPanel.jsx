@@ -349,6 +349,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
   const [blockedSenders, setBlockedSenders] = useState([])
   const [autoPrepCount, setAutoPrepCount] = useState(0)
   const autoPrepCreatedRef = useRef(loadDailySet('auto_prep_created'))
+  const autoFollowupCreatedRef = useRef(loadDailySet('auto_followup_created'))
   const [prepBriefEvent, setPrepBriefEvent] = useState(null)
 
   const hasSyncedRef = useRef(false)
@@ -424,6 +425,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
               priority: event.hoursUntil <= 24 ? 1 : 2,
               dueDate: new Date(new Date(event.start).getTime() - 30 * 60 * 1000).toISOString().split('T')[0],
               source: 'calendar',
+              sourceId: `cal_prep_${event.id}`,
             })
             autoPrepCreatedRef.current.add(event.id)
           })
@@ -480,6 +482,37 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
     saveDailySet('auto_prep_created', autoPrepCreatedRef.current)
     setAddedCalendar(prev => new Set([...prev, ...toAutoPrep.map(e => e.id)]))
     setAutoPrepCount(toAutoPrep.length)
+  }, [calendarEvents])
+
+  // Auto-create a follow-up task (with a drafted email) for meetings that just ended.
+  // Routes through /api/tasks/from-calendar so it gets account matching + an AI draft.
+  const autoFollowupFiredRef = useRef(false)
+  useEffect(() => {
+    if (!calendarEvents?.length || autoFollowupFiredRef.current) return
+    autoFollowupFiredRef.current = true
+    const toFollowup = calendarEvents.filter(e =>
+      e.needsFollowup && e.isOwned !== false && !autoFollowupCreatedRef.current.has(e.id)
+    )
+    if (!toFollowup.length) return
+    let anyCreated = false
+    Promise.all(toFollowup.map(async (event) => {
+      try {
+        const res = await fetch('/api/tasks/from-calendar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phase: 'followup', accountId: event.matchedAccount?.id || null, event: { id: event.id, title: event.title, start: event.start, end: event.end } }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || json.success === false) throw new Error(json.error || 'create failed')
+        // Mark handled only on success — from-calendar is idempotent server-side, so a retry next sync is safe.
+        autoFollowupCreatedRef.current.add(event.id)
+        if (json.created) anyCreated = true
+      } catch (e) {
+        console.warn('[suggestions] follow-up task create failed, will retry next sync:', e.message)
+      }
+    })).then(() => {
+      saveDailySet('auto_followup_created', autoFollowupCreatedRef.current)
+      if (anyCreated) window.dispatchEvent(new Event('tasks:refresh')) // surface the new task without a manual reload
+    })
   }, [calendarEvents])
 
   const handleAddEmailTask = (suggestion) => {

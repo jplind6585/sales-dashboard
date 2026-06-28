@@ -290,9 +290,14 @@ function WorkInClaude({ task, onClose }) {
       const saved = localStorage.getItem(storageKey)
       if (saved) return JSON.parse(saved)
     } catch {}
+    // Never blank: prefer the task's pre-generated AI draft as the opening message.
+    if (task.aiDraft?.content) {
+      return [{ role: 'assistant', content: task.aiDraft.content, ts: Date.now() }]
+    }
     const intro = playbook ? playbook.buildIntro(task, []) : buildGenericIntro(task)
     return [{ role: 'assistant', content: intro, ts: Date.now() }]
   })
+  const [draftGenerating, setDraftGenerating] = useState(false)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
@@ -309,13 +314,39 @@ function WorkInClaude({ task, onClose }) {
       .then(d => {
         const calls = d.calls || []
         setAccountCalls(calls)
-        const intro = playbook.buildIntro(task, calls)
-        const fresh = [{ role: 'assistant', content: intro, ts: Date.now() }]
-        setMessages(fresh)
-        try { localStorage.setItem(storageKey, JSON.stringify(fresh)) } catch {}
+        // Don't overwrite a real pre-generated draft with the generic playbook intro.
+        if (!task.aiDraft?.content) {
+          const intro = playbook.buildIntro(task, calls)
+          const fresh = [{ role: 'assistant', content: intro, ts: Date.now() }]
+          setMessages(fresh)
+          try { localStorage.setItem(storageKey, JSON.stringify(fresh)) } catch {}
+        }
       })
       .catch(() => {})
       .finally(() => setCallsLoading(false))
+  }, [])
+
+  // Never blank (fallback): no saved thread, no pre-generated draft, no playbook
+  // context to fetch → lazily generate the first action and seed the thread.
+  useEffect(() => {
+    if (needsFetch || task.aiDraft?.content) return
+    const hasHistory = (() => { try { return !!localStorage.getItem(storageKey) } catch { return false } })()
+    if (hasHistory) return
+    setDraftGenerating(true)
+    fetch('/api/tasks/generate-action', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: task.id }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.aiDraft?.content) {
+          const fresh = [{ role: 'assistant', content: d.aiDraft.content, ts: Date.now() }]
+          setMessages(fresh)
+          try { localStorage.setItem(storageKey, JSON.stringify(fresh)) } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => setDraftGenerating(false))
   }, [])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -505,10 +536,11 @@ function WorkInClaude({ task, onClose }) {
               )}
             </div>
           ))}
-          {loading && (
+          {(loading || draftGenerating || callsLoading) && (
             <div className="flex justify-start">
-              <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
+              <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                {(draftGenerating || callsLoading) && <span className="text-xs text-gray-400">Drafting your starting point…</span>}
               </div>
             </div>
           )}
@@ -2146,6 +2178,13 @@ export default function TasksPage() {
     window.addEventListener('tasks:switchTab', handler)
     return () => window.removeEventListener('tasks:switchTab', handler)
   }, [])
+
+  // Lightweight refresh hook — e.g. when a follow-up task is created server-side from a just-ended meeting.
+  useEffect(() => {
+    const handler = () => fetchTasks()
+    window.addEventListener('tasks:refresh', handler)
+    return () => window.removeEventListener('tasks:refresh', handler)
+  }, [fetchTasks])
 
   const handleStatusChange = async (taskId, newStatus) => {
     if (newStatus === 'complete') {

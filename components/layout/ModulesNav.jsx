@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter as useNextRouter } from 'next/router'
 import {
   LayoutGrid, Zap, Building2, Send, TrendingUp, Users,
-  Target, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Database,
+  Target, BarChart3, CheckCircle2, ChevronDown, ChevronUp, Database, Gauge,
 } from 'lucide-react'
 
 const QUICK_MODULES = [
   { label: 'Today', href: '/modules/today', icon: Zap, color: 'text-amber-500' },
   { label: 'Tasks', href: '/modules/tasks', icon: CheckCircle2, color: 'text-blue-600' },
+  { label: 'Command Center', href: '/modules/sales-reports/command-center', icon: Gauge, color: 'text-rose-500' },
   { label: 'Account Pipeline', href: '/modules/account-pipeline', icon: Building2, color: 'text-blue-700' },
   { label: 'Pipeline Overview', href: '/modules/pipeline-overview', icon: TrendingUp, color: 'text-teal-600' },
   { label: 'Rep Coaching', href: '/modules/coaching', icon: Users, color: 'text-indigo-600' },

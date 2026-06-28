@@ -1,4 +1,4 @@
-import { getTasks, createTask } from '../../lib/db/tasks'
+import { getTasks, createTask, findTaskBySource } from '../../lib/db/tasks'
 import { createServerSupabaseClient, getSupabase } from '../../lib/supabase'
 
 export default async function handler(req, res) {
@@ -53,6 +53,12 @@ export default async function handler(req, res) {
 
     if (!title) {
       return res.status(400).json({ error: 'title is required' })
+    }
+
+    // Idempotency for trigger-sourced tasks (e.g. calendar prep): same (source, sourceId) → don't duplicate.
+    if (source && sourceId) {
+      const existing = await findTaskBySource(source, sourceId)
+      if (existing) return res.status(200).json({ success: true, task: existing, deduped: true })
     }
 
     const { task, error } = await createTask(currentUser.id, {

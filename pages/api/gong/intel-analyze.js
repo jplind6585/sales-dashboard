@@ -15,6 +15,7 @@ import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/sa
 import { sendSlackMessage } from '../../../lib/slack';
 import { sendCallCoachingDM } from '../../../lib/coaching';
 import { isAutoProcessRep } from '../../../lib/repConfig';
+import { generateTaskDraft } from '../../../lib/taskActions';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -178,7 +179,7 @@ function isRepOwnedStep(step) {
   return !isProspectStep(step);
 }
 
-async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory, db }) {
+async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory, accountId, db }) {
   // Governance: only auto-process reps get auto-tasks, and never from CS-category calls.
   if (!isAutoProcessRep(repEmail) && !isAutoProcessRep(repName)) return;
   if (callCategory === 'cs') return;
@@ -223,6 +224,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     status:            'open',
     source:            'gong',
     source_type:       'gong_next_step',
+    account_id:        accountId || null,
     rationale:         analysis.summary ? analysis.summary.slice(0, 200) : null,
     visible_to_manager: true,
   }));
@@ -239,6 +241,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     status:            'open',
     source:            'gong',
     source_type:       'gong_commitment',
+    account_id:        accountId || null,
     rationale:         `Explicit promise made on the call — highest urgency to follow through.`,
     visible_to_manager: true,
   }));
@@ -246,13 +249,38 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
   const rows = [...commitmentRows, ...nextStepRows];
   if (!rows.length) return;
 
-  const { error } = await db.from('tasks').insert(rows);
+  // Base columns only on insert — keeps task creation working even before the
+  // 20260628 migration adds trigger/ai_draft.
+  const { data: createdTasks, error } = await db
+    .from('tasks')
+    .insert(rows)
+    .select('id, title, description, rationale, source_type');
   if (error) {
     console.error('[intel-analyze] Auto-task creation failed:', error.message);
     return;
   }
 
   console.log(`[intel-analyze] Created ${rows.length} tasks (${commitmentRows.length} commitments, ${nextStepRows.length} next steps) from "${title}"`);
+
+  // Pre-generate each task's AI action so the rep never opens a blank task, and tag the
+  // trigger. Both are best-effort: a missing column (pre-migration) just logs and moves on.
+  const draftCtxCall = {
+    title, date,
+    summary: analysis.summary,
+    painPoints: analysis.pain_points_identified || analysis.pain_points,
+    nextSteps: analysis.next_steps_mentioned,
+    commitments: analysis.commitments,
+    objections: (analysis.objections || []).map(o => (typeof o === 'string' ? o : o?.text)).filter(Boolean),
+  };
+  // Awaited (intel-analyze is server-to-server) + parallel so drafts actually persist on
+  // serverless instead of being dropped when the instance freezes after the response.
+  await Promise.all((createdTasks || []).map(async (t) => {
+    const trig = t.source_type === 'gong_commitment' ? 'gong_commitment' : 'gong_action_item';
+    try {
+      const draft = await generateTaskDraft({ task: { ...t, trigger: trig }, calls: [draftCtxCall], repName: (repEmail || '').split('@')[0] });
+      await db.from('tasks').update({ trigger: trig, ...(draft ? { ai_draft: draft } : {}) }).eq('id', t.id);
+    } catch (e) { console.error('[intel-analyze] task trigger/draft update skipped:', e.message); }
+  }));
 
   // Send Slack DM if call is fresh (within last 8 hours)
   const isFresh = date && (Date.now() - new Date(date).getTime()) < 8 * 60 * 60 * 1000;
@@ -498,21 +526,23 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
       console.error('intel-analyze: Supabase write failed for', callId, upsertError.message, upsertError.code, upsertError.details);
     } else {
       const callCat = deriveCallCategory(deriveDerivedCallType(title));
-      // Auto-create tasks — non-blocking (gated by rep config + category + freshness inside)
-      autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory: callCat, db }).catch(e =>
-        console.error('[intel-analyze] autoCreateTasksFromAnalysis error:', e.message)
-      );
-      // Match to account, insert transcript, then fire a per-call coaching DM.
-      // Coaching is centralized here so EVERY analysis path (poller, backlog, nightly) feeds it —
-      // gated to auto-process reps, sales calls, and fresh calls (no backlog spam).
-      (async () => {
-        let accountId = await tryMatchCallToAccount(callId, title, db);
-        if (!accountId) {
-          const { data: row } = await db.from('gong_call_analyses').select('account_id').eq('gong_call_id', callId).maybeSingle();
-          accountId = row?.account_id || null;
-        }
-        await autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db });
 
+      // Resolve the account FIRST so tasks, transcript, and coaching all share the same id
+      // (and Gong tasks land on their account instead of NULL).
+      let accountId = await tryMatchCallToAccount(callId, title, db);
+      if (!accountId) {
+        const { data: row } = await db.from('gong_call_analyses').select('account_id').eq('gong_call_id', callId).maybeSingle();
+        accountId = row?.account_id || null;
+      }
+
+      // Auto-create tasks (gated inside). Awaited so the pre-generated drafts persist on serverless.
+      try {
+        await autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory: callCat, accountId, db });
+      } catch (e) { console.error('[intel-analyze] autoCreateTasksFromAnalysis error:', e.message); }
+
+      // Insert transcript, then per-call coaching DM (auto-process reps, sales calls, fresh only).
+      try {
+        await autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db });
         const autoProcess = isAutoProcessRep(repEmail) || isAutoProcessRep(repName);
         const isFreshForCoaching = date && (Date.now() - new Date(date).getTime()) < AUTO_TASK_MAX_AGE_MS;
         if (autoProcess && callCat !== 'cs' && isFreshForCoaching && repEmail) {
@@ -523,7 +553,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
           }
           await sendCallCoachingDM({ analysis, callTitle: title, callDate: date, accountName, repEmail, gongCallId: callId });
         }
-      })().catch(e => console.error('[intel-analyze] match+transcript+coaching chain error:', e.message));
+      } catch (e) { console.error('[intel-analyze] transcript+coaching chain error:', e.message); }
     }
 
     // Always return the analysis even if the DB write failed —

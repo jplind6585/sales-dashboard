@@ -1,9 +1,20 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart, Database } from 'lucide-react'
+import { ArrowLeft, PhoneCall, Rocket, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart, Database, Target } from 'lucide-react'
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 
 const REPORTS = [
+  {
+    id: 'command-center',
+    name: 'Command Center',
+    description: 'Live goal tracking against your revenue target, a constant feed of what the team is doing and what prospects are saying, and an AI read on what\'s working, what\'s not, and what to do this week.',
+    icon: Target,
+    href: '/modules/sales-reports/command-center',
+    color: 'from-rose-500 to-pink-600',
+    available: true,
+    status: 'live',
+    tags: ['Goal', 'Live feed', 'AI analysis'],
+  },
   {
     id: 'ceo-dashboard',
     name: 'CEO Dashboard',

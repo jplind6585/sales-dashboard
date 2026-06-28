@@ -62,9 +62,11 @@ export default async function handler(req, res) {
   try {
     const now = new Date()
     const sevenDaysOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    // Reach 24h into the past too, so meetings that just ended can trigger a follow-up task.
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
     const params = new URLSearchParams({
-      timeMin: now.toISOString(),
+      timeMin: oneDayAgo.toISOString(),
       timeMax: sevenDaysOut.toISOString(),
       singleEvents: 'true',
       orderBy: 'startTime',
@@ -210,7 +212,8 @@ export default async function handler(req, res) {
           : null,
         isOwned,
         transferredTo,
-        needsPrep: isOwned && event.externalAttendees.length > 0 && event.hoursUntil <= 48,
+        needsPrep: isOwned && event.externalAttendees.length > 0 && new Date(event.start) > now && event.hoursUntil <= 48,
+        needsFollowup: isOwned && event.externalAttendees.length > 0 && new Date(event.end) < now && (now - new Date(event.end)) / 3600000 <= 24,
       }
     })
 
