@@ -4,7 +4,11 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 
 ## Operating rules this run
 - **Loop:** build module → adversarial review workflow → fix all must-fixes → build-verify → deploy-or-stage → log here → continue.
-- **Testing reality:** Verification = `next build` + multi-agent code review + logic reasoning. PLUS: **if `sales-dashboard/e2e/auth.json` exists**, run Playwright E2E against PROD (https://sales-dashboard-six-rosy.vercel.app) using that storageState — but keep it SCOPED AND SAFE: navigation/render smoke of each new screen, the assistant's *preview* step (no Apply), and at most one clearly-labeled throwaway test task. Do NOT bulk-move real account stages, do NOT trigger Slack/HubSpot writes, do NOT delete anything. If auth.json is absent, skip E2E and mark UI "compiles + reviewed," not "clicked through."
+- **Testing reality:** Verification = `next build` + multi-agent code review + logic reasoning + **Playwright E2E (NOW LIVE ✅)**.
+  - E2E runs against the **Vercel project domain** `https://sales-dashboard-james-projects-87ec0089.vercel.app` (NOT six-rosy — the saved login session's auth cookies live on the project domain; six-rosy only got the PKCE verifier). baseURL is set in `playwright.config.js`.
+  - Run with `npx playwright test --project=chromium` from `sales-dashboard/`. Session = `e2e/auth.json` (gitignored).
+  - **2026-06-28: 8/8 smoke passing** — today, tasks, account-pipeline, sales-reports, command-center, ceo-dashboard all render authed; global assistant launcher present + opens + responds.
+  - SCOPE/SAFETY: navigation/render smoke + the assistant *preview* step only. Do NOT click Apply on writes, do NOT bulk-move real stages, do NOT fire Slack/HubSpot, do NOT delete. Add a smoke check for each new screen as modules ship.
 - **Deploy posture:** additive/new surfaces that pass review → auto-deployed to prod (Vercel `main`). Changes to existing critical paths → committed but flagged ⚠️ NEEDS-REVIEW below, not auto-deployed.
 - **Migrations:** I cannot run Supabase migrations (MCP disconnected). Any new schema is delivered as a migration FILE under `supabase/migrations/` and listed under "RUN THESE" below. Code degrades gracefully until you run them.
 
@@ -16,6 +20,7 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 ---
 
 ## Shipped & deployed (reviewed, build-green)
+- **Playwright E2E harness** — `playwright.config.js` + `e2e/smoke.spec.js`, runs against your saved session. 8/8 smoke green. The loop now click-tests each new screen.
 - **Phase 1 — de-Jamesed engine** (repConfig governance, CS-filtered analytics, centralized coaching, retired-model fix, ~2k lines dead code removed).
 - **Task engine "never blank"** — every Gong/calendar task arrives with a pre-generated AI draft; Work-in-Claude opens on it.
 - **Reporting Command Center** — revenue/pipeline scorecard vs goal, live feed, prospect-voice, AI working/not-working synthesis.
