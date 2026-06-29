@@ -2,7 +2,7 @@ import { useRouter } from 'next/router'
 import {
   CheckCircle2, Zap, Building2, Send, TrendingUp,
   Target, BarChart3, Users, Settings, AlertTriangle,
-  BarChart2, LayoutGrid, Sliders,
+  BarChart2, LayoutGrid, Sliders, FileText,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 
@@ -14,6 +14,14 @@ const MODULES = [
     icon: CheckCircle2,
     color: 'text-blue-600',
     bg: 'bg-blue-50',
+  },
+  {
+    title: 'Content Studio',
+    href: '/modules/content',
+    description: 'AI-drafted follow-ups, business cases, one-pagers, sequences & RFP answers from each account\'s calls',
+    icon: FileText,
+    color: 'text-violet-600',
+    bg: 'bg-violet-50',
   },
   {
     title: 'Today',

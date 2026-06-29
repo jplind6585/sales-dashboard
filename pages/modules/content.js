@@ -1,392 +1,181 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
-import {
-  ArrowLeft,
-  FileText,
-  Presentation,
-  Puzzle,
-  Download,
-  Eye,
-  Loader2,
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react'
+import { ArrowLeft, FileText, Mail, Layers, Calendar, FileSpreadsheet, Sparkles, Loader2, Copy, RefreshCw, Check, ExternalLink, AlertTriangle } from 'lucide-react'
+import UserMenu from '../../components/auth/UserMenu'
+import ModulesNav from '../../components/layout/ModulesNav'
+import { useAccounts } from '../../hooks/useAccounts'
 
-export default function ContentModule() {
+const TYPES = [
+  { id: 'follow_up_email', label: 'Follow-up email', icon: Mail, auto: true, email: true },
+  { id: 'business_case', label: 'Business case', icon: FileText, auto: true },
+  { id: 'one_pager', label: 'One-pager', icon: FileText, auto: true },
+  { id: 'meeting_agenda', label: 'Meeting agenda', icon: Calendar, auto: true },
+  { id: 'email_sequence', label: 'Email sequence', icon: Layers, auto: true },
+  { id: 'rfp_response', label: 'RFP / questionnaire', icon: FileSpreadsheet, auto: false },
+]
+
+export default function ContentStudio() {
   const router = useRouter()
-  const [accounts, setAccounts] = useState([])
-  const [templates, setTemplates] = useState([])
-
-  // Form state
-  const [selectedContentType, setSelectedContentType] = useState('1-pager')
-  const [selectedTemplate, setSelectedTemplate] = useState(null)
-  const [selectedAccount, setSelectedAccount] = useState(null)
-  const [customInputs, setCustomInputs] = useState({})
-
-  // UI state
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
-  const [previewContent, setPreviewContent] = useState(null)
-  const [exportSuccess, setExportSuccess] = useState(false)
+  const { accounts } = useAccounts()
+  const [accountId, setAccountId] = useState('')
+  const [type, setType] = useState('follow_up_email')
+  const [rfpText, setRfpText] = useState('')
+  const [content, setContent] = useState('')
+  const [callsUsed, setCallsUsed] = useState(null)
+  const [edited, setEdited] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const reqRef = useRef(0)
+  const cacheRef = useRef({}) // `${accountId}:${type}` -> { content, callsUsed }
 
-  // Load accounts on mount
+  const activeType = TYPES.find(t => t.id === type)
+  const sortedAccounts = [...(accounts || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  const accountName = sortedAccounts.find(a => a.id === accountId)?.name || ''
+  const cacheKey = `${accountId}:${type}`
+
+  // Preselect an account from the URL (?accountId= or ?account=) so other surfaces can deep-link in.
   useEffect(() => {
-    loadAccounts()
-    loadTemplates()
-  }, [])
+    const q = router.query.accountId || router.query.account
+    if (q && typeof q === 'string') setAccountId(q)
+  }, [router.query.accountId, router.query.account])
 
-  // Load templates when content type changes
-  useEffect(() => {
-    if (selectedContentType) {
-      loadTemplates()
-    }
-  }, [selectedContentType])
-
-  const loadAccounts = () => {
-    // Load from localStorage for now
-    const stored = localStorage.getItem('accounts')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      setAccounts(parsed)
-    }
-  }
-
-  const loadTemplates = async () => {
-    // TODO: Load from API once database is set up
-    // For now, hardcode based on content type
-    const templatesByType = {
-      '1-pager': [
-        { id: '1', name: 'Enterprise 1-Pager', version: 'enterprise' },
-        { id: '2', name: 'Mid-Market 1-Pager', version: 'mid-market' },
-        { id: '3', name: 'Case Study', version: 'case-study' },
-        { id: '4', name: 'ROI-Focused 1-Pager', version: 'roi-focused' }
-      ],
-      'sales-deck': [
-        { id: '5', name: 'Intro Deck', version: 'intro' },
-        { id: '6', name: 'Demo/Follow-up Deck', version: 'demo' },
-        { id: '7', name: 'Proposal Deck', version: 'proposal' }
-      ],
-      'integration-guide': [
-        { id: '8', name: 'Yardi Integration', version: '1-pager', category: 'yardi' },
-        { id: '9', name: 'MRI Integration', version: '1-pager', category: 'mri' },
-        { id: '10', name: 'Real Page Integration', version: '1-pager', category: 'realpage' },
-        { id: '11', name: 'Appfolio Integration', version: '1-pager', category: 'appfolio' },
-        { id: '12', name: 'Resman Integration', version: '1-pager', category: 'resman' },
-        { id: '13', name: 'Entrata Integration', version: '1-pager', category: 'entrata' },
-        { id: '14', name: 'Oracle Integration', version: '1-pager', category: 'oracle' },
-        { id: '15', name: 'Sage Integration', version: '1-pager', category: 'sage' }
-      ]
-    }
-
-    setTemplates(templatesByType[selectedContentType] || [])
-    setSelectedTemplate(null)
-  }
-
-  const handleGeneratePreview = async () => {
-    if (!selectedAccount || !selectedTemplate) {
-      setError('Please select an account and template')
-      return
-    }
-
-    setIsGenerating(true)
-    setError(null)
-
+  const runGenerate = async () => {
+    if (!accountId) { setError('Pick an account first.'); return }
+    if (type === 'rfp_response' && !rfpText.trim()) { setError('Paste the RFP / questionnaire text first.'); return }
+    const reqId = ++reqRef.current
+    setLoading(true); setError(null); setContent(''); setCallsUsed(null)
     try {
-      // TODO: Call API to generate preview
-      // For now, simulate with timeout
-      await new Promise(resolve => setTimeout(resolve, 1500))
-
-      setPreviewContent({
-        title: `${selectedTemplate.name} - ${selectedAccount.name}`,
-        type: selectedContentType,
-        template: selectedTemplate.name,
-        account: selectedAccount.name,
-        generatedAt: new Date().toISOString()
+      const res = await fetch('/api/content/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, type, input: type === 'rfp_response' ? { rawText: rfpText } : undefined }),
       })
-    } catch (err) {
-      setError('Failed to generate preview: ' + err.message)
-    } finally {
-      setIsGenerating(false)
-    }
+      const data = await res.json()
+      if (reqId !== reqRef.current) return // superseded by a newer request
+      if (!res.ok || data.success === false) throw new Error(data.error || 'Generation failed')
+      setContent(data.content || ''); setCallsUsed(data.callsUsed ?? null); setEdited(false)
+      cacheRef.current[cacheKey] = { content: data.content || '', callsUsed: data.callsUsed ?? null }
+    } catch (e) { if (reqId === reqRef.current) setError(e.message) }
+    finally { if (reqId === reqRef.current) setLoading(false) }
   }
 
-  const handleExportToDrive = async () => {
-    if (!previewContent) {
-      setError('Please generate a preview first')
+  // AI-first + non-destructive: restore a cached draft (preserving edits) or draft fresh.
+  useEffect(() => {
+    if (!accountId || !activeType?.auto) { setContent(''); setCallsUsed(null); setEdited(false); return }
+    const cached = cacheRef.current[`${accountId}:${type}`]
+    if (cached) { setContent(cached.content); setCallsUsed(cached.callsUsed); setEdited(false); setError(null) }
+    else runGenerate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, type])
+
+  const regenerate = () => {
+    if (edited && content.trim() && !window.confirm('Discard your edits and regenerate from scratch?')) return
+    runGenerate()
+  }
+
+  const onEdit = (v) => { setContent(v); setEdited(true); if (accountId) cacheRef.current[cacheKey] = { content: v, callsUsed } }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+    catch { setError('Copy failed — select the draft text and copy it manually.') }
+  }
+
+  const openGmail = () => {
+    const m = content.match(/^subject:\s*(.+)$/im)
+    const subject = m ? m[1].trim() : `Following up — ${accountName}`
+    const body = content.replace(/^subject:\s*.+$\n?/im, '').trim()
+    if (encodeURIComponent(body).length > 1800) { // compose-URL length guard
+      navigator.clipboard.writeText(body).catch(() => {})
+      window.open(`https://mail.google.com/mail/u/0/?view=cm&su=${encodeURIComponent(subject)}`, '_blank')
+      setError('Draft was long — opened Gmail with the subject and copied the body to your clipboard. Paste it in.')
       return
     }
-
-    setIsExporting(true)
-    setError(null)
-    setExportSuccess(false)
-
-    try {
-      // TODO: Call API to export to Google Drive
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      setExportSuccess(true)
-      setTimeout(() => setExportSuccess(false), 3000)
-    } catch (err) {
-      setError('Failed to export to Drive: ' + err.message)
-    } finally {
-      setIsExporting(false)
-    }
+    window.open(`https://mail.google.com/mail/u/0/?view=cm&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
   }
-
-  const contentTypes = [
-    { id: '1-pager', name: '1-Pagers', icon: FileText, description: 'Single page overviews and case studies' },
-    { id: 'sales-deck', name: 'Sales Decks', icon: Presentation, description: 'Presentation slides for meetings' },
-    { id: 'integration-guide', name: 'Integration Guides', icon: Puzzle, description: 'Tech partner integration docs' }
-  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/modules')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
+      <header className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><ArrowLeft className="w-4 h-4" /></button>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Sparkles className="w-4 h-4 text-violet-500" /> Content Studio</h1>
+              <p className="text-xs text-gray-400">AI-drafted from this account's calls — adapt and send</p>
+            </div>
+            <ModulesNav router={router} />
+          </div>
+          <UserMenu />
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-6 grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 space-y-4">
+          <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <label className="text-xs font-semibold text-gray-500 uppercase">Account</label>
+            <select value={accountId} onChange={e => setAccountId(e.target.value)} className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              <option value="">Select an account…</option>
+              {sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.stage ? ` · ${a.stage}` : ''}</option>)}
+            </select>
+            {!sortedAccounts.length && <p className="text-xs text-gray-400 mt-1">Loading accounts…</p>}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <label className="text-xs font-semibold text-gray-500 uppercase">Content type</label>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {TYPES.map(t => {
+                const Icon = t.icon
+                return (
+                  <button key={t.id} onClick={() => setType(t.id)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border text-left ${type === t.id ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    <Icon className="w-4 h-4 shrink-0" /> <span className="truncate">{t.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {type === 'rfp_response' && (
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <label className="text-xs font-semibold text-gray-500 uppercase">Paste the RFP / questionnaire</label>
+              <textarea value={rfpText} onChange={e => setRfpText(e.target.value)} rows={8} placeholder="Paste the questions here…"
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" />
+              <button onClick={regenerate} disabled={loading || !accountId || !rfpText.trim()}
+                className="mt-2 w-full bg-violet-600 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40">
+                {loading ? 'Drafting…' : 'Draft answers'}
               </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Content Generator</h1>
-                <p className="text-sm text-gray-600">Create client-ready materials with Google Drive integration</p>
-              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px]">◐</span>
-              <span className="text-sm font-medium text-amber-600">In Progress</span>
-            </div>
-          </div>
+          )}
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-2 gap-6 h-[calc(100vh-180px)]">
-          {/* Left Panel - Configuration */}
-          <div className="bg-white rounded-xl shadow-sm border p-6 overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-6">Configure Content</h2>
-
-            {/* Content Type Selection */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Content Type
-              </label>
-              <div className="grid grid-cols-1 gap-3">
-                {contentTypes.map(type => {
-                  const Icon = type.icon
-                  return (
-                    <button
-                      key={type.id}
-                      onClick={() => setSelectedContentType(type.id)}
-                      className={`flex items-start gap-3 p-4 rounded-lg border-2 transition-all text-left ${
-                        selectedContentType === type.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <Icon className={`w-5 h-5 mt-0.5 ${
-                        selectedContentType === type.id ? 'text-blue-600' : 'text-gray-400'
-                      }`} />
-                      <div>
-                        <div className="font-medium text-gray-900">{type.name}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{type.description}</div>
-                      </div>
-                    </button>
-                  )
-                })}
+        <div className="lg:col-span-2">
+          <div className="bg-white rounded-xl border border-gray-100 p-5 min-h-[480px] flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-gray-900">{activeType?.label}{accountName ? ` · ${accountName}` : ''}</h2>
+              <div className="flex items-center gap-2">
+                {content && activeType?.auto && <button onClick={regenerate} disabled={loading} className="text-xs flex items-center gap-1 px-2 py-1 border rounded-lg text-gray-600 hover:bg-gray-50"><RefreshCw className="w-3.5 h-3.5" /> Regenerate</button>}
+                {content && activeType?.email && <button onClick={openGmail} className="text-xs flex items-center gap-1 px-2 py-1 border rounded-lg text-blue-600 hover:bg-blue-50"><ExternalLink className="w-3.5 h-3.5" /> Open in Gmail</button>}
+                {content && <button onClick={copy} className="text-xs flex items-center gap-1 px-2 py-1 border rounded-lg text-gray-600 hover:bg-gray-50">{copied ? <><Check className="w-3.5 h-3.5 text-emerald-500" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}</button>}
               </div>
             </div>
 
-            {/* Template Selection */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Template Version
-              </label>
-              <select
-                value={selectedTemplate?.id || ''}
-                onChange={(e) => {
-                  const template = templates.find(t => t.id === e.target.value)
-                  setSelectedTemplate(template)
-                }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Select a template...</option>
-                {templates.map(template => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Account Selection */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Client/Account
-              </label>
-              <select
-                value={selectedAccount?.id || ''}
-                onChange={(e) => {
-                  const account = accounts.find(a => a.id === e.target.value)
-                  setSelectedAccount(account)
-                }}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Select an account...</option>
-                {accounts.map(account => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Custom Inputs (Future) */}
-            {selectedAccount && selectedTemplate && (
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Additional Details
-                </label>
-                <textarea
-                  placeholder="Add any custom information to include in the content..."
-                  rows={4}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  value={customInputs.notes || ''}
-                  onChange={(e) => setCustomInputs({ ...customInputs, notes: e.target.value })}
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  This will be combined with account data, transcripts, and MEDDICC information
-                </p>
+            {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm mb-3">{error}</div>}
+            {content && callsUsed === 0 && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm mb-3 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" /> No analyzed calls for this account yet — this draft is an ungrounded skeleton. Capture/analyze a call for a real draft.
               </div>
             )}
 
-            {/* Error Display */}
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-red-900">Error</p>
-                  <p className="text-sm text-red-700 mt-1">{error}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Generate Button */}
-            <button
-              onClick={handleGeneratePreview}
-              disabled={!selectedAccount || !selectedTemplate || isGenerating}
-              className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Generating Preview...
-                </>
-              ) : (
-                <>
-                  <Eye className="w-5 h-5" />
-                  Generate Preview
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Right Panel - Preview */}
-          <div className="bg-white rounded-xl shadow-sm border p-6 overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold">Preview</h2>
-              {previewContent && (
-                <button
-                  onClick={handleExportToDrive}
-                  disabled={isExporting}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                >
-                  {isExporting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Exporting...
-                    </>
-                  ) : exportSuccess ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      Exported!
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      Export to Drive
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-
-            {/* Preview Content */}
-            {!previewContent ? (
-              <div className="flex flex-col items-center justify-center h-full text-center py-20">
-                <Eye className="w-16 h-16 text-gray-300 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No Preview Yet
-                </h3>
-                <p className="text-gray-600 max-w-md">
-                  Select a content type, template, and account, then click "Generate Preview" to see your content
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Preview Header */}
-                <div className="border-b pb-4">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">
-                    {previewContent.title}
-                  </h3>
-                  <div className="flex items-center gap-4 text-sm text-gray-600">
-                    <span>Type: {previewContent.type}</span>
-                    <span>•</span>
-                    <span>Template: {previewContent.template}</span>
-                    <span>•</span>
-                    <span>Generated: {new Date(previewContent.generatedAt).toLocaleString()}</span>
-                  </div>
-                </div>
-
-                {/* Preview Body - Placeholder */}
-                <div className="prose max-w-none">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-4">
-                    <p className="text-sm text-blue-900 font-medium mb-2">
-                      🚧 Preview Under Construction
-                    </p>
-                    <p className="text-sm text-blue-800">
-                      This preview will show formatted content based on your selected template and account data.
-                      The actual template engine is being built next!
-                    </p>
-                  </div>
-
-                  <h2>Account Overview</h2>
-                  <p><strong>Company:</strong> {previewContent.account}</p>
-
-                  <h2>Value Proposition</h2>
-                  <p>Customized value proposition will appear here based on account data...</p>
-
-                  <h2>Pain Points Addressed</h2>
-                  <ul>
-                    <li>Pain point from transcripts...</li>
-                    <li>Another pain point...</li>
-                  </ul>
-
-                  <h2>Solution Overview</h2>
-                  <p>Solution details based on template...</p>
-                </div>
-              </div>
+            {!accountId && !loading && <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Pick an account and a content type — the draft appears automatically.</div>}
+            {loading && <div className="flex-1 flex items-center justify-center text-gray-400 text-sm gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Drafting from {accountName}'s calls…</div>}
+            {content && !loading && (
+              <textarea value={content} onChange={e => onEdit(e.target.value)}
+                className="flex-1 w-full border border-gray-100 rounded-lg p-3 text-sm font-mono leading-relaxed resize-none" style={{ minHeight: 380 }} />
             )}
           </div>
+          <p className="text-xs text-gray-400 mt-2">Grounded in this account's analyzed calls + your sales process. Edit freely — your edits are kept as you switch types, and nothing is sent or saved automatically.</p>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
