@@ -7,7 +7,7 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 - **Testing reality:** Verification = `next build` + multi-agent code review + logic reasoning + **Playwright E2E (NOW LIVE ✅)**.
   - E2E runs against the **Vercel project domain** `https://sales-dashboard-james-projects-87ec0089.vercel.app` (NOT six-rosy — the saved login session's auth cookies live on the project domain; six-rosy only got the PKCE verifier). baseURL is set in `playwright.config.js`.
   - Run with `npx playwright test --project=chromium` from `sales-dashboard/`. Session = `e2e/auth.json` (gitignored).
-  - **2026-06-28: 8/8 smoke passing** — today, tasks, account-pipeline, sales-reports, command-center, ceo-dashboard all render authed; global assistant launcher present + opens + responds.
+  - **2026-06-29: 10/10 smoke passing** — today, tasks, account-pipeline, sales-reports, command-center, ceo-dashboard, content, call-queue all render authed; global assistant launcher present + opens + responds.
   - SCOPE/SAFETY: navigation/render smoke + the assistant *preview* step only. Do NOT click Apply on writes, do NOT bulk-move real stages, do NOT fire Slack/HubSpot, do NOT delete. Add a smoke check for each new screen as modules ship.
 - **Deploy posture:** additive/new surfaces that pass review → auto-deployed to prod (Vercel `main`). Changes to existing critical paths → committed but flagged ⚠️ NEEDS-REVIEW below, not auto-deployed.
 - **Migrations:** I cannot run Supabase migrations (MCP disconnected). Any new schema is delivered as a migration FILE under `supabase/migrations/` and listed under "RUN THESE" below. Code degrades gracefully until you run them.
@@ -16,6 +16,7 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 1. `20260628_task_engine_vision.sql` ✅ (you ran this)
 2. `20260628_gong_call_analyses_columns.sql` ✅ (you ran this)
 3. ⏳ `20260628_coaching_cards_dedup.sql` — makes call_coaching_cards reproducible + UNIQUE(gong_call_id). Required before applying the staged race-fix. Safe/idempotent. Run it in the Supabase SQL editor (Sales AI Brain project) same as before.
+4. ⏳ `20260628_sdr_touches.sql` — creates the `sdr_touches` log that powers the Call Queue's "log a touch" buttons, the daily-target bar, and (now) de-prioritizing accounts you've already worked. Safe/idempotent. **Until you run it:** the queue still ranks + drafts fine, but the call/email/in buttons return a friendly 503 ("activates after the migration") and the touch counter holds at 0.
 
 ## SET THESE (env / integrations) to activate features
 - **Real-time webhook (optional, big latency win):** set `GONG_WEBHOOK_SECRET` in Vercel, then in Gong create a webhook/Automation Rule that POSTs to `https://<host>/api/gong/webhook` with header `x-webhook-secret: <that secret>` (NOT the query string). Until set, the endpoint is inert (returns 503) — nothing breaks. Without it, calls still get analyzed by the existing hourly cron + 15-min poller, just not instantly.
@@ -36,11 +37,12 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 ## In progress / queued (audit-prioritized)
 1. ✅ Real-time Gong webhook (T1) — shipped (inert until configured; race-fix staged).
 2. ✅ Content + RFP automation — shipped.
-3. SDR engine — ICP-ranked dial lists from HubSpot by last-contacted; sequences; auto follow-ups.
-4. Deeper reporting + the data→action feedback loop (talk tracks, demo improvements, per-rep coaching deltas).
+3. ✅ SDR Call Queue — shipped (ranking + drafting live now; touch-logging activates with migration #4).
+4. ⏸ Deeper reporting + the data→action feedback loop (talk tracks, demo improvements, per-rep coaching deltas). **PAUSED — James is steering; do not auto-start.**
 5. Recurring/template task editor (rep + admin editable).
 
 ## Shipped & deployed (continued)
+- **SDR Call Queue** — `/modules/call-queue` + `/api/sdr/call-queue` (ranks active accounts by recency + stage + ICP fit + tier) + `/api/sdr/log-touch`. Per-row one-click drafted opener (grounded in that account's calls), call/email/LinkedIn touch logging, daily-target bar. In ModulesNav + modules grid. 18-finding review; all 3 must-fixes fixed before deploy: (1) `scope=mine` no longer silently empties the queue for non-James reps — centralized `ownsAccount()` in repConfig (durable `user_id` link + normalized owner_name fallback), also patched the same bug in `rep-checkin.js`; (2) ranking now reads `sdr_touches` so a worked account de-prioritizes instead of re-surfacing labeled "never contacted"; (3) a failed draft no longer poisons the cache — it shows a Retry button. Also: ET (not UTC) day boundary, always-rep-scoped counter, archived-tier exclusion, cap-hit warning. **10/10 E2E green incl. regression on all prior screens.** ⚠️ Touch-logging + counter stay dormant until migration #4 runs.
 - **Real-time Gong webhook (T1)** — `pages/api/gong/webhook.js`. Inert until you set `GONG_WEBHOOK_SECRET` + configure Gong (see SET THESE). Hardened via 15-finding review: header-only timing-safe auth, no-clobber import + no_show rescue, fail-closed rep gate, parallel-capped analysis. When wired, a call's tasks + coaching land within ~1 min instead of the hourly cron.
 
 ## ⚠️ NEEDS-REVIEW (committed/described, NOT auto-deployed — your call in the morning)
