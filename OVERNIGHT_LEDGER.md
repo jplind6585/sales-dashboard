@@ -4,7 +4,7 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 
 ## Operating rules this run
 - **Loop:** build module → adversarial review workflow → fix all must-fixes → build-verify → deploy-or-stage → log here → continue.
-- **Testing reality:** No auth session was left, so NO live UX/E2E testing happened. Verification = `next build` + multi-agent code review + logic reasoning. Treat UI as "compiles + reviewed," not "clicked through."
+- **Testing reality:** Verification = `next build` + multi-agent code review + logic reasoning. PLUS: **if `sales-dashboard/e2e/auth.json` exists**, run Playwright E2E against PROD (https://sales-dashboard-six-rosy.vercel.app) using that storageState — but keep it SCOPED AND SAFE: navigation/render smoke of each new screen, the assistant's *preview* step (no Apply), and at most one clearly-labeled throwaway test task. Do NOT bulk-move real account stages, do NOT trigger Slack/HubSpot writes, do NOT delete anything. If auth.json is absent, skip E2E and mark UI "compiles + reviewed," not "clicked through."
 - **Deploy posture:** additive/new surfaces that pass review → auto-deployed to prod (Vercel `main`). Changes to existing critical paths → committed but flagged ⚠️ NEEDS-REVIEW below, not auto-deployed.
 - **Migrations:** I cannot run Supabase migrations (MCP disconnected). Any new schema is delivered as a migration FILE under `supabase/migrations/` and listed under "RUN THESE" below. Code degrades gracefully until you run them.
 
