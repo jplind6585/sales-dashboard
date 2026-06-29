@@ -7,6 +7,7 @@
 
 import { getSupabase } from '../../../lib/supabase';
 import { sendSlackMessage } from '../../../lib/slack';
+import { ownsAccount } from '../../../lib/repConfig';
 
 const DASHBOARD_URL = 'https://sales-dashboard-six-rosy.vercel.app';
 
@@ -31,7 +32,7 @@ function daysSince(dateStr) {
 
 async function buildRepMessage(rep, accounts, lastCallByAccount) {
   const repAccounts = accounts
-    .filter(a => a.owner_name === rep.full_name || a.user_id === rep.id)
+    .filter(a => ownsAccount(a, rep))
     .filter(a => ACTIVE_STAGES.includes(a.stage))
     .sort((a, b) => {
       // Sort by last call (most stale first)

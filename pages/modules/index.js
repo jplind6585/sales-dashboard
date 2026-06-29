@@ -2,7 +2,7 @@ import { useRouter } from 'next/router'
 import {
   CheckCircle2, Zap, Building2, Send, TrendingUp,
   Target, BarChart3, Users, Settings, AlertTriangle,
-  BarChart2, LayoutGrid, Sliders, FileText,
+  BarChart2, LayoutGrid, Sliders, FileText, Phone,
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 
@@ -22,6 +22,14 @@ const MODULES = [
     icon: FileText,
     color: 'text-violet-600',
     bg: 'bg-violet-50',
+  },
+  {
+    title: 'Call Queue',
+    href: '/modules/call-queue',
+    description: 'Who to reach today — accounts ranked by ICP fit and how overdue, with one-click drafted openers',
+    icon: Phone,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
   },
   {
     title: 'Today',
