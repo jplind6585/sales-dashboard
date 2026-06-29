@@ -39,6 +39,16 @@ export const useAccountStore = create((set, get) => ({
     }
   },
 
+  // Evict cached detail for the given ids so the next fetchAccountDetail re-reads from the DB.
+  // Used after out-of-band writes (e.g. the global assistant) to force a refresh.
+  invalidateAccounts: (ids = []) => {
+    set(state => {
+      const next = { ...state.accountDetails }
+      for (const id of ids) delete next[id]
+      return { accountDetails: next }
+    })
+  },
+
   fetchAccountDetail: async (accountId) => {
     const { accountDetails } = get()
     if (accountDetails[accountId]) return { account: accountDetails[accountId] }

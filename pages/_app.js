@@ -3,6 +3,7 @@ import Head from 'next/head'
 import ErrorBoundary from '../components/common/ErrorBoundary'
 import AuthGuard from '../components/auth/AuthGuard'
 import MigrationPrompt from '../components/auth/MigrationPrompt'
+import GlobalAssistant from '../components/layout/GlobalAssistant'
 import { isSupabaseConfigured } from '../lib/supabase'
 
 export default function App({ Component, pageProps }) {
@@ -24,6 +25,7 @@ export default function App({ Component, pageProps }) {
         <AuthGuard>
           <MigrationPrompt />
           <Component {...pageProps} />
+          <GlobalAssistant />
         </AuthGuard>
       ) : (
         <Component {...pageProps} />

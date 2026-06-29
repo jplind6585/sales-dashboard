@@ -51,6 +51,18 @@ function useAccountsSupabase() {
     }
   }, [user?.id]);
 
+  // Refresh after out-of-band writes (e.g. the global assistant moving a stage).
+  useEffect(() => {
+    const onRefresh = (e) => {
+      const ids = e.detail?.ids || [];
+      if (ids.length) store.invalidateAccounts(ids);
+      if (user?.id) store.fetchAccounts(user.id);
+      if (store.selectedAccountId && ids.includes(store.selectedAccountId)) store.fetchAccountDetail(store.selectedAccountId);
+    };
+    window.addEventListener('accounts:refresh', onRefresh);
+    return () => window.removeEventListener('accounts:refresh', onRefresh);
+  }, [user?.id, store]);
+
   // Get selected account from store
   const selectedAccount = store.getSelectedAccount();
 
