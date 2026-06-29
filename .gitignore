@@ -37,3 +37,7 @@ next-env.d.ts
 localStorage.json
 generate-report.mjs
 *.html
+
+# e2e auth session (contains a real login — NEVER commit)
+/e2e/auth.json
+/e2e/.auth
