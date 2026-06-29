@@ -8,7 +8,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ai_draft JSONB;
 -- shape: { kind, role, content, model, generated_at, edited }
 --   kind: 'email' | 'call_prep' | 'deck' | 'notes' | 'plan' | 'generic'
 
-ALTER TABLE tasks ADD COLUMN IF NOT EXISTS trigger TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS "trigger" TEXT;  -- quoted: belt-and-suspenders (non-reserved, but safe)
 -- 'gong_action_item' | 'gong_commitment' | 'calendar_prep' | 'calendar_followup'
 -- | 'recurring' | 'manual' | 'sdr_dial'
 
@@ -36,5 +36,5 @@ DROP POLICY IF EXISTS sales_goals_write ON sales_goals;
 CREATE POLICY sales_goals_write ON sales_goals FOR ALL TO authenticated
   USING (true) WITH CHECK (true);
 
-CREATE INDEX IF NOT EXISTS idx_tasks_trigger ON tasks(trigger);
+CREATE INDEX IF NOT EXISTS idx_tasks_trigger ON tasks("trigger");
 CREATE INDEX IF NOT EXISTS idx_sales_goals_period ON sales_goals(period_start, metric);
