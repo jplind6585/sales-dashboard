@@ -10,6 +10,7 @@ const PAGES = [
   { path: '/modules/sales-reports/command-center', expect: /Command Center|goal|pipeline|feed/i },
   { path: '/modules/sales-reports/ceo-dashboard', expect: /Pipeline|Win|Deals|Dashboard/i },
   { path: '/modules/content', expect: /Content Studio|Follow-up|Business case|account/i },
+  { path: '/modules/call-queue', expect: /Call Queue|outreach|touches|reach today/i },
 ];
 
 for (const p of PAGES) {
