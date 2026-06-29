@@ -30,9 +30,12 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 - **Calendar triggers** — prep + follow-up tasks with drafts; dedup'd.
 - **Global action-capable assistant (⌘J on every screen)** — answers grounded in pipeline; proposes account/task actions you confirm; hardened write path (authz, ownership, ambiguity-fails-closed, governed team fan-out, idempotency). 28-agent review, all 4 must-fixes fixed.
 
+## Shipped & deployed (continued)
+- **Content + RFP automation** — `/api/content/generate` (6 types) + Content Studio (`/modules/content`, rebuilt from a dead stub). Auto-drafts follow-up emails, business cases, one-pagers, agendas, sequences, and RFP answers grounded in each account's calls + sales process. RFP path hardened against prompt-injection/fabrication. Edit-safe per-(account,type) cache. In ModulesNav + modules grid. **9/9 E2E green incl. regression on all prior screens.**
+
 ## In progress / queued (audit-prioritized)
-1. Real-time Gong webhook (T1) — calls → tasks/coaching within minutes, not the hourly tick.
-2. Content + RFP automation — auto-draft emails, sequences, one-pagers, RFP responses from account context.
+1. ✅ Real-time Gong webhook (T1) — shipped (inert until configured; race-fix staged).
+2. ✅ Content + RFP automation — shipped.
 3. SDR engine — ICP-ranked dial lists from HubSpot by last-contacted; sequences; auto follow-ups.
 4. Deeper reporting + the data→action feedback loop (talk tracks, demo improvements, per-rep coaching deltas).
 5. Recurring/template task editor (rep + admin editable).
@@ -46,6 +49,9 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
   2. `lib/coaching.js`: change the `call_coaching_cards` `.insert(...)` (~line 86) to `.upsert(..., { onConflict: 'gong_call_id', ignoreDuplicates: true })` — now race-free thanks to the unique index. (The existing maybeSingle pre-check can stay as a cheap short-circuit.)
   3. `pages/api/gong/intel-analyze.js`: add an atomic claim right after `db` is resolved and before the Gong fetch — `UPDATE gong_call_analyses SET analyzed_at=now() WHERE gong_call_id=$1 AND analyzed_at IS NULL`; if it claims 0 rows AND the row already has analyzed_at set, return the cached analysis early (skips the duplicate Haiku call too). **Edge cases to handle carefully (why it needs your eyes):** (a) on analysis FAILURE after claiming, release the claim (set analyzed_at back to null) so it isn't stuck; (b) the "no row yet" case (direct call on an unimported id) must still proceed to the end-of-handler upsert, not early-return.
   - Net effect once applied: duplicate tasks/coaching DMs stop, and it also halves redundant Haiku spend on concurrently-picked calls.
+
+## Known platform items (deferred, app-wide — not module-specific)
+- **Owner-scoping on per-account read endpoints.** content/generate (and siblings accounts/chat, reengagement, generate-pre-call-brief) let any logged-in @withbanner.com user generate/read from any accountId — consistent with CLAUDE.md's documented "manager role is informal, no strict server-side enforcement." Low-sev for a ~6-person single-tenant tool; flagged for a future platform-wide RLS/owner-check pass rather than diverging one endpoint.
 
 ## Known caveats
 - No live UX test this run (no auth session). First thing to check each shipped UI: does it render + the happy path work.
