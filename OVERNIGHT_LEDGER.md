@@ -15,7 +15,10 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 ## RUN THESE migrations (in order) before relying on the new features
 1. `20260628_task_engine_vision.sql` ✅ (you ran this)
 2. `20260628_gong_call_analyses_columns.sql` ✅ (you ran this)
-3. _(any new ones added overnight will be appended here with the exact SQL)_
+3. ⏳ `20260628_coaching_cards_dedup.sql` — makes call_coaching_cards reproducible + UNIQUE(gong_call_id). Required before applying the staged race-fix. Safe/idempotent. Run it in the Supabase SQL editor (Sales AI Brain project) same as before.
+
+## SET THESE (env / integrations) to activate features
+- **Real-time webhook (optional, big latency win):** set `GONG_WEBHOOK_SECRET` in Vercel, then in Gong create a webhook/Automation Rule that POSTs to `https://<host>/api/gong/webhook` with header `x-webhook-secret: <that secret>` (NOT the query string). Until set, the endpoint is inert (returns 503) — nothing breaks. Without it, calls still get analyzed by the existing hourly cron + 15-min poller, just not instantly.
 
 ---
 
@@ -34,8 +37,15 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 4. Deeper reporting + the data→action feedback loop (talk tracks, demo improvements, per-rep coaching deltas).
 5. Recurring/template task editor (rep + admin editable).
 
-## ⚠️ NEEDS-REVIEW (committed, NOT auto-deployed — your call in the morning)
-_(none yet)_
+## Shipped & deployed (continued)
+- **Real-time Gong webhook (T1)** — `pages/api/gong/webhook.js`. Inert until you set `GONG_WEBHOOK_SECRET` + configure Gong (see SET THESE). Hardened via 15-finding review: header-only timing-safe auth, no-clobber import + no_show rescue, fail-closed rep gate, parallel-capped analysis. When wired, a call's tasks + coaching land within ~1 min instead of the hourly cron.
+
+## ⚠️ NEEDS-REVIEW (committed/described, NOT auto-deployed — your call in the morning)
+- **Concurrent double-analyze race fix (intel-analyze atomic claim).** The webhook review surfaced a PRE-EXISTING race: `process-recent-calls.yml` runs two poller jobs on the same */15 cron, and `intel-analyze` has no claim guard before the Gong+Claude work, so the same call can be analyzed twice → duplicate tasks + duplicate rep coaching/Slack DMs. I did NOT auto-apply this because it's the core engine path and can't be integration-tested unattended (a bug here would halt all analysis). **To apply (≈15 min, in the morning):**
+  1. Run migration #3 above (`20260628_coaching_cards_dedup.sql`).
+  2. `lib/coaching.js`: change the `call_coaching_cards` `.insert(...)` (~line 86) to `.upsert(..., { onConflict: 'gong_call_id', ignoreDuplicates: true })` — now race-free thanks to the unique index. (The existing maybeSingle pre-check can stay as a cheap short-circuit.)
+  3. `pages/api/gong/intel-analyze.js`: add an atomic claim right after `db` is resolved and before the Gong fetch — `UPDATE gong_call_analyses SET analyzed_at=now() WHERE gong_call_id=$1 AND analyzed_at IS NULL`; if it claims 0 rows AND the row already has analyzed_at set, return the cached analysis early (skips the duplicate Haiku call too). **Edge cases to handle carefully (why it needs your eyes):** (a) on analysis FAILURE after claiming, release the claim (set analyzed_at back to null) so it isn't stuck; (b) the "no row yet" case (direct call on an unimported id) must still proceed to the end-of-handler upsert, not early-return.
+  - Net effect once applied: duplicate tasks/coaching DMs stop, and it also halves redundant Haiku spend on concurrently-picked calls.
 
 ## Known caveats
 - No live UX test this run (no auth session). First thing to check each shipped UI: does it render + the happy path work.
