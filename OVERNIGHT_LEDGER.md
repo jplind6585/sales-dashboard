@@ -12,11 +12,13 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 - **Deploy posture:** additive/new surfaces that pass review → auto-deployed to prod (Vercel `main`). Changes to existing critical paths → committed but flagged ⚠️ NEEDS-REVIEW below, not auto-deployed.
 - **Migrations:** I cannot run Supabase migrations (MCP disconnected). Any new schema is delivered as a migration FILE under `supabase/migrations/` and listed under "RUN THESE" below. Code degrades gracefully until you run them.
 
-## RUN THESE migrations (in order) before relying on the new features
-1. `20260628_task_engine_vision.sql` ✅ (you ran this)
-2. `20260628_gong_call_analyses_columns.sql` ✅ (you ran this)
-3. ⏳ `20260628_coaching_cards_dedup.sql` — makes call_coaching_cards reproducible + UNIQUE(gong_call_id). Required before applying the staged race-fix. Safe/idempotent. Run it in the Supabase SQL editor (Sales AI Brain project) same as before.
-4. ⏳ `20260628_sdr_touches.sql` — creates the `sdr_touches` log that powers the Call Queue's "log a touch" buttons, the daily-target bar, and (now) de-prioritizing accounts you've already worked. Safe/idempotent. **Until you run it:** the queue still ranks + drafts fine, but the call/email/in buttons return a friendly 503 ("activates after the migration") and the touch counter holds at 0.
+## Migrations — ALL RUN ✅ (applied 2026-06-29 via `supabase db query --linked`, the authenticated CLI; MCP OAuth not needed)
+1. `20260628_task_engine_vision.sql` ✅
+2. `20260628_gong_call_analyses_columns.sql` ✅
+3. `20260628_coaching_cards_dedup.sql` ✅ — `uq_coaching_gong_call_id` unique index verified present (race-fix prereq satisfied).
+4. `20260628_sdr_touches.sql` ✅ — table verified: 8 cols, 3 indexes, RLS on, `sdr_touches_rw` policy. Call Queue touch-logging + counter now live.
+
+**How to run migrations from here (no MCP needed):** the Supabase CLI is logged in and the "Sales AI Brain" project is linked. Run any migration file with `supabase db query --linked -f supabase/migrations/<file>.sql` from `sales-dashboard/`. ⚠️ NEVER `supabase db push` — no local files are in remote history, so push would replay everything including `00_drop_all.sql` (drops the DB). Always target specific files with `db query`.
 
 ## SET THESE (env / integrations) to activate features
 - **Real-time webhook (optional, big latency win):** set `GONG_WEBHOOK_SECRET` in Vercel, then in Gong create a webhook/Automation Rule that POSTs to `https://<host>/api/gong/webhook` with header `x-webhook-secret: <that secret>` (NOT the query string). Until set, the endpoint is inert (returns 503) — nothing breaks. Without it, calls still get analyzed by the existing hourly cron + 15-min poller, just not instantly.

@@ -420,22 +420,21 @@ Do not run these again:
 - `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS slack_user_id TEXT;`
 - **name_cleanup** (2026-05-06): `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'active'`; stripped " - New Deal" suffix from all 551 account names
 - **stakeholders_hubspot** (2026-05-06): `ALTER TABLE stakeholders ADD COLUMN IF NOT EXISTS email TEXT` and `hubspot_contact_id TEXT`
+- **2026-06-28 build set** (applied 2026-06-29): `20260628_task_engine_vision.sql`, `20260628_gong_call_analyses_columns.sql`, `20260628_coaching_cards_dedup.sql` (adds `uq_coaching_gong_call_id`), `20260628_sdr_touches.sql` (SDR touch log — 8 cols, RLS, `sdr_touches_rw`).
 
-## SQL Migrations PENDING (needs Supabase MCP re-auth)
+## How to run migrations (no MCP needed)
 
-File: `supabase/migrations/20260509_big_build_schema.sql` — **run this first thing next session**.
+The **Supabase CLI is logged in and the "Sales AI Brain" project is linked**. Run a specific migration file against the remote DB with:
 
-```sql
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS rep_type TEXT CHECK (rep_type IN ('sdr', 'ae'));
-CREATE TABLE IF NOT EXISTS account_pursuit_lists (...);  -- SDR top-50 named accounts (Supabase-backed version of localStorage pursuit)
-CREATE TABLE IF NOT EXISTS account_touches (...);         -- multi-channel touch log
-CREATE TABLE IF NOT EXISTS meeting_quality_scores (...);  -- SDR→AE warm transfer quality
-CREATE TABLE IF NOT EXISTS daily_insights (...);          -- AI-generated per-rep daily insight
+```
+cd sales-dashboard && supabase db query --linked -f supabase/migrations/<file>.sql
 ```
 
-To run: re-authorize Supabase MCP in Claude extension settings → then call `mcp__supabase__apply_migration`.
+Verify with a follow-up `supabase db query --linked "select ..."`. This uses the CLI's cached auth (mints a temporary login role via the stored access token) — the Supabase **MCP** server is a separate path that needs an interactive OAuth and is NOT required.
 
-Migration files are in `supabase/migrations/` for reference.
+⚠️ **NEVER run `supabase db push`.** None of the local migration files are recorded in the remote migration history, so a push would try to replay *all* of them — and the first is `00_drop_all.sql`, which drops the entire database. Always target individual files with `db query -f`.
+
+Still unrun (legacy, apply only if the feature is revived): `supabase/migrations/20260509_big_build_schema.sql` — `profiles.rep_type` + `account_pursuit_lists` / `account_touches` / `meeting_quality_scores` / `daily_insights`. The 2026-06-27 audit recommended dropping the never-wired pursuit/touch tables; `sdr_touches` now supersedes the touch-logging need.
 
 ---
 
