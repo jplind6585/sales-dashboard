@@ -69,6 +69,13 @@ export default async function handler(req, res) {
   const db = getSupabase();
   const gongCallIds = allCalls.map(c => c.id);
 
+  // Self-heal stuck claims: intel-analyze marks analyzed_at at claim time; if that process was
+  // killed mid-analysis the row keeps analyzed_at set with analysis NULL and would be skipped
+  // forever. Release any such claim older than 30 min among these calls so it gets retried.
+  await db.from('gong_call_analyses').update({ analyzed_at: null })
+    .in('gong_call_id', gongCallIds).is('analysis', null)
+    .lt('analyzed_at', new Date(Date.now() - 30 * 60 * 1000).toISOString());
+
   const { data: existingRows } = await db
     .from('gong_call_analyses')
     .select('gong_call_id, analyzed_at')

@@ -334,8 +334,45 @@ export default async function handler(req, res) {
   const hasPreloaded = preloadedTranscript && preloadedTranscript.length > 50 && preloadedTranscript !== '[No transcript available for this call]';
 
   let transcriptText = '';
+  let claimedRow = false;
+  const force = req.body?.force === true;
+  // Resolve the DB client up front — used by the concurrency claim below and the persist later.
+  // Cron (CRON_SECRET auth) uses the service-role client; otherwise the user session.
+  const isCron = process.env.CRON_SECRET && req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+  const db = isCron ? getSupabase() : createServerSupabaseClient(req, res);
 
   try {
+    // ── Concurrency claim ────────────────────────────────────────────────────────────────
+    // Two poller jobs on the same */15 cron can pick the same call. Claim it atomically before
+    // the costly Gong fetch + Claude analysis so only one caller does the work — stops duplicate
+    // tasks, duplicate coaching DMs, and double Haiku spend. Covers both the poller path (no row
+    // exists yet → reserve via insert-on-conflict) and the imported-but-pending path (row exists
+    // with analyzed_at NULL → flip it). A manual re-analyze (force) intentionally bypasses this.
+    if (!force) {
+      const { data: reserved } = await db.from('gong_call_analyses')
+        .upsert({ gong_call_id: callId, analyzed_at: new Date().toISOString() }, { onConflict: 'gong_call_id', ignoreDuplicates: true })
+        .select('gong_call_id');
+      if (reserved && reserved.length > 0) {
+        claimedRow = true; // brand-new call — we inserted the reservation row
+      } else {
+        const { data: claimed } = await db.from('gong_call_analyses')
+          .update({ analyzed_at: new Date().toISOString() })
+          .eq('gong_call_id', callId).is('analyzed_at', null)
+          .select('gong_call_id');
+        if (claimed && claimed.length > 0) {
+          claimedRow = true; // existing row was pending — we flipped analyzed_at null→now
+        } else {
+          // Someone else already analyzed (or is analyzing) this call — return without redoing work.
+          const { data: existingRow } = await db.from('gong_call_analyses')
+            .select('analysis, analyzed_at').eq('gong_call_id', callId).maybeSingle();
+          if (existingRow?.analyzed_at) {
+            return apiSuccess(res, { callId, analysis: existingRow.analysis ?? null, persisted: true, deduped: true });
+          }
+          // Row vanished between checks (rare) — fall through and analyze normally.
+        }
+      }
+    }
+
     if (hasPreloaded) {
       transcriptText = preloadedTranscript;
     } else {
@@ -499,10 +536,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
       filler_words: null,
     });
 
-    // Persist to Supabase — this is the source of truth across sessions
-    // When called from a cron (CRON_SECRET auth), use service role client instead of user session
-    const isCron = process.env.CRON_SECRET && req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
-    const db = isCron ? getSupabase() : createServerSupabaseClient(req, res);
+    // Persist to Supabase — this is the source of truth across sessions. (db + isCron resolved up top.)
     const { error: upsertError } = await db.from('gong_call_analyses').upsert(
       {
         gong_call_id: callId,
@@ -524,6 +558,11 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
 
     if (upsertError) {
       console.error('intel-analyze: Supabase write failed for', callId, upsertError.message, upsertError.code, upsertError.details);
+      // Claimed the row but could not persist the analysis — release so a later poll retries.
+      if (claimedRow) {
+        try { await db.from('gong_call_analyses').update({ analyzed_at: null }).eq('gong_call_id', callId); }
+        catch (e) { console.error('[intel-analyze] claim release (upsert fail) failed for', callId, e.message); }
+      }
     } else {
       const callCat = deriveCallCategory(deriveDerivedCallType(title));
 
@@ -566,6 +605,11 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
     });
   } catch (error) {
     console.error('intel-analyze error:', error);
+    // Release a claim taken before the failure so the call is retried, not stuck "analyzed".
+    if (claimedRow) {
+      try { await db.from('gong_call_analyses').update({ analyzed_at: null }).eq('gong_call_id', callId); }
+      catch (e) { console.error('[intel-analyze] claim release failed for', callId, e.message); }
+    }
     return apiError(res, 500, error.message);
   }
 }

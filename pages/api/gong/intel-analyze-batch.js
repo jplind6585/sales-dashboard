@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const { data: { user } } = await authClient.auth.getUser();
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { calls } = req.body || {};
+  const { calls, force } = req.body || {};
   if (!calls?.length) return res.status(400).json({ error: 'calls array required' });
 
   const cronSecret = process.env.CRON_SECRET;
@@ -55,6 +55,7 @@ export default async function handler(req, res) {
           repEmail: call.repEmail,
           durationSeconds: call.durationSeconds,
           gongUrl: call.gongUrl,
+          force: !!force, // manual re-analyze bypasses the concurrency claim in intel-analyze
         }),
       });
       const data = await r.json().catch(() => ({}));

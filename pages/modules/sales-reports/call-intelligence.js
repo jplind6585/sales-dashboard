@@ -640,7 +640,7 @@ export default function CallIntelligence() {
     fetch('/api/gong/intel-analyze-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ calls: unanalyzed }),
+      body: JSON.stringify({ calls: unanalyzed, force: forceReanalyze }),
     }).catch(() => { /* client-side abort is fine — server is still running */ })
 
     // Poll for progress every 20s while any queued calls are still unanalyzed
