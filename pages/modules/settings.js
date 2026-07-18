@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Save, CheckCircle2, ShieldCheck, UserPlus, Mail } from 'lucide-react'
+import { ArrowLeft, Save, CheckCircle2, ShieldCheck, UserPlus, Mail, Plug, RefreshCw } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { STAGE_PROBABILITY, STAGE_LABELS, ACTIVE_STAGE_ORDER } from '../../lib/constants'
@@ -41,6 +41,15 @@ export default function SettingsPage() {
   const [weightsSaving, setWeightsSaving] = useState(false)
   const [weightsSaved, setWeightsSaved] = useState(false)
 
+  // Integrations health
+  const [integrations, setIntegrations] = useState(null)
+  const [intSummary, setIntSummary] = useState(null)
+  const [intLoading, setIntLoading] = useState(false)
+  const loadIntegrations = () => {
+    setIntLoading(true)
+    fetch('/api/integrations/status').then(r => r.json()).then(d => { setIntegrations(d.integrations || []); setIntSummary(d.summary || null) }).catch(() => setIntegrations([])).finally(() => setIntLoading(false))
+  }
+
   useEffect(() => {
     const settings = getUserSettings()
     setEmailSignature(settings.emailSignature || '')
@@ -53,6 +62,8 @@ export default function SettingsPage() {
         if (d.profile?.slack_user_id) setSlackUserId(d.profile.slack_user_id)
       })
       .catch(() => {})
+
+    loadIntegrations()
   }, [])
 
   useEffect(() => {
@@ -177,6 +188,40 @@ export default function SettingsPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
+
+        {/* ── Integrations health ── */}
+        <div className="bg-white rounded-xl border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Plug className="w-4 h-4 text-coral-500" />
+              <h2 className="text-sm font-semibold text-gray-900">Integrations</h2>
+              {intSummary && <span className="text-xs text-gray-400">{intSummary.connected} connected{intSummary.issues ? ` · ${intSummary.issues} need attention` : ''}{intSummary.notConfigured ? ` · ${intSummary.notConfigured} available` : ''}</span>}
+            </div>
+            <button onClick={loadIntegrations} disabled={intLoading} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400"><RefreshCw className={`w-4 h-4 ${intLoading ? 'animate-spin' : ''}`} /></button>
+          </div>
+          {!integrations ? (
+            <p className="text-xs text-gray-400">Checking connections…</p>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-2">
+              {integrations.map(i => {
+                const dot = (i.status === 'connected' || i.status === 'user_auth') ? 'bg-emerald-500' : i.status === 'error' ? 'bg-red-500' : i.status === 'unknown' ? 'bg-amber-400' : 'bg-gray-300'
+                return (
+                  <div key={i.key} className="flex items-start gap-2.5 border border-gray-100 rounded-lg p-3">
+                    <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">{i.name}</span>
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">{i.category}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">{i.detail}</p>
+                      {i.lastActivity && <p className="text-[11px] text-gray-400 mt-0.5">Last activity {new Date(i.lastActivity).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         {/* ── Email Signature ── */}
         <div className="bg-white rounded-xl border p-5">
