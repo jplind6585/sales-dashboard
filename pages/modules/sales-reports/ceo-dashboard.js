@@ -4,16 +4,7 @@ import { ArrowLeft, RefreshCw, TrendingUp, Target, AlertTriangle, Award } from '
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import ModulesNav from '../../../components/layout/ModulesNav'
-
-const STAGE_COLORS = {
-  qualifying: 'bg-gray-300',
-  intro_scheduled: 'bg-blue-300',
-  active_pursuit: 'bg-blue-500',
-  demo: 'bg-violet-500',
-  solution_validation: 'bg-amber-400',
-  proposal: 'bg-orange-500',
-  legal: 'bg-emerald-500',
-}
+import { stageHex } from '../../../lib/constants'
 
 function fmtDate(d) {
   if (!d) return '—'
@@ -95,6 +86,13 @@ export default function CEODashboard() {
 
         {data && (
           <>
+            {/* Money hero — the dollars the CEO view was missing */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <StatCard label="Open pipeline" value={summary.openPipelineLabel} sub={`${summary.activeDeals} active deals`} color="text-coral-600" icon={TrendingUp} />
+              <StatCard label="Weighted pipeline" value={summary.weightedPipelineLabel} sub="Σ value × win probability" icon={Target} />
+              <StatCard label="Commit this quarter" value={data.forecast?.commitThisQuarterLabel} sub={`${data.forecast?.dealsClosingThisQuarter || 0} closing · ${data.forecast?.grossThisQuarterLabel} gross`} color="text-emerald-600" icon={Award} />
+            </div>
+
             {/* Hero stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard
@@ -137,10 +135,11 @@ export default function CEODashboard() {
                     <div key={s.label} className="flex-1 flex flex-col items-center gap-1">
                       <span className="text-xs font-medium text-gray-600">{s.count}</span>
                       <div
-                        className={`w-full rounded-t-md ${STAGE_COLORS[Object.keys(STAGE_COLORS).find(k => s.label.toLowerCase().includes(k.replace(/_/g, ' ').toLowerCase().slice(0, 4))) || ''] || 'bg-gray-300'}`}
-                        style={{ height: `${heightPct}%`, minHeight: s.count > 0 ? '8px' : '0px' }}
+                        className="w-full rounded-t-md"
+                        style={{ height: `${heightPct}%`, minHeight: s.count > 0 ? '8px' : '0px', backgroundColor: stageHex(s.stage) }}
                       />
                       <span className="text-xs text-gray-400 text-center leading-tight" style={{ fontSize: '10px' }}>{s.label}</span>
+                      {s.value > 0 && <span className="text-gray-400" style={{ fontSize: '9px' }}>${Math.round(s.value / 1000)}K</span>}
                     </div>
                   )
                 })}
@@ -266,7 +265,7 @@ export default function CEODashboard() {
                             <p className="text-xs text-amber-500 mt-0.5">No debrief captured</p>
                           )}
                         </div>
-                        <span className="text-xs text-gray-400 shrink-0">{fmtDate(c.updatedAt)}</span>
+                        <span className="text-xs text-gray-400 shrink-0">{fmtDate(c.closedOn)}</span>
                       </div>
                     ))}
                   </div>
