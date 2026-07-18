@@ -4,6 +4,7 @@ import { ArrowLeft, FileText, Mail, Layers, Calendar, FileSpreadsheet, Sparkles,
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { useAccounts } from '../../hooks/useAccounts'
+import { getSupabase } from '../../lib/supabase'
 
 const TYPES = [
   { id: 'follow_up_email', label: 'Follow-up email', icon: Mail, auto: true, email: true },
@@ -30,6 +31,7 @@ export default function ContentStudio() {
   const [dealRoom, setDealRoom] = useState(null)
   const [dealRoomBusy, setDealRoomBusy] = useState(false)
   const [dealRoomCopied, setDealRoomCopied] = useState(false)
+  const [draftBusy, setDraftBusy] = useState(false)
   const reqRef = useRef(0)
   const cacheRef = useRef({}) // `${accountId}:${type}` -> { content, callsUsed }
 
@@ -103,6 +105,24 @@ export default function ContentStudio() {
         await navigator.clipboard.writeText(url).then(() => { setDealRoomCopied(true); setTimeout(() => setDealRoomCopied(false), 1800) }).catch(() => {})
       }
     } finally { setDealRoomBusy(false) }
+  }
+
+  // Create a real Gmail draft (needs the gmail.compose scope); falls back to the compose URL if the
+  // Google token isn't available on the session.
+  const createGmailDraft = async () => {
+    setDraftBusy(true); setError(null)
+    try {
+      const { data: { session } } = await getSupabase().auth.getSession()
+      const token = session?.provider_token
+      if (!token) { openGmail(); return }
+      const m = content.match(/^subject:\s*(.+)$/im)
+      const subject = m ? m[1].trim() : `Following up — ${accountName}`
+      const body = content.replace(/^subject:\s*.+$\n?/im, '').trim()
+      const res = await fetch('/api/gmail/create-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, subject, body }) })
+      const j = await res.json()
+      if (!res.ok || j.success === false) { setError(j.error || 'Could not create draft — try Open in Gmail.'); return }
+      window.open(j.url || 'https://mail.google.com/mail/u/0/#drafts', '_blank')
+    } catch (e) { setError(e.message) } finally { setDraftBusy(false) }
   }
 
   const openGmail = () => {
@@ -190,6 +210,7 @@ export default function ContentStudio() {
               <h2 className="font-semibold text-gray-900">{activeType?.label}{accountName ? ` · ${accountName}` : ''}</h2>
               <div className="flex items-center gap-2">
                 {content && activeType?.auto && <button onClick={regenerate} disabled={loading} className="text-xs flex items-center gap-1 px-2 py-1 border rounded-lg text-gray-600 hover:bg-gray-50"><RefreshCw className="w-3.5 h-3.5" /> Regenerate</button>}
+                {content && activeType?.email && <button onClick={createGmailDraft} disabled={draftBusy} className="text-xs flex items-center gap-1 px-2 py-1 border rounded-lg text-coral-600 hover:bg-coral-50 disabled:opacity-50"><Mail className="w-3.5 h-3.5" /> {draftBusy ? 'Drafting…' : 'Create draft'}</button>}
                 {content && activeType?.email && <button onClick={openGmail} className="text-xs flex items-center gap-1 px-2 py-1 border rounded-lg text-blue-600 hover:bg-blue-50"><ExternalLink className="w-3.5 h-3.5" /> Open in Gmail</button>}
                 {content && <button onClick={copy} className="text-xs flex items-center gap-1 px-2 py-1 border rounded-lg text-gray-600 hover:bg-gray-50">{copied ? <><Check className="w-3.5 h-3.5 text-emerald-500" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}</button>}
               </div>
