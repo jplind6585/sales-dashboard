@@ -12,6 +12,7 @@ const PAGES = [
   { path: '/modules/content', expect: /Content Studio|Follow-up|Business case|account/i },
   { path: '/modules/call-queue', expect: /Call Queue|outreach|touches|reach today/i },
   { path: '/modules/sales-reports/team-dashboard', expect: /Team|Rep|Pipeline|Discovery|Objection/i },
+  { path: '/modules/coaching-lab', expect: /Coaching Lab|Best calls|advance|kill/i },
 ];
 
 for (const p of PAGES) {
