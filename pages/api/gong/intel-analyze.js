@@ -16,6 +16,7 @@ import { sendSlackMessage } from '../../../lib/slack';
 import { sendCallCoachingDM } from '../../../lib/coaching';
 import { isAutoProcessRep } from '../../../lib/repConfig';
 import { generateTaskDraft } from '../../../lib/taskActions';
+import { writeBackFromAnalysis } from '../../../lib/accountWriteback';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -179,6 +180,38 @@ function isRepOwnedStep(step) {
   return !isProspectStep(step);
 }
 
+// Quality filter (PLATFORM_REVIEW §2.4): keep reps from triaging transcript filler. Rejects a step
+// only when the WHOLE thing is generic boilerplate with no specific deliverable (conservative — a
+// step with any concrete object survives).
+const LOW_SIGNAL_PATTERNS = [
+  /^(rep\s+)?(will\s+)?(follow[\s-]?up|circle back|check in|touch base|keep\s+.*\s+posted|stay in touch|reach out|be in touch)\.?$/i,
+  /^(rep\s+)?(will\s+)?(send|share)\s+(the\s+|over\s+|some\s+)?(deck|info(rmation)?|details?|materials?|stuff)\.?$/i,
+];
+function isLowSignalStep(step) {
+  const s = (step || '').trim();
+  const core = s.replace(/^(rep|i)\s+(will|to|'ll|am going to|going to)\s+/i, '').trim();
+  if (core.length < 12) return true;
+  return LOW_SIGNAL_PATTERNS.some(re => re.test(s));
+}
+
+const normStep = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+// Drop near-identical steps within one call (the "Rep will keep Todd posted" ×5 problem) via
+// token-Jaccard ≥ 0.8. Keeps the first occurrence.
+function dedupSteps(steps) {
+  const out = [], seen = [];
+  for (const s of steps) {
+    const toks = new Set(normStep(s).split(' ').filter(w => w.length > 2));
+    if (!toks.size) continue;
+    const dup = seen.some(prev => {
+      const inter = [...toks].filter(t => prev.has(t)).length;
+      const uni = new Set([...toks, ...prev]).size;
+      return uni > 0 && inter / uni >= 0.8;
+    });
+    if (!dup) { out.push(s); seen.push(toks); }
+  }
+  return out;
+}
+
 async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory, accountId, db }) {
   // Governance: only auto-process reps get auto-tasks, and never from CS-category calls.
   if (!isAutoProcessRep(repEmail) && !isAutoProcessRep(repName)) return;
@@ -198,7 +231,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
   const userId = repProfile?.id;
   if (!userId) return;
 
-  const repSteps = (analysis.next_steps_mentioned || []).filter(isRepOwnedStep);
+  const repSteps = dedupSteps((analysis.next_steps_mentioned || []).filter(isRepOwnedStep).filter(s => !isLowSignalStep(s)));
   if (!repSteps.length) return;
 
   // Dedup: skip if tasks already exist for this gong call id
@@ -230,7 +263,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
   }));
 
   // Commitments — explicit first-person promises (priority 1, higher urgency)
-  const commitments = (analysis.commitments || []).filter(c => c && c.length > 5);
+  const commitments = dedupSteps((analysis.commitments || []).filter(c => c && c.length > 5 && !isLowSignalStep(c)));
   const commitmentRows = commitments.slice(0, 2).map(c => ({
     owner_id:          userId,
     created_by:        userId,
@@ -491,6 +524,9 @@ Return ONLY valid JSON:
   "champion_health_score": 5,
   "champion_health_notes": "one sentence — who the potential champion is and how engaged they are (passive interest vs actively mobilizing internally)",
   "commitments": ["Verbatim or near-verbatim rep statement where they promised to do something. Only include first-person promises starting with I'll, I will, I can, I'm going to, etc. Example: 'I'll send the deck over today'"],
+  "meddicc": {"metrics": "quantified value/impact discussed, or null", "economic_buyer": "who controls the budget, or null", "decision_criteria": "how they will evaluate, or null", "decision_process": "steps/timeline to decide, or null", "identify_pain": "the core pain in one line, or null", "champion": "internal advocate + how engaged, or null", "competition": "alternatives being considered, or null"},
+  "stakeholders": [{"name": "full name mentioned on the call", "title": "their role/title or null", "role": "Champion|Economic Buyer|Technical Buyer|User Buyer|Influencer|Blocker|Unknown", "is_champion": false}],
+  "information_gaps": [{"question": "an open MEDDICC question still unanswered after this call", "category": "metrics|economic_buyer|decision_process|pain|champion|competition|timeline|other"}],
   "filler_words": {
     "um": 0,
     "uh": 0,
@@ -508,7 +544,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
 
     const rawAnalysis = await callAnthropic(apiKey, {
       model: 'claude-haiku-4-5-20251001',
-      maxTokens: 2000,
+      maxTokens: 2400,
       messages: [{ role: 'user', content: analysisPrompt }],
     });
 
@@ -533,6 +569,9 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
       champion_health_score: null,
       champion_health_notes: null,
       commitments: [],
+      meddicc: {},
+      stakeholders: [],
+      information_gaps: [],
       filler_words: null,
     });
 
@@ -582,6 +621,9 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
       // Insert transcript, then per-call coaching DM (auto-process reps, sales calls, fresh only).
       try {
         await autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db });
+        // Write MEDDICC/stakeholders/gaps back to the account (North Star output a, §1.8/§2.2). Fires
+        // for any sales call with a resolved account — this is account data, not rep-gated. Best-effort.
+        if (accountId && callCat !== 'cs') await writeBackFromAnalysis(db, accountId, analysis);
         const autoProcess = isAutoProcessRep(repEmail) || isAutoProcessRep(repName);
         const isFreshForCoaching = date && (Date.now() - new Date(date).getTime()) < AUTO_TASK_MAX_AGE_MS;
         if (autoProcess && callCat !== 'cs' && isFreshForCoaching && repEmail) {

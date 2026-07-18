@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     db.from('accounts').select('id, name, stage, deal_value, owner_name, hubspot_deal_id, vertical, ownership_type').eq('id', accountId).single(),
     db.from('gong_call_analyses').select('gong_call_id, analysis, analyzed_at').eq('account_id', accountId).not('analysis', 'is', null).order('analyzed_at', { ascending: false }).limit(15),
     db.from('tasks').select('id, title, status, due_date, source_type, dismissed_at').eq('account_id', accountId).is('dismissed_at', null).in('status', ['open', 'in_progress']).limit(20),
-    db.from('stakeholders').select('name, title, role, is_champion, email').eq('account_id', accountId).limit(15),
+    db.from('stakeholders').select('name, title, role, email').eq('account_id', accountId).limit(15),
     db.from('information_gaps').select('question, category, status').eq('account_id', accountId).eq('status', 'open').limit(10),
     db.from('notes').select('content, created_at').eq('account_id', accountId).order('created_at', { ascending: false }).limit(5),
     getSalesProcessConfig(),
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
         const parts = [s.name]
         if (s.title) parts.push(s.title)
         if (s.role) parts.push(s.role)
-        if (s.is_champion) parts.push('[Champion]')
+        if (s.role === 'Champion') parts.push('[Champion]')
         return `- ${parts.join(' | ')}`
       }).join('\n')
     : '- No stakeholders on record'
