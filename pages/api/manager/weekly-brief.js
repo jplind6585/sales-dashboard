@@ -34,9 +34,10 @@ export default async function handler(req, res) {
       .order('deal_value', { ascending: false })
       .limit(200),
     db.from('gong_call_analyses')
-      .select('gong_call_id, analysis, analyzed_at, account_id')
+      .select('gong_call_id, analysis, analyzed_at, account_id, rep_name, title, call_category')
       .gte('analyzed_at', sevenDaysAgo)
       .not('analysis', 'is', null)
+      .or('call_category.is.null,call_category.neq.cs')
       .limit(200),
     db.from('tasks')
       .select('id, title, status, priority, due_date, owner_id, account_id, completed_at, source_type')
@@ -61,7 +62,7 @@ export default async function handler(req, res) {
   // Group calls by rep_name
   const callsByRep = {};
   for (const call of recentCalls) {
-    const rep = call.analysis?.rep_name || 'Unknown';
+    const rep = call.rep_name || 'Unknown';
     if (!callsByRep[rep]) callsByRep[rep] = [];
     callsByRep[rep].push(call);
   }
@@ -84,14 +85,14 @@ export default async function handler(req, res) {
   const callSummaries = Object.entries(callsByRep).map(([rep, calls]) => {
     const nextStepRate = calls.filter(c => (c.analysis?.next_steps_mentioned || []).length > 0).length;
     const avgDiscovery = calls.reduce((sum, c) => sum + (c.analysis?.discovery_score || 0), 0) / calls.length;
-    const avgTalkRatio = calls.reduce((sum, c) => sum + (c.analysis?.talk_ratio || 0), 0) / calls.length;
+    const avgTalkRatio = calls.reduce((sum, c) => sum + (c.analysis?.rep_talk_ratio || 0), 0) / calls.length;
     const redFlagCalls = calls.filter(c => (c.analysis?.red_flags || []).length > 0);
     const commitment_rate = calls.filter(c => (c.analysis?.commitments || []).length > 0).length;
 
     const callDetails = calls.slice(0, 5).map(c => {
       const a = c.analysis || {};
       return [
-        `  Call: "${a.call_title || 'untitled'}"`,
+        `  Call: "${c.title || 'untitled'}"`,
         a.summary ? `  Summary: ${a.summary.slice(0, 200)}` : '',
         (a.next_steps_mentioned || []).length ? `  Next steps: ${a.next_steps_mentioned.slice(0, 2).join(' | ')}` : '  Next steps: NONE DEFINED',
         (a.red_flags || []).length ? `  Red flags: ${(a.red_flags || []).slice(0, 2).join(' | ')}` : '',

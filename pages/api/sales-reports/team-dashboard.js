@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     const a = c.analysis || {};
     const ds = parseFloat(a.discovery_score);
     if (!isNaN(ds) && ds > 0) r.discoveryScores.push(ds);
-    const tr = parseFloat(a.talk_ratio_rep);
+    const tr = parseFloat(a.rep_talk_ratio);
     if (!isNaN(tr) && tr > 0) r.talkRatios.push(tr);
     const pd = parseFloat(a.pain_depth_score);
     if (!isNaN(pd) && pd > 0) r.painDepthScores.push(pd);
@@ -112,7 +112,7 @@ export default async function handler(req, res) {
   // ── Team call quality ────────────────────────────────────────────────────
   const allDiscovery = calls.map(c => parseFloat(c.analysis?.discovery_score)).filter(n => !isNaN(n) && n > 0);
   const allPain = calls.map(c => parseFloat(c.analysis?.pain_depth_score)).filter(n => !isNaN(n) && n > 0);
-  const allTalk = calls.map(c => parseFloat(c.analysis?.talk_ratio_rep)).filter(n => !isNaN(n) && n > 0);
+  const allTalk = calls.map(c => parseFloat(c.analysis?.rep_talk_ratio)).filter(n => !isNaN(n) && n > 0);
 
   // ── Objection + buying signal aggregation ────────────────────────────────
   const objCounts = {};
@@ -120,8 +120,8 @@ export default async function handler(req, res) {
 
   for (const c of calls) {
     const a = c.analysis || {};
-    for (const item of (Array.isArray(a.objections_raised) ? a.objections_raised : [])) {
-      const key = (typeof item === 'string' ? item : item?.objection || '').trim().slice(0, 100);
+    for (const item of (Array.isArray(a.objections) ? a.objections : [])) {
+      const key = (typeof item === 'string' ? item : item?.text || '').trim().slice(0, 100);
       if (key) objCounts[key] = (objCounts[key] || 0) + 1;
     }
     for (const item of (Array.isArray(a.buying_signals) ? a.buying_signals : [])) {

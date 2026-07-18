@@ -5,6 +5,7 @@
 
 import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
+import { recordStageChange } from '../../../lib/stageHistory';
 
 const HS_API_BASE = 'https://api.hubapi.com';
 const SALES_PIPELINE_ID = '663206213';
@@ -96,6 +97,31 @@ export default async function handler(req, res) {
   if (!deals.length) return apiError(res, 502, 'No deals returned from HubSpot');
 
   const now = new Date().toISOString();
+
+  // Snapshot current stage per existing account so we can record HubSpot-driven moves into
+  // account_stage_history — previously these went straight through .upsert() and bypassed every
+  // history writer, so the funnel never saw the vast majority of real transitions (§6/§8).
+  const dealIds = deals.map(d => d.id);
+  const existingByDeal = {};
+  for (let i = 0; i < dealIds.length; i += 200) {
+    const { data: ex } = await db.from('accounts')
+      .select('id, stage, hubspot_deal_id')
+      .in('hubspot_deal_id', dealIds.slice(i, i + 200));
+    for (const a of (ex || [])) existingByDeal[a.hubspot_deal_id] = a;
+  }
+  const stageChanges = [];
+  for (const deal of deals) {
+    const stageId = deal.properties?.dealstage || null;
+    const newStage = stageId ? (STAGE_MAP[stageId] || 'qualifying') : 'qualifying';
+    const ex = existingByDeal[deal.id];
+    if (ex && ex.stage && ex.stage !== newStage) {
+      stageChanges.push({
+        accountId: ex.id, fromStage: ex.stage, toStage: newStage,
+        dealValue: deal.properties?.amount ? parseFloat(deal.properties.amount) : null,
+      });
+    }
+  }
+
   const rows = deals.map(deal => {
     const ownerId = deal.properties?.hubspot_owner_id || null;
     const stageId  = deal.properties?.dealstage || null;
@@ -130,6 +156,11 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log(`[hubspot/sync-deals] synced ${synced} accounts (${errors} batch errors)`);
-  return apiSuccess(res, { synced, total: deals.length, errors });
+  // Record the detected stage moves (best-effort, never blocks the sync).
+  for (const ch of stageChanges) {
+    await recordStageChange(db, { ...ch, changedByName: 'HubSpot sync' });
+  }
+
+  console.log(`[hubspot/sync-deals] synced ${synced} accounts (${errors} batch errors, ${stageChanges.length} stage moves recorded)`);
+  return apiSuccess(res, { synced, total: deals.length, errors, stageChanges: stageChanges.length });
 }

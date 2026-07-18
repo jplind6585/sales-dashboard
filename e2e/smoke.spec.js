@@ -11,6 +11,7 @@ const PAGES = [
   { path: '/modules/sales-reports/ceo-dashboard', expect: /Pipeline|Win|Deals|Dashboard/i },
   { path: '/modules/content', expect: /Content Studio|Follow-up|Business case|account/i },
   { path: '/modules/call-queue', expect: /Call Queue|outreach|touches|reach today/i },
+  { path: '/modules/sales-reports/team-dashboard', expect: /Team|Rep|Pipeline|Discovery|Objection/i },
 ];
 
 for (const p of PAGES) {
