@@ -32,21 +32,24 @@ export default async function handler(req, res) {
 
   const integrations = [];
 
-  // Gong
+  // Gong — live Basic-auth ping to /v2/workspaces
   const gongCfg = has(env.GONG_ACCESS_KEY) && has(env.GONG_SECRET_KEY);
-  integrations.push({
-    key: 'gong', name: 'Gong', category: 'Calls', configured: gongCfg,
-    status: gongCfg ? 'connected' : 'not_configured',
-    detail: gongCfg ? (has(env.GONG_WEBHOOK_SECRET) ? 'API + real-time webhook' : 'API connected — webhook secret not set (polling only)') : 'Add GONG_ACCESS_KEY + GONG_SECRET_KEY in Vercel',
-    lastActivity: gongRes.data?.analyzed_at || null,
-  });
+  let gongStatus = gongCfg ? 'connected' : 'not_configured';
+  let gongDetail = gongCfg ? (has(env.GONG_WEBHOOK_SECRET) ? 'API + real-time webhook' : 'API connected — webhook secret not set (polling only)') : 'Add GONG_ACCESS_KEY + GONG_SECRET_KEY in Vercel';
+  if (gongCfg) {
+    const basic = Buffer.from(`${env.GONG_ACCESS_KEY}:${env.GONG_SECRET_KEY}`).toString('base64');
+    const r = await ping('https://api.gong.io/v2/workspaces', { headers: { Authorization: `Basic ${basic}` } });
+    if (r && !r.ok) { gongStatus = 'error'; gongDetail = `Key rejected (HTTP ${r.status})`; }
+    else if (!r) { gongStatus = 'unknown'; gongDetail = 'Could not reach Gong'; }
+  }
+  integrations.push({ key: 'gong', name: 'Gong', category: 'Calls', configured: gongCfg, status: gongStatus, detail: gongDetail, lastActivity: gongRes.data?.analyzed_at || null });
 
   // HubSpot — live ping
   const hsCfg = has(env.HUBSPOT_API_KEY);
   let hsStatus = hsCfg ? 'connected' : 'not_configured';
   let hsDetail = hsCfg ? 'Deals sync + note write-back' : 'Add HUBSPOT_API_KEY in Vercel';
   if (hsCfg) {
-    const r = await ping('https://api.hubapi.com/crm/v3/objects/deals?limit=1', { headers: { Authorization: `Bearer ${env.HUBSPOT_API_KEY}` } });
+    const r = await ping('https://api.hubapi.com/account-info/v3/details', { headers: { Authorization: `Bearer ${env.HUBSPOT_API_KEY}` } });
     if (r && !r.ok) { hsStatus = 'error'; hsDetail = `Token rejected (HTTP ${r.status}) — check the private-app key`; }
     else if (!r) { hsStatus = 'unknown'; hsDetail = 'Could not reach HubSpot'; }
   }
@@ -68,9 +71,18 @@ export default async function handler(req, res) {
   integrations.push({ key: 'gmail', name: 'Gmail', category: 'Email', configured: true, status: 'user_auth', detail: 'Per-user Google OAuth — read active; add the compose scope to enable draft/send', lastActivity: null });
   integrations.push({ key: 'calendar', name: 'Google Calendar', category: 'Calendar', configured: true, status: 'user_auth', detail: 'Per-user Google OAuth (read)', lastActivity: null });
 
-  // Apollo
+  // Apollo — live health ping (X-Api-Key, 0 credits)
   const apolloCfg = has(env.APOLLO_API_KEY);
-  integrations.push({ key: 'apollo', name: 'Apollo', category: 'Prospecting', configured: apolloCfg, status: apolloCfg ? 'connected' : 'not_configured', detail: apolloCfg ? 'List building + contact enrichment' : 'Add APOLLO_API_KEY in Vercel to enable list building', lastActivity: null });
+  let apolloStatus = apolloCfg ? 'connected' : 'not_configured';
+  let apolloDetail = apolloCfg ? 'List building + contact enrichment' : 'Add APOLLO_API_KEY in Vercel to enable list building';
+  if (apolloCfg) {
+    const r = await ping('https://api.apollo.io/v1/auth/health', { headers: { 'X-Api-Key': env.APOLLO_API_KEY, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' } });
+    const j = r ? await r.json().catch(() => ({})) : null;
+    if (r && r.ok && j?.healthy === false) { apolloStatus = 'error'; apolloDetail = 'Key present but not valid'; }
+    else if (r && !r.ok) { apolloStatus = 'error'; apolloDetail = `Key rejected (HTTP ${r.status})`; }
+    else if (!r) { apolloStatus = 'unknown'; apolloDetail = 'Could not reach Apollo'; }
+  }
+  integrations.push({ key: 'apollo', name: 'Apollo', category: 'Prospecting', configured: apolloCfg, status: apolloStatus, detail: apolloDetail, lastActivity: null });
 
   // Clay
   const clayCfg = has(env.CLAY_API_KEY) || has(env.CLAY_WEBHOOK_URL);

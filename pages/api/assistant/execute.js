@@ -9,6 +9,7 @@ import { createTask, findTaskBySource } from '../../../lib/db/tasks';
 import { addNote } from '../../../lib/db/notes';
 import { isExcludedRep } from '../../../lib/repConfig';
 import { VERTICALS } from '../../../lib/constants';
+import { pushStageToHubspot } from '../../../lib/hubspotPush';
 
 const VALID_STAGES = new Set(['qualifying', 'intro_scheduled', 'active_pursuit', 'demo', 'solution_validation', 'proposal', 'legal', 'closed_won', 'closed_lost']);
 const UPDATABLE_FIELDS = new Set(['vertical', 'tier', 'owner_name', 'close_date']);
@@ -68,6 +69,8 @@ export default async function handler(req, res) {
             account_id: a.accountId, from_stage: from, to_stage: a.stage,
             changed_by: userId, changed_by_name: userName, days_in_prior_stage: daysInPrior,
           }).then(() => {}, () => {});
+          // Two-way write-back: mirror the stage change to HubSpot (best-effort, non-blocking).
+          pushStageToHubspot(db, a.accountId).then(() => {}, () => {});
         }
         results.push({ ok: true, label: a.label || `Moved ${acct.name} → ${a.stage}` });
 
