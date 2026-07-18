@@ -40,8 +40,11 @@ James checked ~55 items + cross-team + ROI + M2/M3/M4/M5. **M1 (Apollo) DEFERRED
 - **Wave 4a ✅ deployed** (4e07f06, 13/13 E2E): Coaching Lab module — best-call library /api/gong/best-calls (§7.2) + disqualification-discipline queue /api/pipeline/dq-queue (§8.4). Registered in nav.
 - **Wave 4b ✅ deployed** (847d296, 13/13 E2E): objection & rebuttal library /api/gong/rebuttals (§7.5) — "Objection playbook" section in Coaching Lab.
 - **Remaining Wave 4:** 7.1 coaching-focus persistence+deltas, 7.3 team benchmark deltas (add team avg to rep-coaching), 7.4 AI drills, 8.2 stage-exit gate (touches write paths — care), 8.3 CS handoff, 8.5 cadence SLAs.
-- **Wave 5 (systems+moonshots) — NOT STARTED:** cross-team work requests MVP (new table work_requests + endpoints + page), ROI tracker MVP (new table initiatives + endpoint + page — James explicitly wants), M5 Living Deal Room (grounded/buildable — public share microsite), M3 Deal OS nightly cron, M2 gift engine + M4 intent radar (need external APIs/budget — scaffold + flag). Then Integrations, Big test.
-- **~28 of ~61 items shipped, all deployed + green (commits 937c5dc→847d296).**
+- **Wave 5a ✅ deployed** (b7ae2fc, 14/14 E2E): ROI Tracker — initiatives table + /api/initiatives (attributed pipeline/revenue, ROI, CAC) + page. Migration 20260718 applied.
+- **Wave 5b ✅ deployed** (a7b3372, 15/15 E2E): cross-team Work Requests — work_requests table + /api/work-requests + page; auto-snapshots account context (lib/accountContext) for the fulfiller.
+- **Remaining Wave 5 moonshots:** M5 Living Deal Room (public share microsite + engagement — buildable), M3 Deal OS nightly cron (leverages write-back), M2 gift engine + M4 intent radar (need external APIs/budget — scaffold + flag).
+- **Remaining Wave 4:** 7.1 coaching-focus deltas, 7.3 benchmark deltas, 7.4 AI drills, 8.2 stage-exit gate (write-path — care), 8.3 CS handoff, 8.5 cadence SLA. **Remaining Wave 3 (risky big files):** tasks toolbar/inline (3.2/3.3 — tasks.js 127KB), pursuit/outbound→Supabase (1.7), chart fixes (5.6).
+- **~30 of ~61 items + both scoped systems shipped, all deployed + green (commits 937c5dc→a7b3372).**
 
 ## Shipped & deployed (reviewed, build-green)
 - **Playwright E2E harness** — `playwright.config.js` + `e2e/smoke.spec.js`, runs against your saved session. 8/8 smoke green. The loop now click-tests each new screen.
