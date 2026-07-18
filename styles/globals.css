@@ -2,11 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Banner brand tokens (see BRAND_GUIDE.md). Coral = the one accent; navy = dark neutral. */
+:root {
+  --coral: #EE5340;
+  --coral-hover: #E23F2B;
+  --coral-tint: #FDECE9;
+  --navy: #16202E;
+  --ink: #1F2A37;
+  --slate: #6B7580;
+  --canvas: #E9EEEF;
+  --surface: #FFFFFF;
+  --hairline: #ECEEF1;
+  --success: #2FBF71;
+  --info: #3B82F6;
+  --danger: #DC3545;
+  --radius-card: 20px;
+  --radius-image: 24px;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Display type for large headings (opt-in via `font-display`). */
+.font-display { font-family: 'Poppins', 'Sofia Sans', system-ui, sans-serif; }
+
+/* Shimmer skeleton used by the shared loading system. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #EEF1F4;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer { 100% { transform: translateX(100%); } }
