@@ -50,6 +50,16 @@ James checked ~55 items + cross-team + ROI + M2/M3/M4/M5. **M1 (Apollo) DEFERRED
 - **~35 of ~61 items + 2 systems + 1 moonshot shipped, all green (commits 937c5dc→6790c2a).** Remaining = needs-James (integrations keys/scopes, M2/M4 budget), redundant (M3, 8.5), or careful big-file work (pursuit/outbound→Supabase 1.7; 7.1 coaching deltas needs new table + coaching.js; 8.2/8.3 write-path).
 - **~30 of ~61 items + both scoped systems shipped, all deployed + green (commits 937c5dc→a7b3372).**
 
+## 🔌 INTEGRATIONS PHASE (2026-07-18) — all code built + deployed; 16/16 E2E green; endpoints degrade gracefully (503/428, no 500s)
+Research done via workflow (Apollo uses X-Api-Key not Bearer + search-then-enrich + master key; Clay has no REST API = webhook-in + callback-out; Gmail drafts = base64url MIME + gmail.compose; HubSpot deals PATCH + /pipelines/deals for IDs).
+- **Health monitor ✅ LIVE** (e4b8fdb + 3a6bfd5): Settings → Integrations widget + /api/integrations/status. Live prod state: Gong ✅(webhook secret unset), **HubSpot ✅ (key valid!)**, Gmail/Calendar ✅(user OAuth), Claude ✅; **Slack shows NOT-configured — SLACK_BOT_TOKEN appears absent from prod env (digests may be silently failing — CHECK)**; Apollo/Clay await keys.
+- **HubSpot two-way ✅ LIVE** (3a6bfd5): lib/hubspotPush + /api/hubspot/push-stage + /pipeline-stages; wired into assistant execute.js. Maps 7 stages. **FINDING: HubSpot Sales pipeline has NO intro_scheduled/demo stage — those app-only stages have no HubSpot target and are correctly skipped (nothing for James to set). Real stage IDs pulled + confirmed.**
+- **Gmail ✅** (1d0430a): /api/gmail/create-draft (needs gmail.compose scope) + /api/gmail/verify-sent (readonly, for §2.6). "Create draft" button in Content Studio.
+- **Apollo ✅** (b5358c3): /api/apollo/search + enrich + import; Prospecting page (human-in-the-loop). Needs APOLLO_API_KEY (MASTER key).
+- **Clay ✅** (cdf4757): /api/clay/enrich (→CLAY_WEBHOOK_URL) + /api/clay/callback (Bearer CLAY_CALLBACK_SECRET) + clay_enrichments table. Needs Clay table + webhook URL.
+- **Gong webhook** = already built (webhook.js); needs GONG_WEBHOOK_SECRET + Gong rule.
+- **JAMES ACTIVATION (env vars in Vercel):** APOLLO_API_KEY (master), CLAY_WEBHOOK_URL (+CLAY_WEBHOOK_AUTH, CLAY_CALLBACK_SECRET), GONG_WEBHOOK_SECRET (+Gong rule), and add Gmail `gmail.compose` scope in Supabase Google provider (users re-auth once). HubSpot already live. Check SLACK_BOT_TOKEN presence.
+
 ## Shipped & deployed (reviewed, build-green)
 - **Playwright E2E harness** — `playwright.config.js` + `e2e/smoke.spec.js`, runs against your saved session. 8/8 smoke green. The loop now click-tests each new screen.
 - **Phase 1 — de-Jamesed engine** (repConfig governance, CS-filtered analytics, centralized coaching, retired-model fix, ~2k lines dead code removed).
