@@ -25,6 +25,13 @@ _Started 2026-06-28 evening. Honest running log of what shipped, what's staged, 
 
 ---
 
+## 🏗️ BUILD-EVERYTHING from PLATFORM_REVIEW (2026-06-29) — wave-based, deploy each after E2E green
+James checked ~55 items + cross-team + ROI + M2/M3/M4/M5. **M1 (Apollo) DEFERRED** per his note (scope more; human-in-the-loop / queue-for-SDR-review, not auto-send). Blocked-on-James (code built + flagged): 2.1 Gong secret, 2.9 HubSpot key, 2.6/2.7 Gmail send scope, M2/M4 external APIs+budget.
+- **Wave 1 ✅ deployed** (937c5dc): brand tokens (Tailwind+globals+Poppins/Inter+_document), one stage-color system, lib/metrics.js, lib/stageHistory.js, lib/accountMatch.js, lib/moduleRegistry.js, components/ui kit. Migration 20260629_foundation applied (account_stage_history.changed_by; lead_pipeline.account_id/match_confidence/match_method).
+- **Wave 2a ✅ deployed** (a12e2ad, 11/11 E2E): fixed verified bugs — Monday exec brief field names (§6.5), Team Dashboard talk-ratio+objections (§6), HubSpot sync records stage moves (§6.1/§8.1).
+- **Wave 2b ✅ deployed** (6e49688): assistant grounding — lib/accountContext.js injected into /api/assistant so the write-capable assistant answers from real calls/tasks/MEDDIC (§1.9).
+- **Remaining Wave 2:** account write-back 1.8/2.2, task quality-filter/dedup 2.4, CEO $ rebuild 6.4 + point dashboards at lib/metrics, cohort funnel 6.2, widen auto-process 2.1(code), assistant actions 2.8/3.10, call scripts 2.3, prep push 2.5, commitment verify 2.6, gmail draft 2.7, HubSpot write-back 2.9. Then Waves 3 (UX+rebrand), 4 (coaching/process), 5 (systems+moonshots).
+
 ## Shipped & deployed (reviewed, build-green)
 - **Playwright E2E harness** — `playwright.config.js` + `e2e/smoke.spec.js`, runs against your saved session. 8/8 smoke green. The loop now click-tests each new screen.
 - **Phase 1 — de-Jamesed engine** (repConfig governance, CS-filtered analytics, centralized coaching, retired-model fix, ~2k lines dead code removed).
