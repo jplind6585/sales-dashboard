@@ -24,6 +24,13 @@ for (const p of PAGES) {
   });
 }
 
+test('command palette opens with ⌘K / Ctrl+K', async ({ page }) => {
+  await page.goto('/modules/today', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500);
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('input[placeholder*="Search accounts"]')).toBeVisible({ timeout: 6000 });
+});
+
 test('global assistant launcher is present on every screen', async ({ page }) => {
   await page.goto('/modules/today', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
