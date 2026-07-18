@@ -14,6 +14,7 @@ const PAGES = [
   { path: '/modules/sales-reports/team-dashboard', expect: /Team|Rep|Pipeline|Discovery|Objection/i },
   { path: '/modules/coaching-lab', expect: /Coaching Lab|Best calls|advance|kill/i },
   { path: '/modules/roi-tracker', expect: /ROI Tracker|initiative|pipeline|returning/i },
+  { path: '/modules/work-requests', expect: /Work Requests|request|design|engineering/i },
 ];
 
 for (const p of PAGES) {
