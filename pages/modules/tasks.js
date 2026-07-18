@@ -2069,6 +2069,7 @@ export default function TasksPage() {
   const [view, setView] = useState('rep') // 'rep' | 'manager'
   const [showNewTask, setShowNewTask] = useState(false)
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
+  const [taskSearch, setTaskSearch] = useState('') // inline title/account search
   const [sdrViewTab, setSdrViewTab] = useState('all') // 'all' | 'campaigns' | 'top50' | 'standard'
   const [repType, setRepType] = useState(null)
   const [providerToken, setProviderToken] = useState(null)
@@ -2361,6 +2362,10 @@ export default function TasksPage() {
     if (filterStatus === 'active') return t.status !== 'complete'
     if (filterStatus === 'complete') return t.status === 'complete'
     return true
+  }).filter(t => {
+    const s = taskSearch.trim().toLowerCase()
+    if (!s) return true
+    return (t.title || '').toLowerCase().includes(s) || (t.account?.name || '').toLowerCase().includes(s)
   }).filter(task => {
     if (repType !== 'sdr' || sdrViewTab === 'all') return true
     if (sdrViewTab === 'campaigns') return task.source_type === 'campaign'
@@ -2639,17 +2644,20 @@ export default function TasksPage() {
                       ))}
                     </div>
                   )}
-                  <div className="flex items-center gap-2 mb-2">
-                    <Filter className="w-4 h-4 text-gray-400" />
-                    {['active', 'all', 'complete'].map(f => (
-                      <button key={f} onClick={() => setFilterStatus(f)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${filterStatus === f ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'}`}>{f}</button>
-                    ))}
-                    <div className="ml-auto flex items-center gap-3">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#6b7280' }}>
-                        <input type="checkbox" checked={filteredTasks.length > 0 && filteredTasks.every(t => selectedTaskIds.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTaskIds(new Set(filteredTasks.map(t => t.id))); else setSelectedTaskIds(new Set()) }} style={{ width: '14px', height: '14px', accentColor: '#2563eb' }} />
-                        Select all
-                      </label>
-                      <span className="text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
+                  <div className="sticky z-[9] bg-gray-50 py-2 mb-2 border-b border-gray-100" style={{ top: '64px' }}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Filter className="w-4 h-4 text-gray-400" />
+                      {['active', 'all', 'complete'].map(f => (
+                        <button key={f} onClick={() => setFilterStatus(f)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${filterStatus === f ? 'bg-coral-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-coral-300'}`}>{f}</button>
+                      ))}
+                      <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Search tasks or accounts…" className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 w-56 focus:outline-none focus:ring-2 focus:ring-coral-200 focus:border-coral-400" />
+                      <div className="ml-auto flex items-center gap-3">
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#6b7280' }}>
+                          <input type="checkbox" checked={filteredTasks.length > 0 && filteredTasks.every(t => selectedTaskIds.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTaskIds(new Set(filteredTasks.map(t => t.id))); else setSelectedTaskIds(new Set()) }} style={{ width: '14px', height: '14px', accentColor: '#EE5340' }} />
+                          Select all
+                        </label>
+                        <span className="text-sm text-gray-400">{filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}</span>
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
