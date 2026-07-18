@@ -26,27 +26,28 @@ function fmtStage(stage) {
     .join(' ')
 }
 
+// One coherent coral funnel ramp (BRAND_GUIDE.md), not a rainbow.
 const STAGE_BADGE_COLORS = {
-  qualifying: 'bg-gray-100 text-gray-700 border-gray-300',
-  intro_scheduled: 'bg-teal-100 text-teal-700 border-teal-300',
-  active_pursuit: 'bg-blue-100 text-blue-700 border-blue-300',
-  demo: 'bg-indigo-100 text-indigo-700 border-indigo-300',
-  solution_validation: 'bg-purple-100 text-purple-700 border-purple-300',
-  proposal: 'bg-orange-100 text-orange-700 border-orange-300',
-  legal: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  closed_won: 'bg-green-100 text-green-700 border-green-300',
-  closed_lost: 'bg-red-100 text-red-700 border-red-300',
+  qualifying: 'bg-slate-100 text-slate-600 border-slate-200',
+  intro_scheduled: 'bg-coral-50 text-coral-700 border-coral-200',
+  active_pursuit: 'bg-coral-100 text-coral-700 border-coral-200',
+  demo: 'bg-coral-100 text-coral-800 border-coral-200',
+  solution_validation: 'bg-coral-200 text-coral-800 border-coral-300',
+  proposal: 'bg-coral-200 text-coral-900 border-coral-300',
+  legal: 'bg-navy text-white border-navy',
+  closed_won: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  closed_lost: 'bg-slate-100 text-slate-400 border-slate-200',
 }
 
-// Bar colors for the funnel
+// Bar colors for the funnel — light early → deep late.
 const FUNNEL_BAR_COLORS = {
-  qualifying: 'bg-teal-400',
-  intro_scheduled: 'bg-teal-500',
-  active_pursuit: 'bg-blue-500',
-  demo: 'bg-blue-600',
-  solution_validation: 'bg-indigo-500',
-  proposal: 'bg-orange-500',
-  legal: 'bg-yellow-500',
+  qualifying: 'bg-slate-300',
+  intro_scheduled: 'bg-coral-200',
+  active_pursuit: 'bg-coral-300',
+  demo: 'bg-coral-400',
+  solution_validation: 'bg-coral-500',
+  proposal: 'bg-coral-600',
+  legal: 'bg-navy',
 }
 
 // Abbreviated stage labels for table columns

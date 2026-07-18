@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Trophy, AlertOctagon, ExternalLink, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Trophy, AlertOctagon, ExternalLink, MessageSquare, Dumbbell } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { SkeletonRows } from '../../components/ui/Skeleton'
@@ -13,11 +13,13 @@ export default function CoachingLab() {
   const [best, setBest] = useState(null)
   const [dq, setDq] = useState(null)
   const [rebuttals, setRebuttals] = useState(null)
+  const [drills, setDrills] = useState(null)
 
   useEffect(() => {
     fetch('/api/gong/best-calls').then((r) => r.json()).then((j) => setBest(j.calls || [])).catch(() => setBest([]))
     fetch('/api/pipeline/dq-queue').then((r) => r.json()).then((j) => setDq(j.deals || [])).catch(() => setDq([]))
     fetch('/api/gong/rebuttals').then((r) => r.json()).then((j) => setRebuttals(j.rebuttals || [])).catch(() => setRebuttals([]))
+    fetch('/api/gong/drills').then((r) => r.json()).then((j) => setDrills(j.drills || [])).catch(() => setDrills([]))
   }, [])
 
   return (
@@ -37,6 +39,31 @@ export default function CoachingLab() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-6 space-y-8">
+        {/* Practice drills — weakest dimensions */}
+        <section>
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3"><Dumbbell className="w-4 h-4 text-coral-500" /> Work on this</h2>
+          {!drills ? <SkeletonRows rows={2} /> : drills.length === 0 ? (
+            <EmptyState icon={Dumbbell} title="Every dimension is at target" subtitle="Discovery, pain, champion, and talk ratio are all where they should be across recent calls. Keep it up." />
+          ) : (
+            <div className="space-y-2">
+              {drills.map((d) => (
+                <div key={d.area} className="bg-white rounded-card border border-hairline p-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-ink">{d.area}</span>
+                    <span className="text-xs bg-coral-50 text-coral-700 rounded-full px-2 py-0.5">avg {d.yourAvg} · target {d.higherIsBetter ? '≥' : '≤'}{d.target}</span>
+                  </div>
+                  <p className="text-sm text-slate-600 mt-1">{d.drill}</p>
+                  {d.examples?.length > 0 && (
+                    <p className="text-xs text-slate-400 mt-1.5">Review: {d.examples.map((e, i) => (
+                      <button key={i} onClick={() => e.accountId && router.push(`/modules/account-pipeline?account=${e.accountId}`)} className="hover:text-coral-600">{e.title} ({e.score}){i < d.examples.length - 1 ? ', ' : ''}</button>
+                    ))}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* Best calls */}
         <section>
           <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3"><Trophy className="w-4 h-4 text-coral-500" /> Best calls to learn from</h2>
