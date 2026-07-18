@@ -30,6 +30,7 @@ import CurrentStateTab from '../../components/tabs/CurrentStateTab';
 import StakeholdersTab from '../../components/tabs/StakeholdersTab';
 import InformationGapsTab from '../../components/tabs/InformationGapsTab';
 import ContentTab from '../../components/tabs/ContentTab';
+import TimelineTab from '../../components/tabs/TimelineTab';
 import ChatTab from '../../components/tabs/ChatTab';
 
 const INACTIVE_STAGES = new Set([...INACTIVE_STAGE_IDS, 'won', 'lost'])
@@ -781,6 +782,8 @@ export default function Home() {
     switch (activeTab) {
       case 'overview':
         return <OverviewTab account={selectedAccount} onUpdateAccount={updateAccountField} />;
+      case 'timeline':
+        return <TimelineTab account={selectedAccount} />;
       case 'transcripts':
         return <TranscriptsTab account={selectedAccount} onOpenTranscriptModal={() => setShowNewTranscript(true)} />;
       case 'current_state':
