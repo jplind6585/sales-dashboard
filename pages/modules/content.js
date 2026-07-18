@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, FileText, Mail, Layers, Calendar, FileSpreadsheet, Sparkles, Loader2, Copy, RefreshCw, Check, ExternalLink, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, FileText, Mail, Layers, Calendar, FileSpreadsheet, Sparkles, Loader2, Copy, RefreshCw, Check, ExternalLink, AlertTriangle, Phone, Share2, Eye } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { useAccounts } from '../../hooks/useAccounts'
@@ -11,6 +11,7 @@ const TYPES = [
   { id: 'one_pager', label: 'One-pager', icon: FileText, auto: true },
   { id: 'meeting_agenda', label: 'Meeting agenda', icon: Calendar, auto: true },
   { id: 'email_sequence', label: 'Email sequence', icon: Layers, auto: true },
+  { id: 'call_script', label: 'Call script', icon: Phone, auto: true },
   { id: 'rfp_response', label: 'RFP / questionnaire', icon: FileSpreadsheet, auto: false },
 ]
 
@@ -26,6 +27,9 @@ export default function ContentStudio() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [dealRoom, setDealRoom] = useState(null)
+  const [dealRoomBusy, setDealRoomBusy] = useState(false)
+  const [dealRoomCopied, setDealRoomCopied] = useState(false)
   const reqRef = useRef(0)
   const cacheRef = useRef({}) // `${accountId}:${type}` -> { content, callsUsed }
 
@@ -80,6 +84,27 @@ export default function ContentStudio() {
     catch { setError('Copy failed — select the draft text and copy it manually.') }
   }
 
+  // Deal Room — load existing on account change, create + copy the public share link.
+  useEffect(() => {
+    setDealRoom(null)
+    if (!accountId) return
+    fetch(`/api/deal-room?accountId=${accountId}`).then(r => r.json()).then(j => setDealRoom(j.room || null)).catch(() => {})
+  }, [accountId])
+
+  const shareDealRoom = async () => {
+    if (!accountId) return
+    setDealRoomBusy(true)
+    try {
+      const res = await fetch('/api/deal-room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountId }) })
+      const j = await res.json()
+      if (j.room?.path) {
+        setDealRoom(j.room)
+        const url = `${window.location.origin}${j.room.path}`
+        await navigator.clipboard.writeText(url).then(() => { setDealRoomCopied(true); setTimeout(() => setDealRoomCopied(false), 1800) }).catch(() => {})
+      }
+    } finally { setDealRoomBusy(false) }
+  }
+
   const openGmail = () => {
     const m = content.match(/^subject:\s*(.+)$/im)
     const subject = m ? m[1].trim() : `Following up — ${accountName}`
@@ -100,7 +125,7 @@ export default function ContentStudio() {
           <div className="flex items-center gap-3">
             <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><ArrowLeft className="w-4 h-4" /></button>
             <div>
-              <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Sparkles className="w-4 h-4 text-violet-500" /> Content Studio</h1>
+              <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Sparkles className="w-4 h-4 text-coral-500" /> Content Studio</h1>
               <p className="text-xs text-gray-400">AI-drafted from this account's calls — adapt and send</p>
             </div>
             <ModulesNav router={router} />
@@ -127,7 +152,7 @@ export default function ContentStudio() {
                 const Icon = t.icon
                 return (
                   <button key={t.id} onClick={() => setType(t.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border text-left ${type === t.id ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border text-left ${type === t.id ? 'border-coral-400 bg-coral-50 text-coral-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                     <Icon className="w-4 h-4 shrink-0" /> <span className="truncate">{t.label}</span>
                   </button>
                 )
@@ -135,13 +160,24 @@ export default function ContentStudio() {
             </div>
           </div>
 
+          {accountId && (
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <label className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1"><Share2 className="w-3.5 h-3.5" /> Deal Room</label>
+              <p className="text-xs text-gray-400 mt-1">A shareable, branded value page for this prospect with an ROI estimate from their metrics.</p>
+              <button onClick={shareDealRoom} disabled={dealRoomBusy} className="mt-2 w-full bg-coral-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-coral-700 disabled:opacity-40">
+                {dealRoomBusy ? 'Creating…' : dealRoomCopied ? 'Link copied!' : dealRoom ? 'Copy share link' : 'Create & copy link'}
+              </button>
+              {dealRoom && <p className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1"><Eye className="w-3 h-3" /> {dealRoom.views || 0} view{dealRoom.views === 1 ? '' : 's'} so far</p>}
+            </div>
+          )}
+
           {type === 'rfp_response' && (
             <div className="bg-white rounded-xl border border-gray-100 p-4">
               <label className="text-xs font-semibold text-gray-500 uppercase">Paste the RFP / questionnaire</label>
               <textarea value={rfpText} onChange={e => setRfpText(e.target.value)} rows={8} placeholder="Paste the questions here…"
                 className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" />
               <button onClick={regenerate} disabled={loading || !accountId || !rfpText.trim()}
-                className="mt-2 w-full bg-violet-600 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40">
+                className="mt-2 w-full bg-coral-600 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40">
                 {loading ? 'Drafting…' : 'Draft answers'}
               </button>
             </div>
