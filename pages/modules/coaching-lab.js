@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Trophy, AlertOctagon, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Trophy, AlertOctagon, ExternalLink, MessageSquare } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { SkeletonRows } from '../../components/ui/Skeleton'
@@ -12,10 +12,12 @@ export default function CoachingLab() {
   const router = useRouter()
   const [best, setBest] = useState(null)
   const [dq, setDq] = useState(null)
+  const [rebuttals, setRebuttals] = useState(null)
 
   useEffect(() => {
     fetch('/api/gong/best-calls').then((r) => r.json()).then((j) => setBest(j.calls || [])).catch(() => setBest([]))
     fetch('/api/pipeline/dq-queue').then((r) => r.json()).then((j) => setDq(j.deals || [])).catch(() => setDq([]))
+    fetch('/api/gong/rebuttals').then((r) => r.json()).then((j) => setRebuttals(j.rebuttals || [])).catch(() => setRebuttals([]))
   }, [])
 
   return (
@@ -83,6 +85,37 @@ export default function CoachingLab() {
                     <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{d.reason}{d.owner ? ` · ${d.owner}` : ''}</p>
                   </div>
                   {d.dealValue ? <span className="text-xs text-slate-400 shrink-0">{fmtUsd(d.dealValue)}</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Objection & rebuttal library */}
+        <section>
+          <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3"><MessageSquare className="w-4 h-4 text-coral-500" /> Objection playbook <span className="text-xs font-normal text-slate-400">from real calls</span></h2>
+          {!rebuttals ? <SkeletonRows rows={3} /> : rebuttals.length === 0 ? (
+            <EmptyState icon={MessageSquare} title="No objections logged yet" subtitle="As calls are analyzed, the objections reps hear — and how they were answered — will collect here by theme." />
+          ) : (
+            <div className="space-y-2">
+              {rebuttals.map((r) => (
+                <div key={r.category} className="bg-white rounded-card border border-hairline p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-medium text-ink capitalize">{r.category}</span>
+                    <span className="text-xs bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">{r.count}×</span>
+                  </div>
+                  {r.examples.length === 0 ? (
+                    <p className="text-xs text-slate-400">Seen {r.count}× — no captured response yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {r.examples.map((e, i) => (
+                        <div key={i} className="text-xs border-l-2 border-coral-200 pl-3">
+                          <p className="text-slate-600">“{e.objection}”</p>
+                          <p className="text-slate-500 mt-0.5"><span className="text-coral-600 font-medium">Handled:</span> {e.response}{e.rep ? ` — ${e.rep}` : ''}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
