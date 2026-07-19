@@ -17,6 +17,7 @@ export default async function handler(req, res) {
         'email',
         'profile',
         'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.compose',
         'https://www.googleapis.com/auth/calendar.readonly',
       ].join(' '),
       redirectTo: `${siteUrl}/api/auth/callback`,
