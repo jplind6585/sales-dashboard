@@ -9,7 +9,7 @@
 //        https://<host>/api/gong/webhook
 //      with header  x-webhook-secret: <GONG_WEBHOOK_SECRET>   (preferred)
 //      or           Authorization: Bearer <GONG_WEBHOOK_SECRET>
-//      Do NOT put the secret in the query string (it leaks into logs).
+//      or (Gong "URL includes key")   ?secret=<GONG_WEBHOOK_SECRET> appended to the URL.
 //
 // Idempotent + safe for Gong retries; governed by the excluded-rep list; fails closed.
 
@@ -53,8 +53,11 @@ export default async function handler(req, res) {
   if (!secret) return res.status(503).json({ error: 'GONG_WEBHOOK_SECRET not configured' });
   if (!process.env.CRON_SECRET) return res.status(503).json({ error: 'CRON_SECRET not configured' });
 
-  // Header-only auth (never the query string — it persists in access logs), timing-safe.
-  const provided = req.headers['x-webhook-secret'] || (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '');
+  // Header preferred; Gong Automation Rules "URL includes key" passes it in the query string, so we
+  // also accept ?secret= / ?key= (internal tool — the access-log-leak tradeoff is acceptable here).
+  const provided = req.headers['x-webhook-secret']
+    || (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '')
+    || req.query.secret || req.query.key || '';
   if (!timingSafeEqual(provided, secret)) return res.status(401).json({ error: 'Unauthorized' });
 
   const gongAccessKey = process.env.GONG_ACCESS_KEY, gongSecretKey = process.env.GONG_SECRET_KEY;
