@@ -5,6 +5,7 @@ import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { useAccounts } from '../../hooks/useAccounts'
 import { getSupabase } from '../../lib/supabase'
+import AccountCombobox from '../../components/ui/AccountCombobox'
 
 const TYPES = [
   { id: 'follow_up_email', label: 'Follow-up email', icon: Mail, auto: true, email: true },
@@ -158,10 +159,7 @@ export default function ContentStudio() {
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <label className="text-xs font-semibold text-gray-500 uppercase">Account</label>
-            <select value={accountId} onChange={e => setAccountId(e.target.value)} className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              <option value="">Select an account…</option>
-              {sortedAccounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.stage ? ` · ${a.stage}` : ''}</option>)}
-            </select>
+            <AccountCombobox accounts={sortedAccounts} value={accountId} onChange={setAccountId} />
             {!sortedAccounts.length && <p className="text-xs text-gray-400 mt-1">Loading accounts…</p>}
           </div>
 
