@@ -1,92 +1,98 @@
-# Tasks v2 + Roadmap (captured 2026-07-19)
+# Master Build Plan — Tasks v2, Intelligence, Cadence Engine, Company Impact
+_Captured 2026-07-19 · decisions confirmed 2026-07-20_
 
-Everything below is committed to-do, not yet built. Source: James's 2026-07-19 review of Tasks/To-dos.
+The full backlog from James's review + the approved brainstorm ideas, sequenced by dependency.
+Guiding principle: **the call→account data writeback is the keystone.** Most "smarter" and
+"impactful" ideas are thin UI once every analyzed call writes structured signal to the account.
+So foundations first, then the daily rep experience, then the engine, then company/exec impact.
 
----
-
-## Parked — integrations (activate when James is ready)
-- Gmail draft — scope is live; confirm a real draft lands.
-- Slack `SLACK_BOT_TOKEN` (health monitor flags it unconfigured — digests may be silently failing).
-- Clay `CLAY_WEBHOOK_URL` + callback secret.
-- Apollo key already set; confirm search→enrich credits.
-- Gong webhook — confirm end-to-end on the first real call.
-- Optional: recapture `e2e/auth.json` so automated click-through works again.
-
----
-
-## Tasks v2 — the epic
-
-### A. Task quality + context (the wall is noisy)
-- **Kill nonsense tasks.** Gong-extracted commitments like "I'll come back to that in a second" are transcription noise, not tasks. Filter at extraction (min length, verb/object heuristic, confidence score) and let reps bulk-dismiss.
-- **Show context on every task**: which call, with whom, when, and a one-line why. Link back to the transcript/account.
-- **Everything is in the past.** Surface **upcoming** work — next scheduled calls (Gong/Calendar) with pre-call prep, not just overdue items.
-
-### B. Today's Focus
-- One-click **complete / delete / snooze** directly on each Focus item (James had already done all of them with no way to clear).
-- Keep it to a genuinely-ranked short list; when cleared, refill from next-best-actions.
-
-### C. The wall (hundreds of tasks)
-- **Filter, sort, and mass-edit** — by account, stage, owner, due, source, priority; multi-select → complete/snooze/reassign/delete.
-- Consistent filter/sort UX shared with By-Account and every other list surface.
-
-### D. By Account view
-- Same **filter/sort** affordances as everywhere (make this a consistent, reusable control).
-- **Minimize/collapse** deals.
-- **Color-coded stage tabs** using the shared StageBadge palette (consistency — stages look identical everywhere).
-- Show **deal value** per account.
-
-### E. Assistant / chat
-- Much **wider** (near full-screen), not a narrow rail.
-- **Concise** output — fastest, tightest answer; drop the verbosity.
-
-### F. The cadence + re-engagement engine (the big one)
-- **Per-call playbooks**: every AE gets default **pre-call** and **post-call** tasks (we built `task_playbooks` — wire the triggers), plus anything they specifically committed to on the call.
-- **Re-engagement targets — AE: 10/week (2/day)** pulled from inactive/closed-lost deals:
-  - Smart suggestions of deals most likely to reopen/close.
-  - Trigger-based: a call line like "let's touch base in July" → auto-creates a July follow-up task **with a deliberate drafted message**, counting toward the weekly re-engage goal.
-  - When a rep doesn't have enough live triggers, top up with suggested accounts to reach 10.
-- **SDRs — 3 set meetings/week**: a daily plan to hit it, sized from that SDR's own call/email success rates (activity → meetings math).
-- **Recurring cadences for everyone** (SDR/AE/**admin**): daily/weekly/monthly/quarterly recurring tasks via playbooks.
-
-### G. Integrations for knowledge
-- **Notion** — pull company knowledge (playbooks, product, competitive, process) into the assistant's context. (A Notion connector is available in this workspace.)
+## Decisions
+- **Committed (build):** all Tasks v2 items; easier-for-rep 1–9; impactful 1,2,3,5,6,7,9;
+  smarter 1–10; Notion knowledge.
+- **Parked (roadmap, later):** easier #10 mobile quick-actions; impactful #4 rep-ramp scorecard,
+  #8 post-close expansion signals, #10 one-click board report.
+- **Parked integrations:** Slack token, Clay, Apollo confirm, Gong live-call, Gmail draft confirm, E2E re-auth.
 
 ---
 
-## Appendix — 30 ideas (2026-07-19 brainstorm)
+## Phase 0 — Foundations (unlocks most of the rest)
+Nothing user-facing ships alone here; it's the data + shared primitives everything leans on.
 
-### Easier for a rep
-1. Complete → auto-surface that account's next best action (never return to the wall).
-2. Voice capture after a call → parsed into tasks (extend the existing Voice button).
-3. Keyboard-first: j/k move, e complete, s snooze, / search.
-4. Auto-verify commitments: detect the sent email/booked meeting and self-close the task.
-5. Natural-language snooze ("next Tuesday", "after the demo").
-6. Saved per-rep task templates (apply a "post-demo" set in one click).
-7. Draft-and-send inline from a "send" task (Content Studio embedded).
-8. Slack DM of the day's 3 focus tasks with one-tap complete.
-9. "Clear the noise" — archive low-signal auto-tasks older than N days in one click.
-10. Mobile quick-actions (complete/snooze/add on the road).
+- **Call → Account writeback** (smarter #1; unblocks smarter 2/3/4/5/7 + impactful 1/2/3).
+  Extend `gong/intel-analyze` so each analysis persists to the account: MEDDICC, stakeholders,
+  information gaps, competitors, next steps, **two-way commitments**, and a **sentiment/engagement
+  score**. Consolidate the orphaned client-side `analyze-transcript` extraction. New/updated:
+  `account_signals` table (sentiment, engagement, talk_ratio, last_call_at, meddicc_completeness),
+  writeback in `lib/accountWriteback.js`. _Size: L._
+- **Task quality gate + context** (Tasks A). At extraction, score each candidate task (min length,
+  verb+object, confidence); drop noise ("I'll come back to that"). Store context on every task:
+  `gong_call_id`, participants, call date, one-line why (columns on `tasks`). _Size: M._
+- **Shared list controls** (Tasks C/D — "a consistent thing we look for"). One reusable
+  `ListToolbar` (filter by account/stage/owner/due/source/priority + sort + multi-select →
+  complete/snooze/reassign/delete). Used by the Tasks wall, By-Account, and future lists. _Size: M._
+- **Next-best-action service** (smarter #2). One ranked NBA per deal from full signal
+  (stage + recency + sentiment + open gaps + deal value). Powers Today's Focus refill, re-engage
+  picks, and the at-risk radar. `lib/nba.js` + `/api/nba`. _Size: M._
 
-### More impactful to the company
-1. Pipeline-at-risk radar with $ at risk, to the manager daily.
-2. Forecast with commit/best/worst bands vs. quota, driven by call signals.
-3. Win/loss intelligence — patterns in what we lose and why → playbook.
-4. Rep ramp scorecard vs. benchmark (spot coaching needs early).
-5. Revenue-per-activity — which touches actually move deals.
-6. Deal-desk: discount/legal/exec approvals tracked in-app.
-7. Competitive win-rate dashboard (Procore/Smartsheet/Northspyre) + winning plays.
-8. Post-close expansion signals from CS calls (land-and-expand).
-9. Whitespace/territory map — uncovered target accounts for SDRs.
-10. One-click board-ready report from the CEO view.
+## Phase 1 — Tasks that work (daily rep experience)
+Depends on Phase 0 (quality gate, list controls, NBA).
 
-### Smarter with the info we have
-1. Auto-write MEDDICC/stakeholders/gaps from calls back to the account (the audit's "output (a)" gap).
-2. True next-best-action per deal from full signal (stage + recency + sentiment + gaps), ranked.
-3. Per-account sentiment/engagement trend call-over-call.
-4. Two-way commitment tracking with nudges ("they said they'd send the budget").
-5. Relationship graph — champion / gone-quiet / newly-added, from call attendance.
-6. Smart re-engage timing model (fiscal year, seasonality, trigger events).
-7. Objection library auto-built from calls, with rebuttals that advanced deals.
-8. Talk-ratio / discovery-quality coaching per call, trended, tied to outcomes.
-9. Entity resolution — dedupe accounts/contacts across Gong/HubSpot/Apollo.
-10. Predictive lead scoring against past closed-won (ICP + engagement).
+- Task **context** shown on every row (call/who/when + why). (Tasks A)
+- **Wall**: filter/sort/mass-edit via ListToolbar. (Tasks C)
+- **Today's Focus**: one-click complete / delete / snooze; refill from NBA when cleared. (Tasks B)
+- **By-Account**: filters, collapsible deals, **color-coded StageBadge**, **deal value**. (Tasks D)
+- **Assistant**: near-full-screen width + concise output. (Tasks E)
+- **Upcoming**, not just past: surface next scheduled calls (Gong/Calendar) with pre-call prep. (Tasks A)
+- Easier-for-rep: complete→NBA (#1), voice→tasks (#2), keyboard-first (#3), auto-verify
+  commitments via Gmail/Calendar (#4), NL snooze (#5), saved templates (#6), draft-and-send
+  inline (#7), Slack DM of 3 focus + one-tap complete (#8), "clear the noise" bulk-archive (#9).
+  _Size: L (the big daily-UX slice)._
+
+## Phase 2 — Cadence + quota engine
+Depends on Phase 0/1 (NBA, playbooks table exists).
+
+- **Per-call playbooks**: default pre-call + post-call task sets per AE, wired to triggers
+  (`task_playbooks` + trigger runner) + the rep's own stated commitments from the call.
+- **Trigger→task**: "let's touch base in July" → dated follow-up task **with a drafted message**,
+  counts toward the weekly re-engage goal.
+- **AE re-engagement — 10/week (2/day)**: pull from inactive/closed-lost + call triggers; rank by
+  reopen likelihood (**smart re-engage timing model, smarter #6**); top-up with suggested accounts
+  to reach 10. Weekly goal tracker.
+- **SDR — 3 meetings/week**: a daily plan sized from that SDR's own call/email → meeting rates.
+- **Recurring cadences** (daily/weekly/monthly/quarterly) for SDR/AE/**admin**. _Size: L._
+
+## Phase 3 — Intelligence surfaced
+Depends on Phase 0 writeback + signals.
+
+- Two-way **commitment tracker** with nudges (smarter #4).
+- **Relationship graph** — champion / gone-quiet / newly-added, from call attendance (smarter #5).
+- **Objection library** auto-built from calls + rebuttals that advanced deals (smarter #7).
+- **Talk-ratio / discovery-quality coaching**, trended per rep, tied to outcomes (smarter #8).
+- **Entity resolution** — dedupe accounts/contacts across Gong/HubSpot/Apollo (smarter #9).
+- **Predictive lead scoring** vs. past closed-won (ICP + engagement) (smarter #10).
+- Per-account **sentiment/engagement trend** view (smarter #3). _Size: L._
+
+## Phase 4 — Company impact (manager/exec)
+Depends on Phase 0 signals + deal_value.
+
+- **Pipeline-at-risk radar** with $ at risk, daily to the manager (impactful #1).
+- **Forecast** with commit/best/worst bands vs. quota, signal-driven (impactful #2).
+- **Win/loss intelligence** — loss patterns → playbook (impactful #3).
+- **Revenue-per-activity** — which touches move deals (impactful #5).
+- **Deal-desk** — discount/legal/exec approvals in-app (impactful #6).
+- **Competitive win-rate dashboard** + winning plays (impactful #7).
+- **Whitespace map** — uncovered target accounts → SDRs (impactful #9). _Size: L._
+
+## Phase 5 — Knowledge
+- **Notion** connector → company knowledge (playbooks, product, competitive) into the assistant's
+  context (connector available in this workspace). _Size: M._
+
+## Parked (later)
+Easier #10 mobile quick-actions · impactful #4 rep-ramp scorecard · #8 post-close expansion signals
+· #10 one-click board report.
+
+---
+
+## How it ships
+Each phase: build in verified batches (workflow fan-out where mechanical), full `next build` gate,
+deploy, confirm. Phases 0→1 first (foundation + the daily pain), then 2, then 3/4 in parallel, then 5.
