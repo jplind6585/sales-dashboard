@@ -120,6 +120,31 @@ body {
   --tw-gradient-to: #1B2732 var(--tw-gradient-to-position);
 }
 
+/* translucent white surfaces — the sticky top bar is bg-white/85, which the plain bg-white
+   override doesn't match. Map the opacity variants to the dark surface. */
+.dark .bg-white\/95 { background-color: rgba(20, 29, 39, 0.95); }
+.dark .bg-white\/90 { background-color: rgba(20, 29, 39, 0.92); }
+.dark .bg-white\/85 { background-color: rgba(20, 29, 39, 0.88); }
+.dark .bg-white\/80 { background-color: rgba(20, 29, 39, 0.85); }
+.dark .bg-white\/75, .dark .bg-white\/70 { background-color: rgba(20, 29, 39, 0.8); }
+.dark .bg-white\/60, .dark .bg-white\/50 { background-color: rgba(20, 29, 39, 0.7); }
+/* white overlays on colored cards stay light (just softer) */
+.dark .bg-white\/20 { background-color: rgba(255, 255, 255, 0.14); }
+.dark .bg-white\/10 { background-color: rgba(255, 255, 255, 0.08); }
+
+/* tone down vivid -500/-600 gradients (e.g. the Next Best Action card) so they aren't garish on dark */
+.dark .from-blue-600, .dark .from-blue-500 {
+  --tw-gradient-from: #1E3A5F var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(30 58 95 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+.dark .from-indigo-600, .dark .from-indigo-500 {
+  --tw-gradient-from: #2A2F56 var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(42 47 86 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+.dark .to-indigo-600, .dark .to-indigo-700, .dark .to-blue-600, .dark .to-blue-700, .dark .to-purple-600 { --tw-gradient-to: #2A2F56 var(--tw-gradient-to-position); }
+
 /* skeleton on dark */
 .dark .skeleton { background: #1B2732; }
 .dark .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); }
