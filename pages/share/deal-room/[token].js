@@ -30,7 +30,8 @@ export default function DealRoom() {
         <div className="max-w-3xl mx-auto px-6 py-16 relative overflow-hidden">
           <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full border-[20px] border-coral-500/20" />
           <div className="flex items-center gap-2 mb-8">
-            <span className="w-6 h-6 rounded bg-coral-500 flex items-center justify-center font-display font-semibold">B</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/Banner_Logo_Square.png" alt="Banner" className="w-6 h-6 object-contain" />
             <span className="font-display font-semibold">Banner</span>
           </div>
           <p className="text-coral-400 text-sm font-medium mb-2">Prepared for {account.name}</p>

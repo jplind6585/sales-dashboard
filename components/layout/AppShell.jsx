@@ -66,9 +66,11 @@ export default function AppShell({ title, subtitle, actions, children }) {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside className={`${collapsed ? 'w-16' : 'w-[236px]'} flex-shrink-0 bg-white flex flex-col sticky top-0 h-screen transition-[width] duration-150`}>
-        <div className="flex items-center gap-2.5 h-[57px] px-4 flex-shrink-0">
-          <div className="w-6 h-6 rounded-md bg-coral-500 text-white grid place-items-center font-bold text-sm shrink-0 shadow-sm">B</div>
-          {!collapsed && <span className="font-semibold text-slate-800 tracking-tight">Banner</span>}
+        <div className={`flex items-center h-[57px] flex-shrink-0 ${collapsed ? 'justify-center px-2' : 'px-4'}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {collapsed
+            ? <img src="/brand/Banner_Logo_Square.png" alt="Banner" className="w-7 h-7 object-contain" />
+            : <img src="/brand/Banner_Logo_Full.png" alt="Banner" className="h-[22px] w-auto object-contain" />}
         </div>
         <nav className="flex-1 overflow-y-auto px-2.5 pb-3">
           {groups.map(sec => (

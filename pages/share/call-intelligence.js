@@ -88,11 +88,9 @@ export default function ShareCallIntelligence() {
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                <BarChart2 className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-bold text-gray-900 text-lg">Banner</span>
+            <div className="flex items-center mb-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/Banner_Logo_Full.png" alt="Banner" className="h-6 w-auto object-contain" />
             </div>
             <p className="text-sm text-gray-500">Call Intelligence Report · {callCount ? `${callCount} calls` : ''}{computedDate ? ` · As of ${computedDate}` : ''}</p>
           </div>

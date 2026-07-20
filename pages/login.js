@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import LoginButton from '../components/auth/LoginButton'
-import { BarChart3, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,16 +11,14 @@ export default function LoginPage() {
   return (
     <>
       <Head>
-        <title>Sign In | Sales Dashboard</title>
-        <meta name="description" content="Sign in to your Sales Dashboard account" />
+        <title>Sign In | Banner</title>
+        <meta name="description" content="Sign in to your Banner sales workspace" />
       </Head>
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full mx-4">
           <div className="flex flex-col items-center mb-8">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="h-10 w-10 text-blue-600" />
-              <h1 className="text-2xl font-bold text-gray-900">Sales Dashboard</h1>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/Banner_Logo_Full.png" alt="Banner" className="h-9 w-auto object-contain mb-5" />
             <p className="text-gray-600 text-center">
               Track your accounts, analyze calls, and close more deals with AI-powered insights.
             </p>
