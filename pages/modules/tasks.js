@@ -1086,11 +1086,13 @@ function TodaysFocus() {
 
 // ─── Daily Focus Brief ───────────────────────────────────────────────────────
 
-function DailyFocusBrief({ tasks, onWorkInClaude }) {
+function DailyFocusBrief({ tasks, onWorkInClaude, onStatusChange }) {
   const [focus, setFocus] = useState(null)
   const [loading, setLoading] = useState(false)
   const CACHE_KEY = 'daily_focus_cache'
   const CACHE_DATE_KEY = 'daily_focus_date'
+  const removeItem = (i) => setFocus(f => { const next = (f || []).filter((_, idx) => idx !== i); try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)) } catch {} return next })
+  const completeItem = (task, i) => { if (task && onStatusChange) onStatusChange(task.id, 'complete'); removeItem(i) }
 
   useEffect(() => {
     if (!tasks?.length) return
@@ -1159,7 +1161,10 @@ function DailyFocusBrief({ tasks, onWorkInClaude }) {
           {(focus || []).map((item, i) => {
             const task = tasks?.find(t => t.id === item.taskId)
             return (
-              <div key={i} className="flex items-start gap-3 px-4 py-3">
+              <div key={i} className="flex items-start gap-3 px-4 py-3 group">
+                <button onClick={() => completeItem(task, i)} title="Mark done" className="flex-shrink-0 mt-0.5 text-gray-300 hover:text-green-500 transition-colors">
+                  <CheckCircle2 className="w-5 h-5" />
+                </button>
                 <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mt-0.5 ${
                   i === 0 ? 'bg-red-500 text-white' : i === 1 ? 'bg-orange-400 text-white' : 'bg-amber-400 text-white'
                 }`}>
@@ -1183,6 +1188,9 @@ function DailyFocusBrief({ tasks, onWorkInClaude }) {
                     Work
                   </button>
                 )}
+                <button onClick={() => removeItem(i)} title="Remove from focus" className="flex-shrink-0 mt-0.5 text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )
           })}
@@ -2651,7 +2659,7 @@ export default function TasksPage() {
               const waitingTasks = activeTasks.filter(t => t.momentum === 'waiting_on_them')
               return (
                 <>
-                  <DailyFocusBrief tasks={activeTasks} onWorkInClaude={task => setWorkTask(task)} />
+                  <DailyFocusBrief tasks={activeTasks} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
                   <TodaysFocus />
                   <CallCommitmentsPanel onAddTask={handleCreate} />
                   <div className="mb-6">
