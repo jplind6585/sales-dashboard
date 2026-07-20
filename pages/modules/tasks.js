@@ -1475,6 +1475,9 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
   const overdue = isOverdue(task)
   const dateLabel = formatDate(task.dueDate)
   const isGong = task.source === 'gong'
+  // Surface the source call (title + date) that's buried in the auto-generated description.
+  const callMatch = isGong ? (task.description || '').match(/Gong call: "([^"]+)" on ([^(]+)/) : null
+  const callCtx = callMatch ? { title: callMatch[1].trim(), date: callMatch[2].trim() } : null
 
   return (
     <div className={`group border rounded-xl transition-all ${
@@ -1515,6 +1518,13 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
               <ChevronDown className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
             </button>
           </div>
+
+          {/* Source-call context (which call this came from) */}
+          {callCtx && (
+            <p className="text-xs text-gray-400 mt-0.5 truncate" title={`${callCtx.title} · ${callCtx.date}`}>
+              From call: “{callCtx.title}” · {callCtx.date}
+            </p>
+          )}
 
           {/* Meta row */}
           <div className="flex flex-wrap items-center gap-2 mt-2">
