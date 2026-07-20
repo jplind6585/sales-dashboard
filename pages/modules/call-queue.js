@@ -3,8 +3,7 @@ import { useRouter } from 'next/router'
 import { ArrowLeft, Phone, Mail, Loader2, RefreshCw, Sparkles, ExternalLink, Check, Copy, ChevronDown, ChevronRight, Building2 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
-
-const stageLabel = s => (s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+import StageBadge from '../../components/ui/StageBadge'
 
 export default function CallQueue() {
   const router = useRouter()
@@ -130,7 +129,7 @@ export default function CallQueue() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <button onClick={() => router.push(`/modules/account-pipeline?account=${q.accountId}`)} className="font-medium text-gray-900 hover:text-coral-700 truncate">{q.name}</button>
-                    <span className="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">{stageLabel(q.stage)}</span>
+                    <StageBadge stage={q.stage} />
                     {q.tier === 'hot' && <span className="text-xs text-orange-500">🔥</span>}
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5 truncate">{q.why}{q.owner && scope === 'all' ? ` · ${q.owner}` : ''}</p>

@@ -225,7 +225,7 @@ export default function ContentStudio() {
             {loading && <div className="flex-1 flex items-center justify-center text-gray-400 text-sm gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Drafting from {accountName}'s calls…</div>}
             {content && !loading && (
               <textarea value={content} onChange={e => onEdit(e.target.value)}
-                className="flex-1 w-full border border-gray-100 rounded-lg p-3 text-sm font-mono leading-relaxed resize-none" style={{ minHeight: 380 }} />
+                className="flex-1 w-full border border-gray-100 rounded-lg p-4 text-[15px] font-serif leading-relaxed text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-coral-200" style={{ minHeight: 380 }} />
             )}
           </div>
           <p className="text-xs text-gray-400 mt-2">Grounded in this account's analyzed calls + your sales process. Edit freely — your edits are kept as you switch types, and nothing is sent or saved automatically.</p>

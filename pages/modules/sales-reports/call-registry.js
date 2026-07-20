@@ -4,32 +4,7 @@ import { ArrowLeft, RefreshCw, Search, ChevronLeft, ChevronRight, AlertTriangle,
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import ModulesNav from '../../../components/layout/ModulesNav'
-
-const STAGE_LABELS = {
-  qualifying: 'Qualifying',
-  intro_scheduled: 'Intro Sched.',
-  active_pursuit: 'Active Pursuit',
-  demo: 'Demo',
-  solution_validation: 'Sol. Validation',
-  proposal: 'Proposal',
-  legal: 'Legal',
-  closed_won: 'Closed Won',
-  closed_lost: 'Closed Lost',
-  inactive_sdr_follow_up: 'Inactive',
-}
-
-const STAGE_COLORS = {
-  qualifying: 'bg-gray-100 text-gray-600',
-  intro_scheduled: 'bg-blue-50 text-blue-600',
-  active_pursuit: 'bg-blue-100 text-blue-700',
-  demo: 'bg-violet-100 text-violet-700',
-  solution_validation: 'bg-amber-100 text-amber-700',
-  proposal: 'bg-orange-100 text-orange-700',
-  legal: 'bg-emerald-100 text-emerald-700',
-  closed_won: 'bg-green-100 text-green-700',
-  closed_lost: 'bg-red-100 text-red-600',
-  inactive_sdr_follow_up: 'bg-gray-100 text-gray-500',
-}
+import StageBadge from '../../../components/ui/StageBadge'
 
 const CALL_TYPE_META = {
   intro:               { label: 'Intro',            color: 'bg-blue-100 text-blue-700' },
@@ -428,9 +403,7 @@ export default function CallRegistry() {
                       </td>
                       <td className="px-4 py-2.5">
                         {call.accountStage ? (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-md font-medium ${STAGE_COLORS[call.accountStage] || 'bg-gray-100 text-gray-600'}`}>
-                            {STAGE_LABELS[call.accountStage] || call.accountStage}
-                          </span>
+                          <StageBadge stage={call.accountStage} />
                         ) : (
                           <span className="text-gray-300 text-xs">—</span>
                         )}

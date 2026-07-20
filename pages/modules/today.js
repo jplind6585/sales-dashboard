@@ -13,30 +13,7 @@ import { isSupabaseConfigured } from '../../lib/supabase';
 import UserMenu from '../../components/auth/UserMenu';
 import ModulesNav from '../../components/layout/ModulesNav';
 import { PRIORITY_COLORS } from '../../lib/constants';
-
-// ─── Stage badge ──────────────────────────────────────────────────────────────
-
-const STAGE_COLORS = {
-  qualifying: 'bg-gray-100 text-gray-700 border-gray-300',
-  active_pursuit: 'bg-blue-100 text-blue-700 border-blue-300',
-  solution_validation: 'bg-purple-100 text-purple-700 border-purple-300',
-  proposal: 'bg-orange-100 text-orange-700 border-orange-300',
-  legal: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  closed_won: 'bg-green-100 text-green-700 border-green-300',
-  closed_lost: 'bg-red-100 text-red-700 border-red-300',
-  intro_scheduled: 'bg-teal-100 text-teal-700 border-teal-300',
-  demo: 'bg-indigo-100 text-indigo-700 border-indigo-300',
-}
-
-function StageBadge({ stage }) {
-  const label = stage ? stage.replace(/_/g, ' ') : '—'
-  const colorClass = STAGE_COLORS[stage] || 'bg-gray-100 text-gray-600 border-gray-200'
-  return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${colorClass}`}>
-      {label}
-    </span>
-  )
-}
+import StageBadge from '../../components/ui/StageBadge';
 
 // ─── Touch type helpers ───────────────────────────────────────────────────────
 

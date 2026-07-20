@@ -22,7 +22,8 @@ import {
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
-import { STAGES } from '../../lib/constants'
+import StageBadge from '../../components/ui/StageBadge'
+import { stageHex, stageLabel } from '../../lib/constants'
 
 function fmt$(n) {
   if (!n) return '—'
@@ -40,41 +41,6 @@ function fmtLastActive(ts) {
   const weeks = Math.floor(days / 7)
   if (weeks <= 8) return `${weeks} week${weeks === 1 ? '' : 's'} ago`
   return `${Math.floor(days / 30)} months ago`
-}
-
-const STAGE_COLORS = {
-  qualifying: 'bg-gray-100 text-gray-700 border-gray-300',
-  active_pursuit: 'bg-blue-100 text-blue-700 border-blue-300',
-  solution_validation: 'bg-purple-100 text-purple-700 border-purple-300',
-  proposal: 'bg-orange-100 text-orange-700 border-orange-300',
-  legal: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  closed_won: 'bg-green-100 text-green-700 border-green-300',
-  closed_lost: 'bg-red-100 text-red-700 border-red-300',
-  intro_scheduled: 'bg-teal-100 text-teal-700 border-teal-300',
-  demo: 'bg-indigo-100 text-indigo-700 border-indigo-300',
-}
-
-const STAGE_BAR_COLORS = {
-  qualifying: 'bg-gray-400',
-  active_pursuit: 'bg-blue-500',
-  intro_scheduled: 'bg-teal-500',
-  demo: 'bg-indigo-500',
-  solution_validation: 'bg-purple-500',
-  proposal: 'bg-orange-500',
-  legal: 'bg-yellow-500',
-  closed_won: 'bg-green-500',
-  closed_lost: 'bg-red-400',
-}
-
-function StageLabel({ stage }) {
-  const s = STAGES.find(s => s.id === stage)
-  const label = s?.label || stage?.replace(/_/g, ' ') || '—'
-  const colorClass = STAGE_COLORS[stage] || 'bg-gray-100 text-gray-600 border-gray-200'
-  return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${colorClass}`}>
-      {label}
-    </span>
-  )
 }
 
 function HealthDot({ value, warn = 1, danger = 3 }) {
@@ -327,7 +293,7 @@ export default function PipelineOverview() {
     .filter(s => stageCounts[s] > 0)
     .map(s => ({
       id: s,
-      label: STAGES.find(st => st.id === s)?.label || s.replace(/_/g, ' '),
+      label: stageLabel(s),
       count: stageCounts[s],
     }))
   const maxCount = Math.max(...funnelStages.map(s => s.count), 1)
@@ -541,7 +507,7 @@ export default function PipelineOverview() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-800 truncate">{a.name}</span>
-                      <StageLabel stage={a.stage} />
+                      <StageBadge stage={a.stage} />
                     </div>
                     {Array.isArray(a.riskFactors) && a.riskFactors.length > 0 && (
                       <div className="text-xs text-gray-500 mt-0.5 truncate">
@@ -572,8 +538,8 @@ export default function PipelineOverview() {
                     <div className="w-36 text-sm text-gray-600 text-right shrink-0">{s.label}</div>
                     <div className="flex-1 h-7 bg-gray-100 rounded overflow-hidden">
                       <div
-                        className={`h-full rounded flex items-center px-2 text-white text-xs font-semibold transition-all ${STAGE_BAR_COLORS[s.id] || 'bg-blue-500'}`}
-                        style={{ width: `${Math.max((s.count / maxCount) * 100, 8)}%` }}
+                        className="h-full rounded flex items-center px-2 text-white text-xs font-semibold transition-all"
+                        style={{ width: `${Math.max((s.count / maxCount) * 100, 8)}%`, backgroundColor: stageHex(s.id) }}
                       >
                         {s.count}
                       </div>
@@ -608,7 +574,7 @@ export default function PipelineOverview() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-gray-800 truncate">{a.name}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <StageLabel stage={a.stage} />
+                        <StageBadge stage={a.stage} />
                         <span className="text-xs text-gray-400">{a.repName}</span>
                       </div>
                     </div>
@@ -728,8 +694,8 @@ export default function PipelineOverview() {
                           <div className="text-xs font-medium text-gray-500 mb-2">Stage Distribution</div>
                           <div className="flex flex-wrap gap-2">
                             {Object.entries(rep.stageCounts).map(([stage, count]) => (
-                              <span key={stage} className={`px-2 py-1 rounded text-xs font-medium border ${STAGE_COLORS[stage] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                                {STAGES.find(s => s.id === stage)?.label || stage.replace(/_/g, ' ')}: {count}
+                              <span key={stage} className="inline-flex items-center gap-1 text-xs font-medium text-gray-600">
+                                <StageBadge stage={stage} />: {count}
                               </span>
                             ))}
                             {Object.keys(rep.stageCounts).length === 0 && (

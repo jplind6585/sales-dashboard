@@ -10,7 +10,10 @@ import {
   calculateDealHealth,
   getHealthScoreColor,
   getHealthScoreBg,
+  stageLabel,
+  stageBadgeClass,
 } from '../../lib/constants';
+import StageBadge from '../ui/StageBadge';
 import { DealHealthBar, DealHealthDetail } from '../common/DealHealthBadge';
 
 const formatMetricValue = (metric, data) => {
@@ -844,19 +847,6 @@ const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
     onUpdateAccount({ [field]: value });
   };
 
-  const getStageColor = (stageId) => {
-    const stage = STAGES.find(s => s.id === stageId);
-    switch (stage?.color) {
-      case 'blue': return 'bg-blue-100 text-blue-800 border-blue-300';
-      case 'purple': return 'bg-purple-100 text-purple-800 border-purple-300';
-      case 'orange': return 'bg-orange-100 text-orange-800 border-orange-300';
-      case 'yellow': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'green': return 'bg-green-100 text-green-800 border-green-300';
-      case 'red': return 'bg-red-100 text-red-800 border-red-300';
-      default: return 'bg-gray-100 text-gray-800 border-gray-300';
-    }
-  };
-
   const handleDebriefSave = async (debriefData) => {
     await onUpdateAccount({ stage: debriefStage, debrief: debriefData });
     setDebriefStage(null);
@@ -897,10 +887,10 @@ const OverviewTab = ({ account, onUpdateAccount, userEmail }) => {
               <select
                 value={account?.stage || 'qualifying'}
                 onChange={(e) => handleFieldChange('stage', e.target.value)}
-                className={`w-full border rounded-lg px-3 py-2 text-sm ${getStageColor(account?.stage || 'qualifying')}`}
+                className={`w-full border rounded-lg px-3 py-2 text-sm ${stageBadgeClass(account?.stage || 'qualifying')}`}
               >
                 {STAGES.map(stage => (
-                  <option key={stage.id} value={stage.id}>{stage.label}</option>
+                  <option key={stage.id} value={stage.id}>{stageLabel(stage.id)}</option>
                 ))}
               </select>
             </div>
@@ -1231,22 +1221,6 @@ function CompetitorIntel({ account }) {
 
 // ─── Stage History ────────────────────────────────────────────────────────────
 
-const STAGE_LABELS_MAP = {
-  active_pursuit: 'Active Pursuit',
-  qualifying: 'Qualifying',
-  intro_scheduled: 'Intro Sched.',
-  demo: 'Demo',
-  solution_validation: 'Sol. Val.',
-  proposal: 'Proposal',
-  legal: 'Legal',
-  inactive_sdr_follow_up: 'Inactive SDR',
-  inactive_ae_follow_up: 'Inactive AE',
-  won: 'Won',
-  lost: 'Lost',
-  closed_won: 'Won',
-  closed_lost: 'Lost',
-}
-
 function StageHistory({ account }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -1293,13 +1267,13 @@ function StageHistory({ account }) {
             <div className="space-y-2">
               {rows.map(row => (
                 <div key={row.id} className="flex items-center gap-2 text-xs text-gray-600">
-                  <span className="font-medium text-gray-800 shrink-0">
-                    {STAGE_LABELS_MAP[row.from_stage] || row.from_stage || '—'}
-                  </span>
+                  {row.from_stage ? (
+                    <StageBadge stage={row.from_stage} className="shrink-0" />
+                  ) : (
+                    <span className="font-medium text-gray-800 shrink-0">—</span>
+                  )}
                   <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
-                  <span className="font-medium text-gray-800 shrink-0">
-                    {STAGE_LABELS_MAP[row.to_stage] || row.to_stage}
-                  </span>
+                  <StageBadge stage={row.to_stage} className="shrink-0" />
                   <span className="text-gray-400">·</span>
                   <span className="text-gray-500 shrink-0">{row.changed_by_name || '—'}</span>
                   <span className="text-gray-400">·</span>

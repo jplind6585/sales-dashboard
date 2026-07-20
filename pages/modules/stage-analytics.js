@@ -13,7 +13,8 @@ import {
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { useAuthStore } from '../../stores/useAuthStore'
-import { STAGE_LABELS } from '../../lib/constants'
+import StageBadge from '../../components/ui/StageBadge'
+import { stageHex, stageLabel } from '../../lib/constants'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -30,31 +31,6 @@ const STALL_DAYS = {
   solution_validation: 21,
   proposal: 14,
   legal: 14,
-}
-
-// One coherent coral funnel ramp (BRAND_GUIDE.md), not a rainbow.
-const STAGE_COLORS = {
-  qualifying: 'bg-slate-100 text-slate-600 border-slate-200',
-  active_pursuit: 'bg-coral-100 text-coral-700 border-coral-200',
-  intro_scheduled: 'bg-coral-50 text-coral-700 border-coral-200',
-  demo: 'bg-coral-100 text-coral-800 border-coral-200',
-  solution_validation: 'bg-coral-200 text-coral-800 border-coral-300',
-  proposal: 'bg-coral-200 text-coral-900 border-coral-300',
-  legal: 'bg-navy text-white border-navy',
-  closed_won: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  closed_lost: 'bg-slate-100 text-slate-400 border-slate-200',
-  inactive_sdr_follow_up: 'bg-slate-100 text-slate-400 border-slate-200',
-  inactive_ae_follow_up: 'bg-slate-100 text-slate-400 border-slate-200',
-}
-
-const STAGE_BAR_COLORS = {
-  qualifying: 'bg-slate-300',
-  active_pursuit: 'bg-coral-300',
-  intro_scheduled: 'bg-coral-200',
-  demo: 'bg-coral-400',
-  solution_validation: 'bg-coral-500',
-  proposal: 'bg-coral-600',
-  legal: 'bg-navy',
 }
 
 const DIRECTION_CONFIG = {
@@ -93,15 +69,6 @@ function formatRelative(dateStr) {
   if (weeks < 5) return `${weeks} weeks ago`
   if (months === 1) return '1 month ago'
   return `${months} months ago`
-}
-
-function StageBadge({ stage }) {
-  const colorClass = STAGE_COLORS[stage] || 'bg-gray-100 text-gray-600 border-gray-200'
-  return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${colorClass}`}>
-      {STAGE_LABELS[stage] || stage}
-    </span>
-  )
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -207,13 +174,13 @@ function OverviewTab({ data }) {
               return (
                 <div key={stage} className="flex items-start gap-4">
                   <div className="w-36 text-sm text-gray-600 text-right shrink-0 pt-2">
-                    {STAGE_LABELS[stage] || stage}
+                    {stageLabel(stage)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="h-12 bg-gray-100 rounded-lg overflow-hidden relative">
                       <div
-                        className={`h-full rounded-lg flex items-center px-3 text-white text-sm font-bold transition-all ${STAGE_BAR_COLORS[stage] || 'bg-blue-500'}`}
-                        style={{ width: `${barPct}%`, minWidth: '3rem' }}
+                        className="h-full rounded-lg flex items-center px-3 text-white text-sm font-bold transition-all"
+                        style={{ width: `${barPct}%`, minWidth: '3rem', backgroundColor: stageHex(stage) }}
                       >
                         <span className="tabular-nums">{count}</span>
                       </div>
@@ -363,11 +330,11 @@ function MovementFeed({ data, router }) {
 
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-sm text-gray-600">
-                    {m.from_stage ? (STAGE_LABELS[m.from_stage] || m.from_stage) : <span className="text-gray-400 italic">new</span>}
+                    {m.from_stage ? stageLabel(m.from_stage) : <span className="text-gray-400 italic">new</span>}
                   </span>
                   <DirIcon className={`w-4 h-4 shrink-0 ${dir.color}`} />
                   <span className="text-sm font-medium text-gray-800">
-                    {STAGE_LABELS[m.to_stage] || m.to_stage}
+                    {stageLabel(m.to_stage)}
                   </span>
                 </div>
 

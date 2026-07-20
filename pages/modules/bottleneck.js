@@ -15,42 +15,12 @@ import {
 } from 'lucide-react'
 import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
+import StageBadge from '../../components/ui/StageBadge'
+import { stageHex, stageLabel } from '../../lib/constants'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtStage(stage) {
-  if (!stage) return '—'
-  return stage
-    .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ')
-}
-
-// One coherent coral funnel ramp (BRAND_GUIDE.md), not a rainbow.
-const STAGE_BADGE_COLORS = {
-  qualifying: 'bg-slate-100 text-slate-600 border-slate-200',
-  intro_scheduled: 'bg-coral-50 text-coral-700 border-coral-200',
-  active_pursuit: 'bg-coral-100 text-coral-700 border-coral-200',
-  demo: 'bg-coral-100 text-coral-800 border-coral-200',
-  solution_validation: 'bg-coral-200 text-coral-800 border-coral-300',
-  proposal: 'bg-coral-200 text-coral-900 border-coral-300',
-  legal: 'bg-navy text-white border-navy',
-  closed_won: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  closed_lost: 'bg-slate-100 text-slate-400 border-slate-200',
-}
-
-// Bar colors for the funnel — light early → deep late.
-const FUNNEL_BAR_COLORS = {
-  qualifying: 'bg-slate-300',
-  intro_scheduled: 'bg-coral-200',
-  active_pursuit: 'bg-coral-300',
-  demo: 'bg-coral-400',
-  solution_validation: 'bg-coral-500',
-  proposal: 'bg-coral-600',
-  legal: 'bg-navy',
-}
-
-// Abbreviated stage labels for table columns
+// Abbreviated stage labels for space-constrained table columns
 const STAGE_ABBREV = {
   qualifying: 'Qual',
   intro_scheduled: 'Intro',
@@ -59,15 +29,6 @@ const STAGE_ABBREV = {
   solution_validation: 'Sol Val',
   proposal: 'Prop',
   legal: 'Legal',
-}
-
-function StageBadge({ stage }) {
-  const colorClass = STAGE_BADGE_COLORS[stage] || 'bg-gray-100 text-gray-600 border-gray-200'
-  return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${colorClass}`}>
-      {fmtStage(stage)}
-    </span>
-  )
 }
 
 function conversionRateColor(rate) {
@@ -288,7 +249,7 @@ export default function BottleneckTracker() {
               Biggest Bottleneck
             </div>
             <div className={`text-2xl font-bold mt-1 ${bottleneckStage ? 'text-orange-600' : 'text-gray-400'}`}>
-              {bottleneckStage ? fmtStage(bottleneckStage) : '—'}
+              {bottleneckStage ? stageLabel(bottleneckStage) : '—'}
             </div>
             <div className="text-xs text-gray-400 mt-1">
               {bottleneckStage
@@ -336,15 +297,19 @@ export default function BottleneckTracker() {
                         <span className="text-orange-500 text-xs font-semibold">Bottleneck</span>
                       )}
                       <span className={isBottleneck ? 'font-semibold text-orange-700' : ''}>
-                        {fmtStage(stage)}
+                        {stageLabel(stage)}
                       </span>
                     </div>
 
                     {/* Bar */}
                     <div className="flex-1 h-10 bg-gray-100 rounded-lg overflow-hidden relative">
                       <div
-                        className={`h-full rounded-lg flex items-center px-3 text-white text-sm font-bold transition-all ${isBottleneck ? 'bg-orange-500' : (FUNNEL_BAR_COLORS[stage] || 'bg-blue-500')}`}
-                        style={{ width: `${barPct}%`, minWidth: count > 0 ? '2.5rem' : '0' }}
+                        className={`h-full rounded-lg flex items-center px-3 text-white text-sm font-bold transition-all ${isBottleneck ? 'bg-orange-500' : ''}`}
+                        style={{
+                          width: `${barPct}%`,
+                          minWidth: count > 0 ? '2.5rem' : '0',
+                          ...(isBottleneck ? {} : { backgroundColor: stageHex(stage) }),
+                        }}
                       >
                         {count > 0 && count}
                       </div>
@@ -475,9 +440,9 @@ export default function BottleneckTracker() {
                   <div key={idx} className="px-5 py-3 flex items-center gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-gray-700">
-                        <span className="font-medium">{fmtStage(conv.from)}</span>
+                        <span className="font-medium">{stageLabel(conv.from)}</span>
                         <span className="text-gray-400 mx-1.5">→</span>
-                        <span className="font-medium">{fmtStage(conv.to)}</span>
+                        <span className="font-medium">{stageLabel(conv.to)}</span>
                       </div>
                       <div className="text-xs text-gray-400 mt-0.5">
                         {conv.fromCount} → {conv.toCount} deals
@@ -521,7 +486,7 @@ export default function BottleneckTracker() {
                         key={s}
                         className={`px-3 py-3 text-center font-semibold text-xs uppercase tracking-wide ${s === bottleneckStage ? 'text-orange-600 bg-orange-50' : 'text-gray-600'}`}
                       >
-                        {STAGE_ABBREV[s] || fmtStage(s)}
+                        {STAGE_ABBREV[s] || stageLabel(s)}
                       </th>
                     ))}
                     <th className="px-5 py-3 text-center font-semibold text-gray-700 text-xs uppercase tracking-wide">

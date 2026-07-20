@@ -4,20 +4,11 @@ import { ArrowLeft, RefreshCw, TrendingUp, Users, Target, AlertTriangle, Zap, Ba
 import UserMenu from '../../../components/auth/UserMenu'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import ApiError from '../../../components/common/ApiError'
+import { stageHex } from '../../../lib/constants'
 
 function fmt$(n) { return n == null ? '—' : n >= 1000000 ? `$${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `$${(n / 1000).toFixed(0)}K` : `$${n}` }
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—' }
 function daysAgo(d) { return d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null }
-
-const STAGE_COLORS = {
-  qualifying: 'bg-gray-400',
-  intro_scheduled: 'bg-blue-400',
-  active_pursuit: 'bg-blue-500',
-  demo: 'bg-violet-500',
-  solution_validation: 'bg-amber-500',
-  proposal: 'bg-orange-500',
-  legal: 'bg-emerald-500',
-}
 
 function ScoreGauge({ value, max = 10, label, size = 'md' }) {
   if (value == null) return <span className="text-gray-300 text-xs">—</span>
@@ -138,12 +129,11 @@ function RepCard({ rep, maxCalls }) {
 
 function StageBar({ stage, label, count, value, maxCount }) {
   const pct = maxCount ? Math.max((count / maxCount) * 100, 4) : 0
-  const color = STAGE_COLORS[stage] || 'bg-gray-400'
   return (
     <div className="flex items-center gap-3">
       <div className="w-36 text-xs text-gray-500 text-right shrink-0">{label}</div>
       <div className="flex-1 relative h-7 bg-gray-50 rounded">
-        <div className={`h-full rounded ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
+        <div className="h-full rounded transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: stageHex(stage) }} />
         <span className="absolute inset-0 flex items-center pl-2 text-xs font-semibold text-white mix-blend-difference">
           {count} {value ? `· ${fmt$(value)}` : ''}
         </span>

@@ -5,6 +5,7 @@ import UserMenu from '../../components/auth/UserMenu'
 import ModulesNav from '../../components/layout/ModulesNav'
 import { SkeletonRows } from '../../components/ui/Skeleton'
 import EmptyState from '../../components/ui/EmptyState'
+import StageBadge from '../../components/ui/StageBadge'
 import { fmtUsd } from '../../lib/metrics'
 
 // Coaching Lab (PLATFORM_REVIEW §7.2 best-call library + §8.4 disqualification-discipline queue).
@@ -106,7 +107,7 @@ export default function CoachingLab() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <button onClick={() => router.push(`/modules/account-pipeline?account=${d.id}`)} className="text-sm font-medium text-ink hover:text-coral-600 truncate">{d.name}</button>
-                      <span className="text-xs bg-slate-100 text-slate-500 rounded px-1.5 py-0.5">{d.stageLabel}</span>
+                      <StageBadge stage={d.stage} />
                       {d.dqSignal && <span className="text-xs bg-coral-50 text-coral-700 rounded-full px-2 py-0.5">soft close</span>}
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{d.reason}{d.owner ? ` · ${d.owner}` : ''}</p>
