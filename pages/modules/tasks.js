@@ -1877,6 +1877,9 @@ function FocusListView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInCla
 
 // ─── By Account View ──────────────────────────────────────────────────────────
 
+// Filter/sort <select> styling as a class (not inline) so the dark theme can restyle it.
+const FILTER_SELECT_CLS = 'text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 outline-none cursor-pointer'
+
 const STAGE_WEIGHT = {
   legal: 9, proposal: 8, solution_validation: 7, demo: 6,
   active_pursuit: 5, intro_scheduled: 4, qualifying: 3,
@@ -2503,24 +2506,24 @@ export default function TasksPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-          <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={sel}>{STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-          <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={sel}>
+          <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className={FILTER_SELECT_CLS}>{STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+          <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} className={FILTER_SELECT_CLS}>
             <option value="mine">Mine</option>
             {distinctOwners.map(name => <option key={name} value={name}>{name}</option>)}
             <option value="everyone">Everyone</option>
           </select>
-          <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={sel}>
+          <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className={FILTER_SELECT_CLS}>
             <option value="all">All Sources</option><option value="voice">Voice</option><option value="manual">Manual</option>
             <option value="gong">Gong</option><option value="gmail">Gmail</option><option value="calendar">Calendar</option><option value="playbook">Playbook</option>
           </select>
-          <select value={filterDue} onChange={e => setFilterDue(e.target.value)} style={sel}>
+          <select value={filterDue} onChange={e => setFilterDue(e.target.value)} className={FILTER_SELECT_CLS}>
             <option value="all">All</option><option value="overdue">Overdue</option><option value="today">Today</option><option value="this_week">This week</option><option value="no_due">No due date</option>
           </select>
-          <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={sel}>
+          <select value={filterTier} onChange={e => setFilterTier(e.target.value)} className={FILTER_SELECT_CLS}>
             <option value="all">All Tiers</option><option value="hot">Hot</option><option value="active">Active</option><option value="watching">Watching</option><option value="archived">Archived</option>
           </select>
-          <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
-          <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={sel}>{SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}</select>
+          <div className="w-px h-[18px] bg-gray-200" />
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={FILTER_SELECT_CLS}>{SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}</select>
           {anyNonDefault && (
             <button onClick={() => { setFilterStage('all'); setFilterAssignee('mine'); setFilterSource('all'); setFilterDue('all'); setFilterTier('all') }} style={{ fontSize: '12px', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '4px 0' }}>Clear filters</button>
           )}
@@ -2641,13 +2644,13 @@ export default function TasksPage() {
 
             {/* Bulk action bar — all tabs */}
             {bulkMode && (
-              <div style={{ position: 'sticky', top: '72px', zIndex: 15, display: 'flex', justifyContent: 'center', pointerEvents: 'none', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: '10px 16px', pointerEvents: 'all' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>{selectedTaskIds.size} selected</span>
-                  <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
-                  <button onClick={handleBulkComplete} style={{ fontSize: '13px', fontWeight: 500, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}>Complete</button>
-                  <button onClick={handleBulkSnooze} style={{ fontSize: '13px', fontWeight: 500, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}>Snooze 2 days</button>
-                  <button onClick={() => setSelectedTaskIds(new Set())} style={{ fontSize: '13px', fontWeight: 500, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer' }}>Clear</button>
+              <div className="sticky top-[72px] z-[15] flex justify-center mb-3 pointer-events-none">
+                <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl shadow-lg px-4 py-2.5 pointer-events-auto">
+                  <span className="text-[13px] font-semibold text-gray-700">{selectedTaskIds.size} selected</span>
+                  <div className="w-px h-[18px] bg-gray-200" />
+                  <button onClick={handleBulkComplete} className="text-[13px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-100">Complete</button>
+                  <button onClick={handleBulkSnooze} className="text-[13px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 hover:bg-amber-100">Snooze 2 days</button>
+                  <button onClick={() => setSelectedTaskIds(new Set())} className="text-[13px] font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-100">Clear</button>
                 </div>
               </div>
             )}
@@ -2769,13 +2772,13 @@ export default function TasksPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                    <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={sel}>{STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-                    <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={sel}>
+                    <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className={FILTER_SELECT_CLS}>{STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+                    <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} className={FILTER_SELECT_CLS}>
                       <option value="mine">Mine</option>
                       {distinctOwners.map(name => <option key={name} value={name}>{name}</option>)}
                       <option value="everyone">Everyone</option>
                     </select>
-                    <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={sel}>
+                    <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className={FILTER_SELECT_CLS}>
                       <option value="all">All Sources</option>
                       <option value="voice">Voice</option>
                       <option value="manual">Manual</option>
@@ -2784,22 +2787,22 @@ export default function TasksPage() {
                       <option value="calendar">Calendar</option>
                       <option value="playbook">Playbook</option>
                     </select>
-                    <select value={filterDue} onChange={e => setFilterDue(e.target.value)} style={sel}>
+                    <select value={filterDue} onChange={e => setFilterDue(e.target.value)} className={FILTER_SELECT_CLS}>
                       <option value="all">All</option>
                       <option value="overdue">Overdue</option>
                       <option value="today">Today</option>
                       <option value="this_week">This week</option>
                       <option value="no_due">No due date</option>
                     </select>
-                    <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={sel}>
+                    <select value={filterTier} onChange={e => setFilterTier(e.target.value)} className={FILTER_SELECT_CLS}>
                       <option value="all">All Tiers</option>
                       <option value="hot">Hot</option>
                       <option value="active">Active</option>
                       <option value="watching">Watching</option>
                       <option value="archived">Archived</option>
                     </select>
-                    <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
-                    <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={sel}>{SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}</select>
+                    <div className="w-px h-[18px] bg-gray-200" />
+                    <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={FILTER_SELECT_CLS}>{SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}</select>
                     {anyNonDefault && (
                       <button onClick={() => { setFilterStage('all'); setFilterAssignee('mine'); setFilterSource('all'); setFilterDue('all'); setFilterTier('all') }} style={{ fontSize: '12px', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '4px 0' }}>Clear filters</button>
                     )}
