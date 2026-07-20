@@ -16,7 +16,7 @@ import { sendSlackMessage } from '../../../lib/slack';
 import { sendCallCoachingDM } from '../../../lib/coaching';
 import { isAutoProcessRep } from '../../../lib/repConfig';
 import { generateTaskDraft } from '../../../lib/taskActions';
-import { writeBackFromAnalysis } from '../../../lib/accountWriteback';
+import { writeBackFromAnalysis, writeAccountSignals } from '../../../lib/accountWriteback';
 
 const GONG_API_BASE = 'https://api.gong.io';
 
@@ -187,11 +187,21 @@ const LOW_SIGNAL_PATTERNS = [
   /^(rep\s+)?(will\s+)?(follow[\s-]?up|circle back|check in|touch base|keep\s+.*\s+posted|stay in touch|reach out|be in touch)\.?$/i,
   /^(rep\s+)?(will\s+)?(send|share)\s+(the\s+|over\s+|some\s+)?(deck|info(rmation)?|details?|materials?|stuff)\.?$/i,
 ];
+// In-call demo narration ("I'll show that", "come back to that in a second", "open this one"): the
+// model extracts these as commitments because they start with "I'll", but they are the rep narrating
+// the live demo, not a post-call deliverable. High-precision — requires a deictic/immediate marker or
+// a demo verb on a bare demonstrative, so real deliverables ("I'll send the proposal Tuesday") survive.
+const IN_CALL_NARRATION = [
+  /\b(in a (sec|second|minute|bit)|as we go|right (here|now|there)|over (here|there)|down here|up here|for a (sec|second)|real quick)\b/i,
+  /\b(come back to|get\s+(?:\w+\s+){0,2}into|jump\s+(?:back\s+)?into|circle back to|show|walk through|pull up|open|close|scroll|expand|collapse|dive into)\b\s+(that|this|it|these|those|everything|here|there|one|(?:the\s+)?(?:\w+\s+){0,4}(?:bidding|workflow|workflows|feature|features|screen|tab|page|section|part|piece|options?|settings?|report|dashboard))\b/i,
+  /^\s*(i'?ll|i will|i can|i'?m going to|i am going to|let me|let'?s)\s+[\w\s]{0,20}\b(that|this|it|one|these|those|here|there)\s*\.?$/i,
+];
 function isLowSignalStep(step) {
   const s = (step || '').trim();
   const core = s.replace(/^(rep|i)\s+(will|to|'ll|am going to|going to)\s+/i, '').trim();
   if (core.length < 12) return true;
-  return LOW_SIGNAL_PATTERNS.some(re => re.test(s));
+  if (LOW_SIGNAL_PATTERNS.some(re => re.test(s))) return true;
+  return IN_CALL_NARRATION.some(re => re.test(s));
 }
 
 const normStep = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -623,7 +633,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
         await autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db });
         // Write MEDDICC/stakeholders/gaps back to the account (North Star output a, §1.8/§2.2). Fires
         // for any sales call with a resolved account — this is account data, not rep-gated. Best-effort.
-        if (accountId && callCat !== 'cs') await writeBackFromAnalysis(db, accountId, analysis);
+        if (accountId && callCat !== 'cs') { await writeBackFromAnalysis(db, accountId, analysis); await writeAccountSignals(db, accountId, analysis, date); }
         const autoProcess = isAutoProcessRep(repEmail) || isAutoProcessRep(repName);
         const isFreshForCoaching = date && (Date.now() - new Date(date).getTime()) < AUTO_TASK_MAX_AGE_MS;
         if (autoProcess && callCat !== 'cs' && isFreshForCoaching && repEmail) {
