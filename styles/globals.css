@@ -101,6 +101,25 @@ body {
 .dark .border-emerald-200, .dark .border-green-200, .dark .border-coral-200 { border-color: #14503A; }
 .dark .border-blue-200, .dark .border-indigo-200 { border-color: #24304F; }
 
+/* darker text shades on tint cards/chips → lighten so headings aren't dark-on-dark */
+.dark .text-blue-800, .dark .text-blue-900 { color: #93C5FD; }
+.dark .text-indigo-800, .dark .text-indigo-900, .dark .text-violet-800, .dark .text-violet-900, .dark .text-purple-800, .dark .text-purple-900 { color: #C4B5FD; }
+.dark .text-emerald-800, .dark .text-emerald-900, .dark .text-green-800, .dark .text-green-900 { color: #6EE7B7; }
+.dark .text-red-800, .dark .text-red-900, .dark .text-rose-800, .dark .text-rose-900 { color: #FCA5A5; }
+.dark .text-amber-900, .dark .text-yellow-900 { color: #FCD34D; }
+.dark .text-sky-800, .dark .text-sky-900, .dark .text-teal-800, .dark .text-teal-900 { color: #7DD3FC; }
+
+/* neutralize decorative LIGHT gradient headers (from/to -50/-100) to a subtle dark surface.
+   Vivid gradients (from-*-500/600, e.g. the Next Best Action card) use different stops and are untouched. */
+.dark .from-blue-50, .dark .from-indigo-50, .dark .from-purple-50, .dark .from-violet-50, .dark .from-red-50, .dark .from-rose-50, .dark .from-amber-50, .dark .from-yellow-50, .dark .from-green-50, .dark .from-emerald-50, .dark .from-coral-50, .dark .from-slate-50, .dark .from-sky-50, .dark .from-teal-50, .dark .from-gray-50 {
+  --tw-gradient-from: #141D27 var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(20 29 39 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+.dark .to-blue-50, .dark .to-blue-100, .dark .to-indigo-50, .dark .to-indigo-100, .dark .to-purple-50, .dark .to-purple-100, .dark .to-violet-50, .dark .to-amber-50, .dark .to-red-50, .dark .to-rose-50, .dark .to-green-50, .dark .to-emerald-50, .dark .to-coral-50, .dark .to-slate-100, .dark .to-sky-50, .dark .to-teal-50, .dark .to-gray-50 {
+  --tw-gradient-to: #1B2732 var(--tw-gradient-to-position);
+}
+
 /* skeleton on dark */
 .dark .skeleton { background: #1B2732; }
 .dark .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); }
