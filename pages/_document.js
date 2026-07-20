@@ -6,6 +6,8 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
+        {/* Apply saved theme before paint so there's no flash of light. Opt-in: dark only if toggled. */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem('theme')==='dark'){document.documentElement.classList.add('dark')}}catch(e){}` }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

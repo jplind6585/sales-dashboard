@@ -1,6 +1,7 @@
 /** Banner brand tokens — see BRAND_GUIDE.md (from the 2026 client deck).
  *  Coral is the ONE primary accent; navy is the dark neutral; green = positive money only. */
 module.exports = {
+  darkMode: 'class',
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',

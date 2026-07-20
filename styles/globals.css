@@ -46,3 +46,61 @@ body {
   animation: shimmer 1.5s infinite;
 }
 @keyframes shimmer { 100% { transform: translateX(100%); } }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Dark theme — class-toggled (`.dark` on <html>, set by the shell's theme toggle).
+   Retrofits the light app by remapping the common neutral + semantic utilities to the
+   mockup's dark palette. ONE place to tune. Selectors are `.dark .x` so they beat the
+   bare `.x` utility on specificity (no !important). Palette: ground #0D1319, surface
+   #141D27, raised #1B2732, border #24303E, text #E7ECF3 / #AEB9C7 / #7C8A9C. */
+.dark {
+  --surface: #141D27; --canvas: #0D1319; --hairline: #24303E; --ink: #E7ECF3; --slate: #8A98AC;
+  color-scheme: dark;
+}
+.dark body { background-color: #0D1319; color: #E7ECF3; }
+
+/* grounds + surfaces */
+.dark .bg-white { background-color: #141D27; }
+.dark .bg-gray-50, .dark .bg-slate-50, .dark .bg-canvas { background-color: #0D1319; }
+.dark .bg-gray-100, .dark .bg-slate-100 { background-color: #1B2732; }
+.dark .bg-gray-200, .dark .bg-slate-200 { background-color: #24303E; }
+.dark .bg-gray-900, .dark .bg-gray-800 { background-color: #1B2732; }
+.dark .hover\:bg-gray-50:hover, .dark .hover\:bg-slate-50:hover { background-color: #1B2732; }
+.dark .hover\:bg-gray-100:hover, .dark .hover\:bg-slate-100:hover, .dark .hover\:bg-slate-200:hover { background-color: #22303d; }
+
+/* text */
+.dark .text-gray-900, .dark .text-slate-900, .dark .text-gray-800, .dark .text-slate-800, .dark .text-ink { color: #E7ECF3; }
+.dark .text-gray-700, .dark .text-slate-700, .dark .text-gray-600, .dark .text-slate-600 { color: #AEB9C7; }
+.dark .text-gray-500, .dark .text-slate-500, .dark .text-gray-400, .dark .text-slate-400 { color: #7C8A9C; }
+.dark .text-gray-300, .dark .text-slate-300 { color: #5D6B7D; }
+
+/* borders + dividers */
+.dark .border-gray-100, .dark .border-slate-100, .dark .border-hairline { border-color: #1C2733; }
+.dark .border-gray-200, .dark .border-slate-200, .dark .border-gray-300, .dark .border-slate-300 { border-color: #24303E; }
+.dark .divide-gray-50 > :not([hidden]) ~ :not([hidden]), .dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1C2733; }
+
+/* form controls */
+.dark input, .dark textarea, .dark select { background-color: #0F1722; color: #E7ECF3; border-color: #24303E; }
+.dark input::placeholder, .dark textarea::placeholder { color: #5D6B7D; }
+
+/* semantic chips — light -50/-100 pills → dark tints, brighter text */
+.dark .bg-coral-50 { background-color: #3A1A12; } .dark .bg-coral-100 { background-color: #46201A; } .dark .bg-coral-200 { background-color: #55271E; }
+.dark .text-coral-600, .dark .text-coral-700, .dark .text-coral-800, .dark .text-coral-900 { color: #FF8571; }
+.dark .bg-emerald-50, .dark .bg-green-50 { background-color: #06281C; } .dark .bg-emerald-100, .dark .bg-green-100 { background-color: #0B3527; }
+.dark .text-emerald-600, .dark .text-emerald-700, .dark .text-green-600, .dark .text-green-700 { color: #34D399; }
+.dark .bg-blue-50 { background-color: #0C2A3D; } .dark .bg-blue-100 { background-color: #17284A; } .dark .text-blue-600, .dark .text-blue-700 { color: #60A5FA; }
+.dark .bg-indigo-50, .dark .bg-indigo-100 { background-color: #221F4A; } .dark .text-indigo-600, .dark .text-indigo-700 { color: #818CF8; }
+.dark .bg-violet-50, .dark .bg-violet-100, .dark .bg-purple-50, .dark .bg-purple-100 { background-color: #2A1E4D; } .dark .text-violet-600, .dark .text-violet-700, .dark .text-purple-600, .dark .text-purple-700 { color: #A78BFA; }
+.dark .bg-sky-50, .dark .bg-sky-100, .dark .bg-teal-50, .dark .bg-teal-100 { background-color: #0C2A3D; } .dark .text-sky-600, .dark .text-sky-700, .dark .text-teal-600, .dark .text-teal-700 { color: #38BDF8; }
+.dark .bg-amber-50, .dark .bg-amber-100, .dark .bg-yellow-50, .dark .bg-yellow-100 { background-color: #3A2C08; } .dark .text-amber-600, .dark .text-amber-700, .dark .text-amber-800, .dark .text-yellow-700 { color: #FBBF24; }
+.dark .bg-red-50, .dark .bg-red-100, .dark .bg-rose-50, .dark .bg-rose-100 { background-color: #3A0F1A; } .dark .text-red-600, .dark .text-red-700, .dark .text-rose-600, .dark .text-rose-700 { color: #FB7185; }
+.dark .bg-navy { background-color: #334155; }
+
+/* colored borders on chips */
+.dark .border-red-200 { border-color: #5B1E28; } .dark .border-amber-200 { border-color: #4A3A10; }
+.dark .border-emerald-200, .dark .border-green-200, .dark .border-coral-200 { border-color: #14503A; }
+.dark .border-blue-200, .dark .border-indigo-200 { border-color: #24304F; }
+
+/* skeleton on dark */
+.dark .skeleton { background: #1B2732; }
+.dark .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); }

@@ -48,6 +48,14 @@ Depends on Phase 0 (quality gate, list controls, NBA).
   inline (#7), Slack DM of 3 focus + one-tap complete (#8), "clear the noise" bulk-archive (#9).
   _Size: L (the big daily-UX slice)._
 
+## Phase 1.5 — Theming (dark mode) — IN PROGRESS
+Requested 2026-07-20 (James loved the mockup's dark treatment). Done the centralized way, not a
+29-page sweep: `darkMode: 'class'` + a no-flash pre-paint script + one `.dark` theme layer in
+globals.css that remaps neutral + semantic utilities to the mockup palette (ground #0D1319, surface
+#141D27, border #24303E, coral accent) + a sun/moon toggle in the shell (opt-in, persisted). Known
+follow-up: a handful of inline-styled elements (some Tasks chips/bars) override CSS and stay light —
+convert those to classes in a pass. Later: default to system preference once polished.
+
 ## Phase 2 — Cadence + quota engine
 Depends on Phase 0/1 (NBA, playbooks table exists).
 

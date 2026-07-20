@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { Search } from 'lucide-react'
+import { Search, Sun, Moon } from 'lucide-react'
 import UserMenu from '../auth/UserMenu'
 import { GROUPS, MODULES } from '../../lib/moduleRegistry'
 import { isAdmin, isManager } from '../../lib/roles'
@@ -27,6 +27,7 @@ export default function AppShell({ title, subtitle, actions, children }) {
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [role, setRole] = useState('rep')
+  const [dark, setDark] = useState(false)
 
   useEffect(() => {
     try {
@@ -38,6 +39,8 @@ export default function AppShell({ title, subtitle, actions, children }) {
     fetch('/api/me').then(r => r.json()).then(d => { const r = d.profile?.role || 'rep'; setRole(r); try { localStorage.setItem('cached_role', r) } catch {} }).catch(() => {})
   }, [])
   const toggle = () => setCollapsed(c => { const n = !c; try { localStorage.setItem(COLLAPSE_KEY, n ? '1' : '0') } catch {}; return n })
+  useEffect(() => { try { setDark(document.documentElement.classList.contains('dark')) } catch {} }, [])
+  const toggleTheme = () => setDark(d => { const n = !d; try { document.documentElement.classList.toggle('dark', n); localStorage.setItem('theme', n ? 'dark' : 'light') } catch {}; return n })
 
   const path = router.pathname
   // minRole-gated items (e.g. admin-only Users) are hidden unless the viewer qualifies.
@@ -106,6 +109,10 @@ export default function AppShell({ title, subtitle, actions, children }) {
             <Search className="w-3.5 h-3.5" />
             <span>Search…</span>
             <kbd className="text-[10px] font-semibold text-slate-500 border border-slate-200 rounded px-1.5 py-0.5 bg-white">⌘K</kbd>
+          </button>
+          <button onClick={toggleTheme} title={dark ? 'Switch to light' : 'Switch to dark'} aria-label="Toggle theme"
+            className="w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 grid place-items-center flex-shrink-0">
+            {dark ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
           </button>
           <UserMenu />
         </header>
