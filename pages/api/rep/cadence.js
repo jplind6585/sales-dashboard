@@ -42,12 +42,12 @@ export default async function handler(req, res) {
     return apiSuccess(res, { role: 'sdr', week: ws, metric: 'meetings', label: 'Meetings booked this week', target: goalFor('meetings', 3), current: count || 0, picks: [] })
   }
 
-  // AE re-engagements done this week = completed tasks on dormant accounts.
+  // AE re-engagements done this week = completed re-engage-trigger tasks OR completed tasks on dormant accounts.
   const { data: doneTasks } = await db.from('tasks')
-    .select('id, accounts ( stage )')
+    .select('id, source_type, accounts ( stage )')
     .eq('owner_id', user.id).eq('status', 'complete').gte('completed_at', ws)
   const done = new Set(REENGAGE_STAGES)
-  const current = (doneTasks || []).filter(t => done.has(t.accounts?.stage)).length
+  const current = (doneTasks || []).filter(t => t.source_type === 'gong_reengage' || done.has(t.accounts?.stage)).length
 
   // Ranked dormant accounts to re-engage (owned by the AE where resolvable).
   const { data: dormant } = await db.from('accounts')

@@ -222,6 +222,37 @@ function dedupSteps(steps) {
   return out;
 }
 
+// Resolve a spoken reconnection timeframe ("July", "in 2 weeks", "Q3", "next month", "after the
+// holidays") to a due date (YYYY-MM-DD) relative to the call. Returns null if unparseable or past.
+function resolveReengageDate(when, callDate) {
+  if (!when || typeof when !== 'string') return null;
+  const w = when.toLowerCase().trim();
+  const base = callDate ? new Date(callDate) : new Date();
+  const now = new Date();
+  const iso = (d) => (d && !isNaN(d) && d > now ? d.toISOString().slice(0, 10) : null);
+  const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  let m;
+  if ((m = w.match(/in\s+(\d+)\s+(day|week|month|quarter)s?/))) {
+    const n = parseInt(m[1], 10), d = new Date(base);
+    if (m[2] === 'day') d.setDate(d.getDate() + n);
+    else if (m[2] === 'week') d.setDate(d.getDate() + n * 7);
+    else if (m[2] === 'month') d.setMonth(d.getMonth() + n);
+    else d.setMonth(d.getMonth() + n * 3);
+    return iso(d);
+  }
+  if (/couple (of )?weeks|few weeks/.test(w)) { const d = new Date(base); d.setDate(d.getDate() + 14); return iso(d); }
+  if (/next week/.test(w)) { const d = new Date(base); d.setDate(d.getDate() + 7); return iso(d); }
+  if (/next month/.test(w)) { const d = new Date(base); d.setMonth(d.getMonth() + 1, 15); return iso(d); }
+  if (/next quarter/.test(w)) { const d = new Date(base); d.setMonth(d.getMonth() + 3, 1); return iso(d); }
+  if (/after the holidays|new year/.test(w)) return iso(new Date(now.getFullYear() + 1, 0, 15));
+  if (/end of (the )?year|year[- ]?end/.test(w)) { const d = new Date(base.getFullYear(), 11, 15); return iso(d); }
+  const qm = w.match(/q([1-4])/);
+  if (qm) { const q = parseInt(qm[1], 10); let d = new Date(base.getFullYear(), (q - 1) * 3, 1); if (d <= now) d = new Date(base.getFullYear() + 1, (q - 1) * 3, 1); return iso(d); }
+  const mi = months.findIndex(mn => w.includes(mn));
+  if (mi >= 0) { let d = new Date(base.getFullYear(), mi, 15); if (d <= now) d = new Date(base.getFullYear() + 1, mi, 15); return iso(d); }
+  return null;
+}
+
 async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory, accountId, db }) {
   // Governance: only auto-process reps get auto-tasks, and never from CS-category calls.
   if (!isAutoProcessRep(repEmail) && !isAutoProcessRep(repName)) return;
@@ -242,7 +273,9 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
   if (!userId) return;
 
   const repSteps = dedupSteps((analysis.next_steps_mentioned || []).filter(isRepOwnedStep).filter(s => !isLowSignalStep(s)));
-  if (!repSteps.length) return;
+  const triggerList = Array.isArray(analysis.reengagement_triggers) ? analysis.reengagement_triggers : [];
+  const hasCommitments = (analysis.commitments || []).some(c => c && c.length > 5 && !isLowSignalStep(c));
+  if (!repSteps.length && !triggerList.length && !hasCommitments) return;
 
   // Dedup: skip if tasks already exist for this gong call id
   const { count } = await db
@@ -289,7 +322,25 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     visible_to_manager: true,
   }));
 
-  const rows = [...commitmentRows, ...nextStepRows];
+  // Re-engagement triggers → scheduled follow-up tasks with a resolved due date. "Let's touch base in
+  // July" becomes a July task with a drafted message; these count toward the AE weekly re-engage goal.
+  const reengageRows = triggerList.slice(0, 2).map(t => {
+    const text = (typeof t === 'string' ? t : t?.text || '').trim();
+    const when = typeof t === 'object' ? (t?.when || null) : null;
+    if (!text || text.length < 5) return null;
+    const due = resolveReengageDate(when, date);
+    return {
+      owner_id: userId, created_by: userId, type: 'triggered', priority: 2,
+      title: (`Re-engage${when ? ` (${when})` : ''}: ${text}`).slice(0, 117),
+      description: `Re-engagement trigger from Gong call: "${title || 'Untitled'}" on ${callDateStr} (call ID: ${callId})${when ? ` — reconnect ${when}` : ''}`,
+      status: 'open', source: 'gong', source_type: 'gong_reengage',
+      account_id: accountId || null, due_date: due,
+      rationale: `Prospect asked to reconnect${when ? ` (${when})` : ''} — scheduled follow-up.`,
+      visible_to_manager: true,
+    };
+  }).filter(Boolean);
+
+  const rows = [...commitmentRows, ...reengageRows, ...nextStepRows];
   if (!rows.length) return;
 
   // Base columns only on insert — keeps task creation working even before the
@@ -303,7 +354,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     return;
   }
 
-  console.log(`[intel-analyze] Created ${rows.length} tasks (${commitmentRows.length} commitments, ${nextStepRows.length} next steps) from "${title}"`);
+  console.log(`[intel-analyze] Created ${rows.length} tasks (${commitmentRows.length} commitments, ${reengageRows.length} re-engage, ${nextStepRows.length} next steps) from "${title}"`);
 
   // Pre-generate each task's AI action so the rep never opens a blank task, and tag the
   // trigger. Both are best-effort: a missing column (pre-migration) just logs and moves on.
@@ -534,6 +585,7 @@ Return ONLY valid JSON:
   "champion_health_score": 5,
   "champion_health_notes": "one sentence — who the potential champion is and how engaged they are (passive interest vs actively mobilizing internally)",
   "commitments": ["Verbatim or near-verbatim rep statement where they promised to do something. Only include first-person promises starting with I'll, I will, I can, I'm going to, etc. Example: 'I'll send the deck over today'"],
+  "reengagement_triggers": [{"text": "verbatim ask to reconnect at a LATER date (NOT an immediate next step) — e.g. 'let's touch base in July', 'reach back out in Q3', 'circle back next month', 'check in after the holidays'", "when": "the timeframe mentioned as a short phrase — 'July', 'in 2 weeks', 'Q3', 'next month', 'after the holidays' — or null if none stated"}],
   "meddicc": {"metrics": "quantified value/impact discussed, or null", "economic_buyer": "who controls the budget, or null", "decision_criteria": "how they will evaluate, or null", "decision_process": "steps/timeline to decide, or null", "identify_pain": "the core pain in one line, or null", "champion": "internal advocate + how engaged, or null", "competition": "alternatives being considered, or null"},
   "stakeholders": [{"name": "full name mentioned on the call", "title": "their role/title or null", "role": "Champion|Economic Buyer|Technical Buyer|User Buyer|Influencer|Blocker|Unknown", "is_champion": false}],
   "information_gaps": [{"question": "an open MEDDICC question still unanswered after this call", "category": "metrics|economic_buyer|decision_process|pain|champion|competition|timeline|other"}],
@@ -568,6 +620,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
       buying_signals: [],
       red_flags: [],
       next_steps_mentioned: [],
+      reengagement_triggers: [],
       icp_score: null,
       icp_rationale: null,
       discovery_score: null,
