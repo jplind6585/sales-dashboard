@@ -2083,6 +2083,7 @@ export default function TasksPage() {
   const [filterSource, setFilterSource] = useState('all')
   const [filterDue, setFilterDue] = useState('all')
   const [filterTier, setFilterTier] = useState('all')
+  const [sortBy, setSortBy] = useState('smart') // smart | due | priority | account | recent
   const [taskView, setTaskView] = useState('focus') // 'focus' | 'by_account' | 'all'
   const [backfilling, setBackfilling] = useState(false)
   const demoSeeded = useRef(false)
@@ -2414,6 +2415,80 @@ export default function TasksPage() {
     return true
   })
 
+  // Sort (applied on top of the filters) — consistent across every task tab.
+  const SORT_OPTIONS = [
+    { value: 'smart', label: 'Smart' },
+    { value: 'due', label: 'Due date' },
+    { value: 'priority', label: 'Priority' },
+    { value: 'account', label: 'Account' },
+    { value: 'recent', label: 'Recently added' },
+  ]
+  const sortTasks = (list) => {
+    const arr = [...list]
+    if (sortBy === 'due') return arr.sort((a, b) => (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31'))
+    if (sortBy === 'priority') return arr.sort((a, b) => (a.priority || 3) - (b.priority || 3))
+    if (sortBy === 'account') return arr.sort((a, b) => (a.account?.name || 'zzz').localeCompare(b.account?.name || 'zzz'))
+    if (sortBy === 'recent') return arr.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    return arr.sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a))
+  }
+  const sortedFilteredTasks = sortTasks(filteredTasks)
+
+  // One filter+sort bar, rendered on every task tab so the affordance is consistent (Tasks v2).
+  const renderFilters = () => {
+    const STAGE_OPTIONS = [
+      { value: 'all', label: 'All Stages' }, { value: 'qualifying', label: 'Qualifying' },
+      { value: 'intro_scheduled', label: 'Intro Scheduled' }, { value: 'active_pursuit', label: 'Active Pursuit' },
+      { value: 'demo', label: 'Demo' }, { value: 'solution_validation', label: 'Solution Validation' },
+      { value: 'proposal', label: 'Proposal' }, { value: 'legal', label: 'Legal' },
+    ]
+    const distinctOwners = [...new Map(tasks.map(t => { const u = users.find(u => u.id === t.ownerId); return u ? [u.full_name || u.email, u.full_name || u.email] : null }).filter(Boolean)).entries()].map(([k]) => k)
+    const anyNonDefault = filterStage !== 'all' || filterAssignee !== 'mine' || filterSource !== 'all' || filterDue !== 'all' || filterTier !== 'all'
+    const sel = { fontSize: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '4px 8px', background: '#fff', color: '#374151', outline: 'none', cursor: 'pointer' }
+    return (
+      <>
+        <div className="sticky z-[9] bg-gray-50 py-2 mb-2 border-b border-gray-100" style={{ top: '64px' }}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="w-4 h-4 text-gray-400" />
+            {['active', 'all', 'complete'].map(f => (
+              <button key={f} onClick={() => setFilterStatus(f)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${filterStatus === f ? 'bg-coral-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-coral-300'}`}>{f}</button>
+            ))}
+            <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Search tasks or accounts…" className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 w-56 focus:outline-none focus:ring-2 focus:ring-coral-200 focus:border-coral-400" />
+            <div className="ml-auto flex items-center gap-3">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#6b7280' }}>
+                <input type="checkbox" checked={sortedFilteredTasks.length > 0 && sortedFilteredTasks.every(t => selectedTaskIds.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTaskIds(new Set(sortedFilteredTasks.map(t => t.id))); else setSelectedTaskIds(new Set()) }} style={{ width: '14px', height: '14px', accentColor: '#EE5340' }} />
+                Select all
+              </label>
+              <span className="text-sm text-gray-400">{sortedFilteredTasks.length} task{sortedFilteredTasks.length !== 1 ? 's' : ''}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          <select value={filterStage} onChange={e => setFilterStage(e.target.value)} style={sel}>{STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+          <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={sel}>
+            <option value="mine">Mine</option>
+            {distinctOwners.map(name => <option key={name} value={name}>{name}</option>)}
+            <option value="everyone">Everyone</option>
+          </select>
+          <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={sel}>
+            <option value="all">All Sources</option><option value="voice">Voice</option><option value="manual">Manual</option>
+            <option value="gong">Gong</option><option value="gmail">Gmail</option><option value="calendar">Calendar</option><option value="playbook">Playbook</option>
+          </select>
+          <select value={filterDue} onChange={e => setFilterDue(e.target.value)} style={sel}>
+            <option value="all">All</option><option value="overdue">Overdue</option><option value="today">Today</option><option value="this_week">This week</option><option value="no_due">No due date</option>
+          </select>
+          <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={sel}>
+            <option value="all">All Tiers</option><option value="hot">Hot</option><option value="active">Active</option><option value="watching">Watching</option><option value="archived">Archived</option>
+          </select>
+          <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={sel}>{SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}</select>
+          {anyNonDefault && (
+            <button onClick={() => { setFilterStage('all'); setFilterAssignee('mine'); setFilterSource('all'); setFilterDue('all'); setFilterTier('all') }} style={{ fontSize: '12px', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '4px 0' }}>Clear filters</button>
+          )}
+        </div>
+      </>
+    )
+  }
+
   if (!isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -2587,17 +2662,20 @@ export default function TasksPage() {
 
             {/* ── BY ACCOUNT TAB ─────────────────────────────────────────── */}
             {taskView === 'by_account' && (
-              <ByAccountView
-                tasks={tasks}
-                onStatusChange={handleStatusChange}
-                onDelete={handleDelete}
-                onDismiss={task => setDismissTask(task)}
-                onWorkInClaude={task => setWorkTask(task)}
-                onMomentumChange={handleMomentumChange}
-                selectedTaskIds={selectedTaskIds}
-                onToggleSelect={toggleTaskSelected}
-                bulkMode={bulkMode}
-              />
+              <>
+                {renderFilters()}
+                <ByAccountView
+                  tasks={sortedFilteredTasks}
+                  onStatusChange={handleStatusChange}
+                  onDelete={handleDelete}
+                  onDismiss={task => setDismissTask(task)}
+                  onWorkInClaude={task => setWorkTask(task)}
+                  onMomentumChange={handleMomentumChange}
+                  selectedTaskIds={selectedTaskIds}
+                  onToggleSelect={toggleTaskSelected}
+                  bulkMode={bulkMode}
+                />
+              </>
             )}
 
             {/* ── ALL TAB ────────────────────────────────────────────────── */}
@@ -2675,13 +2753,15 @@ export default function TasksPage() {
                       <option value="watching">Watching</option>
                       <option value="archived">Archived</option>
                     </select>
+                    <div style={{ width: '1px', height: '18px', background: '#e5e7eb' }} />
+                    <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={sel}>{SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}</select>
                     {anyNonDefault && (
                       <button onClick={() => { setFilterStage('all'); setFilterAssignee('mine'); setFilterSource('all'); setFilterDue('all'); setFilterTier('all') }} style={{ fontSize: '12px', color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: '4px 0' }}>Clear filters</button>
                     )}
                   </div>
                   {repType === 'sdr' && sdrViewTab === 'campaigns' ? (
                     (() => {
-                      const campaignGroups = filteredTasks.reduce((acc, task) => { const key = task.source_id || 'ungrouped'; if (!acc[key]) acc[key] = []; acc[key].push(task); return acc }, {})
+                      const campaignGroups = sortedFilteredTasks.reduce((acc, task) => { const key = task.source_id || 'ungrouped'; if (!acc[key]) acc[key] = []; acc[key].push(task); return acc }, {})
                       const groupKeys = Object.keys(campaignGroups)
                       if (!groupKeys.length) return <div className="text-center py-16 text-gray-400"><CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-30" /><p className="text-sm">No campaign tasks yet.</p></div>
                       return (
@@ -2712,7 +2792,7 @@ export default function TasksPage() {
                     })()
                   ) : (
                     <RepView
-                      tasks={filteredTasks}
+                      tasks={sortedFilteredTasks}
                       onStatusChange={handleStatusChange}
                       onDelete={handleDelete}
                       onDismiss={task => setDismissTask(task)}
