@@ -71,9 +71,18 @@ export default function AppShell({ title, subtitle, actions, children }) {
       <aside className={`${collapsed ? 'w-16' : 'w-[236px]'} flex-shrink-0 bg-white flex flex-col sticky top-0 h-screen transition-[width] duration-150`}>
         <div className={`flex items-center h-[57px] flex-shrink-0 ${collapsed ? 'justify-center px-2' : 'px-4'}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {collapsed
-            ? <img src="/brand/Banner_Logo_Square.png" alt="Banner" className="w-7 h-7 object-contain" />
-            : <img src="/brand/Banner_Logo_Full.png" alt="Banner" className="h-[22px] w-auto object-contain" />}
+          {collapsed ? (
+            <img src="/brand/Banner_Logo_Square.png" alt="Banner" className="w-7 h-7 object-contain" />
+          ) : dark ? (
+            // Full logo's wordmark is navy — invisible on the dark rail — so show the coral mark + a light wordmark.
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/Banner_Logo_Square.png" alt="Banner" className="w-6 h-6 object-contain" />
+              <span className="font-semibold tracking-tight text-[17px] text-slate-100">Banner</span>
+            </div>
+          ) : (
+            <img src="/brand/Banner_Logo_Full.png" alt="Banner" className="h-[22px] w-auto object-contain" />
+          )}
         </div>
         <nav className="flex-1 overflow-y-auto px-2.5 pb-3">
           {groups.map(sec => (
