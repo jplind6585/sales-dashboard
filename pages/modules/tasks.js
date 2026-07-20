@@ -14,6 +14,8 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import AppShell from '../../components/layout/AppShell';
+import StageBadge from '../../components/ui/StageBadge';
+import { fmtUsd } from '../../lib/metrics';
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../lib/constants';
 import SmartSuggestionsPanel from '../../components/smart-suggestions/SmartSuggestionsPanel';
 import TaskCompleteModal from '../../components/tasks/TaskCompleteModal';
@@ -1873,6 +1875,8 @@ const STAGE_WEIGHT = {
 }
 
 function ByAccountView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selectedTaskIds, onToggleSelect, bulkMode }) {
+  const [collapsed, setCollapsed] = useState(new Set())
+  const toggleCollapse = (id) => setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const open = tasks.filter(t => t.status !== 'complete')
   const grouped = {}
   const noAccount = []
@@ -1901,36 +1905,39 @@ function ByAccountView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInCla
 
   return (
     <div className="space-y-6">
-      {sorted.map(({ account, tasks: grpTasks }) => (
-        <div key={account.id}>
-          <div className="flex items-center gap-2 mb-3">
-            <Building2 className="w-4 h-4 text-gray-400" />
-            <span className="font-semibold text-gray-800 text-sm">{account.name}</span>
-            {account.stage && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 capitalize">
-                {account.stage.replace(/_/g, ' ')}
-              </span>
+      {sorted.map(({ account, tasks: grpTasks }) => {
+        const isCollapsed = collapsed.has(account.id)
+        return (
+          <div key={account.id}>
+            <button onClick={() => toggleCollapse(account.id)} className="flex items-center gap-2 mb-3 w-full text-left group">
+              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} />
+              <Building2 className="w-4 h-4 text-gray-400" />
+              <span className="font-semibold text-gray-800 text-sm">{account.name}</span>
+              {account.stage && <StageBadge stage={account.stage} />}
+              {account.deal_value ? <span className="text-xs font-semibold text-gray-500 tabular-nums">{fmtUsd(account.deal_value)}</span> : null}
+              <span className="text-xs text-gray-400">{grpTasks.length} task{grpTasks.length !== 1 ? 's' : ''}</span>
+            </button>
+            {!isCollapsed && (
+              <div className="space-y-2">
+                {grpTasks.sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a)).map(task => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    onStatusChange={onStatusChange}
+                    onDelete={onDelete}
+                    onDismiss={onDismiss}
+                    onWorkInClaude={onWorkInClaude}
+                    onMomentumChange={onMomentumChange}
+                    selected={selectedTaskIds?.has(task.id)}
+                    onToggleSelect={onToggleSelect}
+                    bulkMode={bulkMode}
+                  />
+                ))}
+              </div>
             )}
-            <span className="text-xs text-gray-400">{grpTasks.length} task{grpTasks.length !== 1 ? 's' : ''}</span>
           </div>
-          <div className="space-y-2">
-            {grpTasks.sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a)).map(task => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                onStatusChange={onStatusChange}
-                onDelete={onDelete}
-                onDismiss={onDismiss}
-                onWorkInClaude={onWorkInClaude}
-                onMomentumChange={onMomentumChange}
-                selected={selectedTaskIds?.has(task.id)}
-                onToggleSelect={onToggleSelect}
-                bulkMode={bulkMode}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+        )
+      })}
       {noAccount.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
