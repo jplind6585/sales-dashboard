@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, TrendingUp, Target, AlertTriangle, Award } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import { RefreshCw, TrendingUp, Target, AlertTriangle, Award } from 'lucide-react'
 import { useAuthStore } from '../../../stores/useAuthStore'
-import ModulesNav from '../../../components/layout/ModulesNav'
+import AppShell from '../../../components/layout/AppShell'
 import { stageHex } from '../../../lib/constants'
 
 function fmtDate(d) {
@@ -27,7 +25,6 @@ function StatCard({ label, value, sub, color = 'text-gray-900', icon: Icon }) {
 }
 
 export default function CEODashboard() {
-  const router = useRouter()
   const profile = useAuthStore(s => s.profile)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -53,29 +50,16 @@ export default function CEODashboard() {
   const { summary, byStage, topDeals, recentCloses, repBreakdown, winLossInsights } = data || {}
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <ModulesNav router={router} />
-            <div>
-              <h1 className="text-base font-semibold text-gray-900">CEO Dashboard</h1>
-              <p className="text-xs text-gray-400">Pipeline health, win/loss, and rep performance</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={load} disabled={loading} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <UserMenu profile={profile} />
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+    <AppShell
+      title="CEO Dashboard"
+      subtitle="Pipeline health, win/loss, and rep performance"
+      actions={
+        <button onClick={load} disabled={loading} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 disabled:opacity-50">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      }
+    >
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
         )}
@@ -274,7 +258,7 @@ export default function CEODashboard() {
             </div>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

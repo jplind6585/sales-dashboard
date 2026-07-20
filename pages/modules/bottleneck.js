@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import {
-  ArrowLeft,
   AlertTriangle,
   RefreshCw,
   TrendingDown,
@@ -13,8 +12,7 @@ import {
   ExternalLink,
   BarChart2,
 } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import AppShell from '../../components/layout/AppShell'
 import StageBadge from '../../components/ui/StageBadge'
 import { stageHex, stageLabel } from '../../lib/constants'
 
@@ -179,47 +177,29 @@ export default function BottleneckTracker() {
   const maxCount = Math.max(...activeStages.map(s => stageCounts[s] || 0), 1)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ── Header ── */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/modules')}
-              className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <TrendingDown className="w-6 h-6 text-blue-600" />
-                Bottleneck Tracker
-              </h1>
-              <p className="text-sm text-gray-500">Where deals stall in your pipeline</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/modules/pipeline-overview')}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg"
-            >
-              <BarChart2 className="w-4 h-4" />
-              Pipeline Overview
-            </button>
-            <button
-              onClick={() => loadData(true)}
-              disabled={refreshing}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <ModulesNav router={router} />
-            <UserMenu />
-          </div>
-        </div>
-      </div>
-
+    <AppShell
+      title="Bottleneck Tracker"
+      subtitle="Where deals stall in your pipeline"
+      actions={
+        <>
+          <button
+            onClick={() => router.push('/modules/pipeline-overview')}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg"
+          >
+            <BarChart2 className="w-4 h-4" />
+            Pipeline Overview
+          </button>
+          <button
+            onClick={() => loadData(true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </>
+      }
+    >
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
         {/* ── Top Stats Bar ── */}
@@ -552,6 +532,6 @@ export default function BottleneckTracker() {
           </div>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }

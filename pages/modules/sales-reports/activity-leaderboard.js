@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, Upload, CheckCircle, AlertCircle } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import { RefreshCw, Upload, CheckCircle, AlertCircle } from 'lucide-react'
 import { useAuthStore } from '../../../stores/useAuthStore'
-import ModulesNav from '../../../components/layout/ModulesNav'
+import AppShell from '../../../components/layout/AppShell'
 
 const PERIODS = [
   { label: '7 days', value: '7' },
@@ -32,7 +30,6 @@ function findColumn(row, candidates) {
 }
 
 export default function ActivityLeaderboard() {
-  const router = useRouter()
   const profile = useAuthStore(s => s.profile)
   const isAdmin = profile?.role === 'manager'
   const [period, setPeriod] = useState('30')
@@ -99,41 +96,28 @@ export default function ActivityLeaderboard() {
   const maxGong = Math.max(...leaderboard.map(r => r.gongCalls), 1)
   const maxOrem = Math.max(...leaderboard.map(r => r.oremTotalCalls), 1)
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <ModulesNav router={router} />
-            <div>
-              <h1 className="text-base font-semibold text-gray-900">Activity Leaderboard</h1>
-              <p className="text-xs text-gray-400">Gong + Orem call activity per rep</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex gap-1">
-              {PERIODS.map(p => (
-                <button
-                  key={p.value}
-                  onClick={() => setPeriod(p.value)}
-                  className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${period === p.value ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <button onClick={load} disabled={loading} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <UserMenu profile={profile} />
-          </div>
-        </div>
-      </header>
+  const actions = (
+    <>
+      <div className="flex gap-1">
+        {PERIODS.map(p => (
+          <button
+            key={p.value}
+            onClick={() => setPeriod(p.value)}
+            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${period === p.value ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <button onClick={load} disabled={loading} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 disabled:opacity-50">
+        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+      </button>
+    </>
+  )
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+  return (
+    <AppShell title="Activity Leaderboard" subtitle="Gong + Orem call activity per rep" actions={actions}>
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         {/* Admin CSV upload */}
         {isAdmin && (
           <div className="bg-white rounded-xl border p-5">
@@ -253,7 +237,7 @@ export default function ActivityLeaderboard() {
             No activity data for this period. Gong calls are pulled from analyzed calls. Upload an Orem CSV to add phone activity.
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

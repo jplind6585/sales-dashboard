@@ -25,8 +25,10 @@ export default function CommandPalette() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setOpen((o) => !o); }
       else if (e.key === 'Escape') setOpen(false);
     };
+    const onOpen = () => setOpen(true); // AppShell search pill dispatches this
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('cmdk:open', onOpen);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('cmdk:open', onOpen); };
   }, []);
 
   useEffect(() => {

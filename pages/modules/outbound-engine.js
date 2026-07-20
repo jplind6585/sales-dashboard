@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import {
-  ArrowLeft,
   Plus,
   Search,
   Filter,
@@ -13,8 +12,7 @@ import {
   TrendingUp,
   Sparkles
 } from 'lucide-react';
-import UserMenu from '../../components/auth/UserMenu';
-import ModulesNav from '../../components/layout/ModulesNav';
+import AppShell from '../../components/layout/AppShell';
 import CompanyDetailModal from '../../components/outbound/CompanyDetailModalV2';
 import { getCompanies, calculatePercentProspected, updateCompany } from '../../lib/outboundStorage';
 import { VERTICALS, STATUS_OPTIONS, PRIORITY_OPTIONS } from '../../lib/outboundConstants';
@@ -188,40 +186,19 @@ export default function OutboundEngine() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/modules')}
-                className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold">Outbound Engine</h1>
-                <p className="text-sm text-gray-600">
-                  {filteredCompanies.length} companies • {filteredCompanies.filter(c => c.percentProspected >= 70).length} ready for outreach
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <ModulesNav router={router} />
-              <button
-                onClick={() => {/* TODO: Open new company modal */}}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4" />
-                Add Company
-              </button>
-              <UserMenu />
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <AppShell
+      title="Outbound Engine"
+      subtitle={`${filteredCompanies.length} companies • ${filteredCompanies.filter(c => c.percentProspected >= 70).length} ready for outreach`}
+      actions={
+        <button
+          onClick={() => {/* TODO: Open new company modal */}}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Plus className="w-4 h-4" />
+          Add Company
+        </button>
+      }
+    >
       <div className="max-w-full mx-auto px-6 py-4">
         {/* Filters and Search */}
         <div className="bg-white rounded-lg shadow px-4 py-3 mb-4">
@@ -491,6 +468,6 @@ export default function OutboundEngine() {
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }

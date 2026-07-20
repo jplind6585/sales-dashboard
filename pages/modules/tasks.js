@@ -13,8 +13,7 @@ import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import UserMenu from '../../components/auth/UserMenu';
-import ModulesNav from '../../components/layout/ModulesNav';
+import AppShell from '../../components/layout/AppShell';
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../lib/constants';
 import SmartSuggestionsPanel from '../../components/smart-suggestions/SmartSuggestionsPanel';
 import TaskCompleteModal from '../../components/tasks/TaskCompleteModal';
@@ -2424,70 +2423,56 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Zap className="w-5 h-5 text-blue-600" />
-                <h1 className="text-xl font-bold text-gray-900">Tasks</h1>
-              </div>
-              <ModulesNav router={router} />
+    <AppShell
+      title="Tasks"
+      actions={
+        <div className="flex items-center gap-3">
+          {/* View toggle (only shown if user has team access) */}
+          {summary.length > 0 && (
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setView('rep')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'rep' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                My Tasks
+              </button>
+              <button
+                onClick={() => setView('manager')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'manager' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Team
+              </button>
             </div>
+          )}
 
-            <div className="flex items-center gap-3">
-              {/* View toggle (only shown if user has team access) */}
-              {summary.length > 0 && (
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => setView('rep')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'rep' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                  >
-                    My Tasks
-                  </button>
-                  <button
-                    onClick={() => setView('manager')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'manager' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                  >
-                    Team
-                  </button>
-                </div>
-              )}
+          <button
+            onClick={fetchTasks}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
 
-              <button
-                onClick={fetchTasks}
-                className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
-                title="Refresh"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </button>
+          <button
+            onClick={handleBackfill}
+            disabled={backfilling}
+            title="Pull tasks from all Gong call analyses"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${backfilling ? 'animate-spin' : ''}`} />
+            Sync Gong
+          </button>
 
-              <button
-                onClick={handleBackfill}
-                disabled={backfilling}
-                title="Pull tasks from all Gong call analyses"
-                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${backfilling ? 'animate-spin' : ''}`} />
-                Sync Gong
-              </button>
-
-              <button
-                onClick={() => setShowNewTask(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                New Task
-              </button>
-
-              {user && <UserMenu />}
-            </div>
-          </div>
+          <button
+            onClick={() => setShowNewTask(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Task
+          </button>
         </div>
-      </div>
-
+      }
+    >
       {/* Content */}
       <div className="max-w-5xl mx-auto px-6 py-8">
         {loading ? (
@@ -2790,6 +2775,6 @@ export default function TasksPage() {
           router={router}
         />
       )}
-    </div>
+    </AppShell>
   )
 }

@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/router';
 import {
-  ArrowLeft,
   Plus,
   Phone,
   Mail,
@@ -18,8 +16,7 @@ import {
   Clock,
   Zap,
 } from 'lucide-react';
-import UserMenu from '../../components/auth/UserMenu';
-import ModulesNav from '../../components/layout/ModulesNav';
+import AppShell from '../../components/layout/AppShell';
 
 // ─── Storage Keys ─────────────────────────────────────────────────────────────
 
@@ -894,8 +891,6 @@ function AccountRow({ account, onRowClick, onLogTouch, onEdit, onRemove, onRankC
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PursuitPage() {
-  const router = useRouter();
-
   const [accounts, setAccounts] = useState([]);
   const [allTouches, setAllTouches] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1064,43 +1059,19 @@ export default function PursuitPage() {
   const sortedAccounts = [...accounts].sort((a, b) => a.rank - b.rank);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/modules')}
-                className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
-                title="Back to modules"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-blue-600" />
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900 leading-tight">Account Pursuit</h1>
-                  <p className="text-xs text-gray-400 leading-tight">Top 50 named accounts</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <ModulesNav router={router} />
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Account
-              </button>
-              <UserMenu />
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <AppShell
+      title="Account Pursuit"
+      subtitle="Top 50 named accounts"
+      actions={
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Account
+        </button>
+      }
+    >
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Stats bar */}
@@ -1249,6 +1220,6 @@ export default function PursuitPage() {
           onUpdateAccount={handleUpdateAccount}
         />
       )}
-    </div>
+    </AppShell>
   );
 }

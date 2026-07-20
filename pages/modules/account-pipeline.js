@@ -1,14 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { Building2, AlertCircle, Sparkles, ArrowLeft, Search, Filter, X, ChevronDown, Flame, Archive, Eye, EyeOff, RefreshCw, CheckCircle, MessageSquare, Check } from 'lucide-react';
+import { Building2, AlertCircle, Sparkles, Search, Filter, X, ChevronDown, Flame, Archive, Eye, EyeOff, RefreshCw, CheckCircle, MessageSquare, Check } from 'lucide-react';
 
 // Hooks
 import { useAccounts } from '../../hooks/useAccounts';
 import { useAccountStore } from '../../stores/useAccountStore';
 
-// Auth components
-import UserMenu from '../../components/auth/UserMenu';
-import ModulesNav from '../../components/layout/ModulesNav';
+// Layout shell
+import AppShell from '../../components/layout/AppShell';
 
 // Constants
 import { TABS, STAGE_LABELS, STAGE_COLORS, ALL_STAGE_ORDER, ACTIVE_STAGE_ORDER, INACTIVE_STAGE_IDS, CLOSED_STAGE_IDS } from '../../lib/constants';
@@ -813,33 +812,19 @@ export default function Home() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-              title="Go back"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="text-3xl font-bold">Account Management</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <ModulesNav router={router} />
-            <button
-              onClick={() => setShowNewAccount(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              <Building2 className="w-4 h-4" />
-              New Account
-            </button>
-            <UserMenu />
-          </div>
-        </div>
-
+    <AppShell
+      title="Account Management"
+      actions={
+        <button
+          onClick={() => setShowNewAccount(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+        >
+          <Building2 className="w-4 h-4" />
+          New Account
+        </button>
+      }
+    >
+      <div className="max-w-7xl mx-auto p-6">
         {/* Main content grid */}
         <div className="grid grid-cols-4 gap-6">
           {/* Sidebar - Account list */}
@@ -1601,6 +1586,6 @@ export default function Home() {
           onApplyActions={applyAssistantActions}
         />
       </ErrorBoundary>
-    </div>
+    </AppShell>
   );
 }

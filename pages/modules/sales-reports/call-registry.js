@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, Search, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle2, Clock, Link2Off } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import { RefreshCw, Search, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle2, Clock, Link2Off } from 'lucide-react'
 import { useAuthStore } from '../../../stores/useAuthStore'
-import ModulesNav from '../../../components/layout/ModulesNav'
 import StageBadge from '../../../components/ui/StageBadge'
+import AppShell from '../../../components/layout/AppShell'
 
 const CALL_TYPE_META = {
   intro:               { label: 'Intro',            color: 'bg-blue-100 text-blue-700' },
@@ -105,7 +103,6 @@ function CategoryPill({ category }) {
 }
 
 export default function CallRegistry() {
-  const router = useRouter()
   const profile = useAuthStore(s => s.profile)
 
   const [data, setData] = useState(null)
@@ -171,29 +168,16 @@ export default function CallRegistry() {
   const hasFilters = rep || search || dateFrom || dateTo || status !== 'all' || callType || callCategory
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <ModulesNav router={router} />
-            <div>
-              <h1 className="text-base font-semibold text-gray-900">Call Registry</h1>
-              <p className="text-xs text-gray-400">Every Gong call — account, type, analysis status</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => load(page)} disabled={loading} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <UserMenu profile={profile} />
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
+    <AppShell
+      title="Call Registry"
+      subtitle="Every Gong call — account, type, analysis status"
+      actions={
+        <button onClick={() => load(page)} disabled={loading} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 disabled:opacity-50">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      }
+    >
+      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
         )}
@@ -504,7 +488,7 @@ export default function CallRegistry() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
 import {
-  ArrowLeft, RefreshCw,
+  RefreshCw,
   ChevronDown, ChevronRight, ToggleLeft, ToggleRight, GitBranch
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
-import UserMenu from '../../components/auth/UserMenu';
-import ModulesNav from '../../components/layout/ModulesNav';
+import AppShell from '../../components/layout/AppShell';
 
 const HARDCODED_CONFIG = {
   icp_definition: `# Banner ICP Definition
@@ -785,7 +783,6 @@ function ReengagementPlaybookView({ data }) {
 }
 
 export default function SalesProcesses() {
-  const router = useRouter();
   const { user } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState('playbooks');
@@ -848,28 +845,7 @@ export default function SalesProcesses() {
   const activeS = SECTIONS.find(s => s.id === activeSection);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm shrink-0">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <button onClick={() => router.push('/modules')} className="p-2 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Sales Processes</h1>
-                <p className="text-sm text-gray-500 mt-0.5">The playbooks and config that drive the AI across the whole platform</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <ModulesNav router={router} />
-              {user && <UserMenu />}
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <AppShell title="Sales Processes" subtitle="The playbooks and config that drive the AI across the whole platform">
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 shrink-0">
         <div className="max-w-7xl mx-auto px-6">
@@ -992,6 +968,6 @@ export default function SalesProcesses() {
           )
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }

@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
 import {
-  ArrowLeft, RefreshCw, TrendingUp, TrendingDown, Minus,
+  RefreshCw, TrendingUp, TrendingDown, Minus,
   AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Zap, Users, MessageSquare,
 } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import AppShell from '../../components/layout/AppShell'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 function TrendIcon({ direction }) {
@@ -264,7 +262,6 @@ function CoachingCardRow({ card }) {
 }
 
 export default function CoachingDashboard() {
-  const router = useRouter()
   const { user } = useAuthStore()
   const [reps, setReps] = useState([])
   const [selectedRep, setSelectedRep] = useState('')
@@ -327,28 +324,7 @@ export default function CoachingDashboard() {
   const metrics = data?.metrics
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/modules/pipeline-overview')} className="p-2 hover:bg-gray-100 rounded-lg">
-              <ArrowLeft className="w-5 h-5 text-gray-500" />
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-500" />
-                Rep Coaching
-              </h1>
-              <p className="text-xs text-gray-400 mt-0.5">AI-generated coaching cards from Gong call analysis</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <ModulesNav router={router} />
-            {user && <UserMenu />}
-          </div>
-        </div>
-      </div>
-
+    <AppShell title="Rep Coaching" subtitle="AI-generated coaching cards from Gong call analysis">
       <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
         {/* Controls */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -638,6 +614,6 @@ export default function CoachingDashboard() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }

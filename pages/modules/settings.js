@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Save, CheckCircle2, ShieldCheck, UserPlus, Mail, Plug, RefreshCw } from 'lucide-react'
+import { Save, CheckCircle2, ShieldCheck, UserPlus, Mail, Plug, RefreshCw } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
-import ModulesNav from '../../components/layout/ModulesNav'
+import AppShell from '../../components/layout/AppShell'
 import { STAGE_PROBABILITY, STAGE_LABELS, ACTIVE_STAGE_ORDER } from '../../lib/constants'
 
 const ROLE_OPTIONS = [
@@ -174,19 +174,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/modules')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-              <ArrowLeft className="w-4 h-4 text-gray-500" />
-            </button>
-            <h1 className="text-base font-semibold text-gray-900">Settings</h1>
-          </div>
-          <ModulesNav router={router} />
-        </div>
-      </div>
-
+    <AppShell title="Settings">
       <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
 
         {/* ── Integrations health ── */}
@@ -435,6 +423,6 @@ export default function SettingsPage() {
         )}
 
       </div>
-    </div>
+    </AppShell>
   )
 }

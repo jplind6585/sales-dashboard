@@ -2,13 +2,13 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import ReactMarkdown from 'react-markdown'
 import {
-  ArrowLeft, RefreshCw, Download, X, ExternalLink,
+  RefreshCw, Download, X, ExternalLink,
   Sparkles, Send, Phone, TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertCircle, CheckCircle, Zap, Users,
   EyeOff, Eye, Info, Clock, Mail, Copy, BookOpen,
   PlayCircle, Flag, FileText, Building2, MessageSquare, Loader2,
 } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import AppShell from '../../../components/layout/AppShell'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import PeriodDelta from '../../../components/common/PeriodDelta'
 import ApiError from '../../../components/common/ApiError'
@@ -985,55 +985,38 @@ export default function CallIntelligence() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50 flex flex-col">
-
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm shrink-0">
-        <div className="max-w-[1400px] mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <button onClick={() => router.push('/modules/sales-reports')} className="p-2 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400 cursor-pointer hover:text-gray-600" onClick={() => router.push('/modules/sales-reports')}>Sales Reports</span>
-                  <ChevronRight className="w-3 h-3 text-gray-300" />
-                  <h1 className="text-xl font-bold text-gray-900">Call Intelligence</h1>
-                </div>
-                <p className="text-xs text-gray-400 mt-0.5">{headerSubtitle}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {analyzedCalls.length > 0 && (
-                <button onClick={refreshAggregate} disabled={refreshingAggregate} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
-                  <RefreshCw className={`w-4 h-4 ${refreshingAggregate ? 'animate-spin' : ''}`} /> Refresh Insights
-                </button>
-              )}
-              <button onClick={runEnrichment} disabled={enriching} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50" title="Match calls to HubSpot deals — filters out post-sale CS calls">
-                <RefreshCw className={`w-4 h-4 ${enriching ? 'animate-spin' : ''}`} /> Sync HubSpot
-              </button>
-              {analyzedCalls.length > 0 && (
-                <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
-                  <Download className="w-4 h-4" /> Export CSV
-                </button>
-              )}
-              {aggregate && (
-                <button onClick={createShareLink} disabled={sharing}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${shareUrl ? 'bg-green-100 text-green-700' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'} disabled:opacity-50`}
-                  title={shareUrl ? 'Link copied!' : 'Generate shareable link (no login required)'}>
-                  <ExternalLink className="w-4 h-4" />
-                  {sharing ? 'Generating…' : shareUrl ? 'Link Copied!' : 'Share'}
-                </button>
-              )}
-              <button onClick={() => setShowChat(c => !c)} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${showChat ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'}`}>
-                <Sparkles className="w-4 h-4" /> {showChat ? 'Close Chat' : 'AI Chat'}
-              </button>
-              {user && <UserMenu />}
-            </div>
-          </div>
-        </div>
-      </div>
+    <AppShell
+      title="Call Intelligence"
+      subtitle={headerSubtitle}
+      actions={
+        <>
+          {analyzedCalls.length > 0 && (
+            <button onClick={refreshAggregate} disabled={refreshingAggregate} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
+              <RefreshCw className={`w-4 h-4 ${refreshingAggregate ? 'animate-spin' : ''}`} /> Refresh Insights
+            </button>
+          )}
+          <button onClick={runEnrichment} disabled={enriching} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50" title="Match calls to HubSpot deals — filters out post-sale CS calls">
+            <RefreshCw className={`w-4 h-4 ${enriching ? 'animate-spin' : ''}`} /> Sync HubSpot
+          </button>
+          {analyzedCalls.length > 0 && (
+            <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+          )}
+          {aggregate && (
+            <button onClick={createShareLink} disabled={sharing}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${shareUrl ? 'bg-green-100 text-green-700' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'} disabled:opacity-50`}
+              title={shareUrl ? 'Link copied!' : 'Generate shareable link (no login required)'}>
+              <ExternalLink className="w-4 h-4" />
+              {sharing ? 'Generating…' : shareUrl ? 'Link Copied!' : 'Share'}
+            </button>
+          )}
+          <button onClick={() => setShowChat(c => !c)} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${showChat ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'}`}>
+            <Sparkles className="w-4 h-4" /> {showChat ? 'Close Chat' : 'AI Chat'}
+          </button>
+        </>
+      }
+    >
 
       {/* Rep + Stage filter bar */}
       {(allUsers.length > 0 || availableStages.length > 0) && (
@@ -2926,6 +2909,6 @@ export default function CallIntelligence() {
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   )
 }

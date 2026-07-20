@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import {
-  ArrowLeft,
-  TrendingUp,
   AlertTriangle,
   CheckCircle2,
   Users,
@@ -20,8 +18,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import AppShell from '../../components/layout/AppShell'
 import StageBadge from '../../components/ui/StageBadge'
 import { stageHex, stageLabel } from '../../lib/constants'
 
@@ -305,61 +302,43 @@ export default function PipelineOverview() {
     .slice(0, 10)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/modules/tasks')}
-              className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <TrendingUp className="w-6 h-6 text-blue-600" />
-                Pipeline Overview
-              </h1>
-              <p className="text-sm text-gray-500">{totalAccounts} accounts · {totalOpenTasks} open tasks · {totalOverdue} overdue</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/modules/coaching')}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
-            >
-              <Users className="w-4 h-4" />Rep Coaching
-            </button>
-            <button
-              onClick={openPipelineReview}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg"
-            >
-              <BookOpen className="w-4 h-4" />Pipeline Review
-            </button>
-            <button
-              onClick={generateBrief}
-              disabled={briefLoading}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
-            >
-              <Zap className={`w-4 h-4 ${briefLoading ? 'animate-pulse' : ''}`} />
-              {briefLoading ? 'Generating…' : 'Weekly Brief'}
-            </button>
-            <button
-              onClick={syncHubSpot}
-              disabled={syncing}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
-              title="Pull deal value, stage, and close date from HubSpot"
-            >
-              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing…' : 'Sync HubSpot'}
-            </button>
-            <ModulesNav router={router} />
-            <UserMenu />
-          </div>
-        </div>
-      </div>
-
+    <AppShell
+      title="Pipeline Overview"
+      subtitle={`${totalAccounts} accounts · ${totalOpenTasks} open tasks · ${totalOverdue} overdue`}
+      actions={
+        <>
+          <button
+            onClick={() => router.push('/modules/coaching')}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
+          >
+            <Users className="w-4 h-4" />Rep Coaching
+          </button>
+          <button
+            onClick={openPipelineReview}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg"
+          >
+            <BookOpen className="w-4 h-4" />Pipeline Review
+          </button>
+          <button
+            onClick={generateBrief}
+            disabled={briefLoading}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+          >
+            <Zap className={`w-4 h-4 ${briefLoading ? 'animate-pulse' : ''}`} />
+            {briefLoading ? 'Generating…' : 'Weekly Brief'}
+          </button>
+          <button
+            onClick={syncHubSpot}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+            title="Pull deal value, stage, and close date from HubSpot"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing…' : 'Sync HubSpot'}
+          </button>
+        </>
+      }
+    >
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {/* Sync result banner */}
         {syncResult && (
@@ -1077,6 +1056,6 @@ export default function PipelineOverview() {
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   )
 }

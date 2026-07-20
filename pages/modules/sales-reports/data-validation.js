@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, AlertTriangle, Link2Off, Copy, Clock, TrendingDown, Play } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import { RefreshCw, AlertTriangle, Link2Off, Copy, Clock, TrendingDown, Play } from 'lucide-react'
+import AppShell from '../../../components/layout/AppShell'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import ApiError from '../../../components/common/ApiError'
 
@@ -357,7 +356,6 @@ const TABS = [
 ]
 
 export default function DataValidation() {
-  const router = useRouter()
   const { user } = useAuthStore()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -412,37 +410,20 @@ export default function DataValidation() {
   const summary = data?.summary || {}
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/modules/sales-reports')}
-              className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm"
-            >
-              <ArrowLeft size={16} />
-              Reports
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Data Validation</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Admin queue — review and resolve uncertain data</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={load}
-              disabled={loading}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-            <UserMenu user={user} />
-          </div>
-        </div>
-      </div>
-
+    <AppShell
+      title="Data Validation"
+      subtitle="Admin queue — review and resolve uncertain data"
+      actions={
+        <button
+          onClick={load}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      }
+    >
       {/* Match result banner */}
       {matchResult && (
         <div className={`px-6 py-2 text-sm font-medium ${matchResult.ok ? 'bg-emerald-50 text-emerald-700 border-b border-emerald-200' : 'bg-red-50 text-red-700 border-b border-red-200'}`}>
@@ -506,6 +487,6 @@ export default function DataValidation() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }

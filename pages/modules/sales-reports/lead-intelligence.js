@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, TrendingUp, Users, Target, DollarSign, ChevronDown, ChevronUp } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import { RefreshCw, TrendingUp, Users, Target, DollarSign, ChevronDown, ChevronUp } from 'lucide-react'
+import AppShell from '../../../components/layout/AppShell'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import ApiError from '../../../components/common/ApiError'
 
@@ -94,7 +93,6 @@ function AgeBadge({ flag }) {
 }
 
 export default function LeadIntelligence() {
-  const router = useRouter()
   const { user } = useAuthStore()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -186,58 +184,41 @@ export default function LeadIntelligence() {
   })
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/modules/sales-reports')}
-              className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm"
-            >
-              <ArrowLeft size={16} />
-              Reports
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Lead Intelligence</h1>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {meta.lastSynced
-                  ? `Last synced ${new Date(meta.lastSynced).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
-                  : 'Not yet synced'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={year}
-              onChange={e => setYear(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
-            >
-              <option value={2026}>2026</option>
-              <option value={2025}>2025</option>
-              <option value={2024}>2024</option>
-            </select>
-            <button
-              onClick={() => runSync(null)}
-              disabled={syncing || syncingAll}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw size={13} className={syncingAll ? 'animate-spin' : ''} />
-              {syncingAll ? 'Syncing…' : 'Sync All'}
-            </button>
-            <button
-              onClick={syncNow}
-              disabled={syncing || syncingAll}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Syncing…' : `Sync ${year}`}
-            </button>
-            <UserMenu user={user} />
-          </div>
+    <AppShell
+      title="Lead Intelligence"
+      subtitle={meta.lastSynced
+        ? `Last synced ${new Date(meta.lastSynced).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+        : 'Not yet synced'}
+      actions={
+        <div className="flex items-center gap-3">
+          <select
+            value={year}
+            onChange={e => setYear(Number(e.target.value))}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
+          >
+            <option value={2026}>2026</option>
+            <option value={2025}>2025</option>
+            <option value={2024}>2024</option>
+          </select>
+          <button
+            onClick={() => runSync(null)}
+            disabled={syncing || syncingAll}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={13} className={syncingAll ? 'animate-spin' : ''} />
+            {syncingAll ? 'Syncing…' : 'Sync All'}
+          </button>
+          <button
+            onClick={syncNow}
+            disabled={syncing || syncingAll}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : `Sync ${year}`}
+          </button>
         </div>
-      </div>
-
+      }
+    >
       {/* Sync result banner */}
       {syncResult && (
         <div className={`px-6 py-2 text-sm font-medium ${syncResult.ok ? 'bg-emerald-50 text-emerald-700 border-b border-emerald-200' : 'bg-red-50 text-red-700 border-b border-red-200'}`}>
@@ -611,6 +592,6 @@ export default function LeadIntelligence() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }

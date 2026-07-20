@@ -1,7 +1,5 @@
 import { useRouter } from 'next/router'
-import { LayoutGrid } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import AppShell from '../../components/layout/AppShell'
 import { modulesByGroup } from '../../lib/moduleRegistry'
 
 // Rendered from the single module registry, grouped, on-brand (BRAND_GUIDE.md).
@@ -10,20 +8,7 @@ export default function ModulesIndex() {
   const groups = modulesByGroup()
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <div className="bg-white border-b border-hairline">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <ModulesNav router={router} />
-            <div className="flex items-center gap-2">
-              <LayoutGrid className="w-5 h-5 text-slate-400" />
-              <h1 className="text-lg font-semibold text-ink font-display">All Modules</h1>
-            </div>
-          </div>
-          <UserMenu />
-        </div>
-      </div>
-
+    <AppShell title="All Modules">
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         {groups.map((g) => (
           <div key={g.group}>
@@ -51,6 +36,6 @@ export default function ModulesIndex() {
           </div>
         ))}
       </div>
-    </div>
+    </AppShell>
   )
 }

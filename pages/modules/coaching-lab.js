@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Trophy, AlertOctagon, ExternalLink, MessageSquare, Dumbbell } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import { Trophy, AlertOctagon, ExternalLink, MessageSquare, Dumbbell } from 'lucide-react'
+import AppShell from '../../components/layout/AppShell'
 import { SkeletonRows } from '../../components/ui/Skeleton'
 import EmptyState from '../../components/ui/EmptyState'
 import StageBadge from '../../components/ui/StageBadge'
@@ -24,22 +23,8 @@ export default function CoachingLab() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <header className="bg-white border-b border-hairline sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><ArrowLeft className="w-4 h-4" /></button>
-            <div>
-              <h1 className="text-lg font-semibold text-ink font-display">Coaching Lab</h1>
-              <p className="text-xs text-slate-400">Learn from the best calls · deals that need an advance-or-kill call</p>
-            </div>
-            <ModulesNav router={router} />
-          </div>
-          <UserMenu />
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-6 py-6 space-y-8">
+    <AppShell title="Coaching Lab" subtitle="Learn from the best calls · deals that need an advance-or-kill call">
+      <div className="max-w-5xl mx-auto px-6 py-6 space-y-8">
         {/* Practice drills — weakest dimensions */}
         <section>
           <h2 className="text-sm font-semibold text-ink flex items-center gap-2 mb-3"><Dumbbell className="w-4 h-4 text-coral-500" /> Work on this</h2>
@@ -149,7 +134,7 @@ export default function CoachingLab() {
             </div>
           )}
         </section>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

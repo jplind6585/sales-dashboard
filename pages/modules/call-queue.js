@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Phone, Mail, Loader2, RefreshCw, Sparkles, ExternalLink, Check, Copy, ChevronDown, ChevronRight, Building2 } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import { Phone, Mail, Loader2, RefreshCw, Sparkles, ExternalLink, Check, Copy, ChevronDown, ChevronRight, Building2 } from 'lucide-react'
+import AppShell from '../../components/layout/AppShell'
 import StageBadge from '../../components/ui/StageBadge'
 
 export default function CallQueue() {
@@ -85,29 +84,20 @@ export default function CallQueue() {
   const queue = (data?.queue || []).filter(q => !logged[q.accountId])
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><ArrowLeft className="w-4 h-4" /></button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Phone className="w-4 h-4 text-coral-600" /> Call Queue</h1>
-              <p className="text-xs text-gray-400">Who to reach today — ranked by ICP fit + how overdue</p>
-            </div>
-            <ModulesNav router={router} />
+    <AppShell
+      title="Call Queue"
+      subtitle="Who to reach today — ranked by ICP fit + how overdue"
+      actions={
+        <>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+            <button onClick={() => setScope('mine')} className={`px-3 py-1.5 ${scope === 'mine' ? 'bg-coral-600 text-white' : 'text-gray-600'}`}>My accounts</button>
+            <button onClick={() => setScope('all')} className={`px-3 py-1.5 ${scope === 'all' ? 'bg-coral-600 text-white' : 'text-gray-600'}`}>All</button>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
-              <button onClick={() => setScope('mine')} className={`px-3 py-1.5 ${scope === 'mine' ? 'bg-coral-600 text-white' : 'text-gray-600'}`}>My accounts</button>
-              <button onClick={() => setScope('all')} className={`px-3 py-1.5 ${scope === 'all' ? 'bg-coral-600 text-white' : 'text-gray-600'}`}>All</button>
-            </div>
-            <button onClick={load} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
-            <UserMenu />
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-6 py-6 space-y-4">
+          <button onClick={load} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+        </>
+      }
+    >
+      <div className="max-w-5xl mx-auto px-6 py-6 space-y-4">
         {/* Daily target */}
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <div className="flex items-center justify-between mb-1">
@@ -178,7 +168,7 @@ export default function CallQueue() {
           ))}
         </div>
         <p className="text-xs text-gray-400">Ranked from real pipeline data — recency, ICP fit, stage, and tier. Log a touch and its outcome to advance the daily target and de-prioritize the account.</p>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

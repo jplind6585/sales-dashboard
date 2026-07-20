@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, TrendingUp, Users, Target, AlertTriangle, Zap, BarChart2 } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import { RefreshCw, TrendingUp, Users, Target, AlertTriangle, Zap, BarChart2 } from 'lucide-react'
+import AppShell from '../../../components/layout/AppShell'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import ApiError from '../../../components/common/ApiError'
 import { stageHex } from '../../../lib/constants'
@@ -279,78 +279,63 @@ export default function TeamDashboard() {
   const maxPipelineCount = pipelineByStage.reduce((m, s) => Math.max(m, s.count), 0)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/modules/sales-reports')}
-              className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm"
-            >
-              <ArrowLeft size={16} />
-              Reports
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Team Dashboard</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Pipeline health · rep performance · call intelligence</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={days}
-              onChange={e => setDays(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
-            >
-              <option value={30}>Last 30 days</option>
-              <option value={60}>Last 60 days</option>
-              <option value={90}>Last 90 days</option>
-            </select>
-            <button
-              onClick={backfillTranscripts}
-              disabled={backfilling}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw size={13} className={backfilling ? 'animate-spin text-blue-500' : 'text-blue-500'} />
-              {backfilling ? 'Linking…' : 'Link Calls to Accounts'}
-            </button>
-            <button
-              onClick={backfillHistoricalCalls}
-              disabled={backfillingCalls}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw size={13} className={backfillingCalls ? 'animate-spin text-violet-500' : 'text-violet-500'} />
-              {backfillingCalls ? 'Backfilling…' : 'Backfill Calls (4 weeks)'}
-            </button>
-            <button
-              onClick={backfillTasksFromCalls}
-              disabled={backfillingTasks}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              <Zap size={13} className={backfillingTasks ? 'animate-pulse text-emerald-500' : 'text-emerald-500'} />
-              {backfillingTasks ? 'Backfilling…' : 'Backfill Tasks from Calls'}
-            </button>
-            <button
-              onClick={createTasksFromCalls}
-              disabled={creatingTasks}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              <Zap size={13} className={creatingTasks ? 'animate-pulse text-amber-500' : 'text-amber-500'} />
-              {creatingTasks ? 'Creating…' : 'Add Tasks from Calls'}
-            </button>
-            <button
-              onClick={load}
-              disabled={loading}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-            <UserMenu user={user} />
-          </div>
+    <AppShell
+      title="Team Dashboard"
+      subtitle="Pipeline health · rep performance · call intelligence"
+      actions={
+        <div className="flex items-center gap-3">
+          <select
+            value={days}
+            onChange={e => setDays(Number(e.target.value))}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white"
+          >
+            <option value={30}>Last 30 days</option>
+            <option value={60}>Last 60 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+          <button
+            onClick={backfillTranscripts}
+            disabled={backfilling}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={13} className={backfilling ? 'animate-spin text-blue-500' : 'text-blue-500'} />
+            {backfilling ? 'Linking…' : 'Link Calls to Accounts'}
+          </button>
+          <button
+            onClick={backfillHistoricalCalls}
+            disabled={backfillingCalls}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={13} className={backfillingCalls ? 'animate-spin text-violet-500' : 'text-violet-500'} />
+            {backfillingCalls ? 'Backfilling…' : 'Backfill Calls (4 weeks)'}
+          </button>
+          <button
+            onClick={backfillTasksFromCalls}
+            disabled={backfillingTasks}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            <Zap size={13} className={backfillingTasks ? 'animate-pulse text-emerald-500' : 'text-emerald-500'} />
+            {backfillingTasks ? 'Backfilling…' : 'Backfill Tasks from Calls'}
+          </button>
+          <button
+            onClick={createTasksFromCalls}
+            disabled={creatingTasks}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            <Zap size={13} className={creatingTasks ? 'animate-pulse text-amber-500' : 'text-amber-500'} />
+            {creatingTasks ? 'Creating…' : 'Add Tasks from Calls'}
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
         </div>
-      </div>
-
+      }
+    >
       {/* Task result banner */}
       {taskResult && (
         <div className={`px-6 py-2 text-sm font-medium ${taskResult.ok ? 'bg-emerald-50 text-emerald-700 border-b border-emerald-100' : 'bg-red-50 text-red-700 border-b border-red-100'}`}>
@@ -851,6 +836,6 @@ export default function TeamDashboard() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }

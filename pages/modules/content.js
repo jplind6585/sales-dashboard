@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, FileText, Mail, Layers, Calendar, FileSpreadsheet, Sparkles, Loader2, Copy, RefreshCw, Check, ExternalLink, AlertTriangle, Phone, Share2, Eye, ChevronLeft, ChevronRight, Wand2, UserPlus } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import { FileText, Mail, Layers, Calendar, FileSpreadsheet, Loader2, Copy, RefreshCw, Check, ExternalLink, AlertTriangle, Phone, Share2, Eye, ChevronLeft, ChevronRight, Wand2, UserPlus } from 'lucide-react'
+import AppShell from '../../components/layout/AppShell'
 import { useAccounts } from '../../hooks/useAccounts'
 import { getSupabase } from '../../lib/supabase'
 import AccountCombobox from '../../components/ui/AccountCombobox'
@@ -246,22 +245,8 @@ export default function ContentStudio() {
   const personSelectValue = person ? (person.id || 'custom') : 'account'
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><ArrowLeft className="w-4 h-4" /></button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Sparkles className="w-4 h-4 text-coral-500" /> Content Studio</h1>
-              <p className="text-xs text-gray-400">AI-drafted from this account's calls — adapt and send</p>
-            </div>
-            <ModulesNav router={router} />
-          </div>
-          <UserMenu />
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-6 py-6 grid lg:grid-cols-3 gap-6">
+    <AppShell title="Content Studio" subtitle="AI-drafted from this account's calls — adapt and send">
+      <div className="max-w-7xl mx-auto px-6 py-6 grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <label className="text-xs font-semibold text-gray-500 uppercase">Account</label>
@@ -400,7 +385,7 @@ export default function ContentStudio() {
           </div>
           <p className="text-xs text-gray-400 mt-2">Grounded in this account's analyzed calls + your sales process. Nothing is sent or saved automatically. Versions are kept in this browser.</p>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

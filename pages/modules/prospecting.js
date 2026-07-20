@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
-import { ArrowLeft, Search, Loader2, Sparkles, Plus, Linkedin, Check } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import { Search, Loader2, Sparkles, Plus, Linkedin, Check } from 'lucide-react'
+import AppShell from '../../components/layout/AppShell'
 import EmptyState from '../../components/ui/EmptyState'
 
 // Apollo prospecting (M1 seed, human-in-the-loop). Search is free; the SDR reviews, reveals a
@@ -60,22 +59,8 @@ export default function Prospecting() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <header className="bg-white border-b border-hairline sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><ArrowLeft className="w-4 h-4" /></button>
-            <div>
-              <h1 className="text-lg font-semibold text-ink font-display">Prospecting</h1>
-              <p className="text-xs text-slate-400">Search Apollo, review, reveal a contact, add to pipeline — nothing is auto-sent</p>
-            </div>
-            <ModulesNav router={router} />
-          </div>
-          <UserMenu />
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-6 py-6 space-y-4">
+    <AppShell title="Prospecting" subtitle="Search Apollo, review, reveal a contact, add to pipeline — nothing is auto-sent">
+      <div className="max-w-5xl mx-auto px-6 py-6 space-y-4">
         <div className="bg-white rounded-card border border-hairline p-4 space-y-3">
           <div className="grid sm:grid-cols-3 gap-2">
             <input value={titles} onChange={e => setTitles(e.target.value)} placeholder="Titles (VP Construction, Head of CapEx)" className="text-sm border border-hairline rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-coral-200" />
@@ -121,7 +106,7 @@ export default function Prospecting() {
             })}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

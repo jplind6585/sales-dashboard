@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, Target, TrendingUp, Activity, MessageSquare, Lightbulb, AlertTriangle, CheckCircle2, Eye } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
-import ModulesNav from '../../../components/layout/ModulesNav'
+import { RefreshCw, Target, TrendingUp, Activity, MessageSquare, Lightbulb, AlertTriangle, CheckCircle2, Eye } from 'lucide-react'
+import AppShell from '../../../components/layout/AppShell'
 
 function fmtMoney(n) {
   const v = Number(n) || 0
@@ -59,7 +57,6 @@ function GoalSetter({ onSaved }) {
 }
 
 export default function CommandCenter() {
-  const router = useRouter()
   const [period, setPeriod] = useState('quarter')
   const [scorecard, setScorecard] = useState(null)
   const [feed, setFeed] = useState(null)
@@ -85,28 +82,19 @@ export default function CommandCenter() {
   const pros = feed?.prospects
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><ArrowLeft className="w-4 h-4" /></button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Command Center</h1>
-              <p className="text-xs text-gray-400">Goal tracking · live feed · what's working</p>
-            </div>
-            <ModulesNav router={router} />
-          </div>
-          <div className="flex items-center gap-3">
-            <select value={period} onChange={e => setPeriod(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
-              <option value="month">Month</option><option value="quarter">Quarter</option><option value="year">Year</option>
-            </select>
-            <button onClick={load} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
-            <UserMenu />
-          </div>
+    <AppShell
+      title="Command Center"
+      subtitle="Goal tracking · live feed · what's working"
+      actions={
+        <div className="flex items-center gap-2">
+          <select value={period} onChange={e => setPeriod(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
+            <option value="month">Month</option><option value="quarter">Quarter</option><option value="year">Year</option>
+          </select>
+          <button onClick={load} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+      }
+    >
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">{error}</div>}
         {loading && !scorecard && <div className="text-gray-400 text-sm">Loading…</div>}
 
@@ -211,7 +199,7 @@ export default function CommandCenter() {
             </section>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

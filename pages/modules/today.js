@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import {
-  Zap, Building2, Send, TrendingUp, Users, BarChart3,
+  Building2, Send, TrendingUp, Users, BarChart3,
   ChevronDown, ChevronUp, ChevronRight, X, RefreshCw,
   Calendar, Clock, Loader2, AlertCircle, CheckCircle2,
   Sparkles, ArrowRight, Target, Info, Phone, Mail,
@@ -10,8 +10,7 @@ import {
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import UserMenu from '../../components/auth/UserMenu';
-import ModulesNav from '../../components/layout/ModulesNav';
+import AppShell from '../../components/layout/AppShell';
 import { PRIORITY_COLORS } from '../../lib/constants';
 import StageBadge from '../../components/ui/StageBadge';
 
@@ -1742,49 +1741,30 @@ export default function TodayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-500" />
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900 leading-tight">Today</h1>
-                  <p className="text-xs text-gray-400 leading-none">Your daily focus</p>
-                </div>
-              </div>
-              <ModulesNav router={router} />
-            </div>
-
-            <div className="flex items-center gap-3">
-              {!isManager && (
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => handleRepTypeToggle('sdr')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                      activeView === 'sdr' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    SDR
-                  </button>
-                  <button
-                    onClick={() => handleRepTypeToggle('ae')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                      activeView === 'ae' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    AE
-                  </button>
-                </div>
-              )}
-
-              {user && <UserMenu />}
-            </div>
-          </div>
+    <AppShell
+      title="Today"
+      subtitle="Your daily focus"
+      actions={!isManager && (
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => handleRepTypeToggle('sdr')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeView === 'sdr' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            SDR
+          </button>
+          <button
+            onClick={() => handleRepTypeToggle('ae')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeView === 'ae' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            AE
+          </button>
         </div>
-      </div>
-
+      )}
+    >
       <div className="max-w-6xl mx-auto px-6 py-8">
         {activeView === 'manager' && <ManagerView router={router} />}
         {activeView === 'ae' && (
@@ -1792,6 +1772,6 @@ export default function TodayPage() {
         )}
         {activeView === 'sdr' && <SDRView router={router} />}
       </div>
-    </div>
+    </AppShell>
   )
 }

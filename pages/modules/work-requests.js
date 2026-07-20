@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, Plus, X, ChevronDown, ChevronRight, Building2 } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import { Plus, X, ChevronDown, ChevronRight, Building2 } from 'lucide-react'
+import AppShell from '../../components/layout/AppShell'
 import { SkeletonRows } from '../../components/ui/Skeleton'
 import EmptyState from '../../components/ui/EmptyState'
 import Select from '../../components/ui/Select'
@@ -15,7 +13,6 @@ const NEXT = { open: 'in_progress', in_progress: 'delivered' }
 // Cross-team Work Requests (PLATFORM_REVIEW cross-team scope). The fulfiller gets the account
 // context snapshot automatically.
 export default function WorkRequests() {
-  const router = useRouter()
   const [requests, setRequests] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [showForm, setShowForm] = useState(false)
@@ -46,27 +43,16 @@ export default function WorkRequests() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <header className="bg-white border-b border-hairline sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><ArrowLeft className="w-4 h-4" /></button>
-            <div>
-              <h1 className="text-lg font-semibold text-ink font-display">Work Requests</h1>
-              <p className="text-xs text-slate-400">Ask design / sales engineering — the account context comes attached</p>
-            </div>
-            <ModulesNav router={router} />
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setShowForm((s) => !s)} className="text-xs flex items-center gap-1 px-3 py-1.5 bg-coral-600 text-white rounded-lg hover:bg-coral-700">
-              {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />} {showForm ? 'Cancel' : 'New request'}
-            </button>
-            <UserMenu />
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-6 py-6 space-y-4">
+    <AppShell
+      title="Work Requests"
+      subtitle="Ask design / sales engineering — the account context comes attached"
+      actions={
+        <button onClick={() => setShowForm((s) => !s)} className="text-xs flex items-center gap-1 px-3 py-1.5 bg-coral-600 text-white rounded-lg hover:bg-coral-700">
+          {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />} {showForm ? 'Cancel' : 'New request'}
+        </button>
+      }
+    >
+      <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
         {showForm && (
           <div className="bg-white rounded-card border border-hairline p-4 space-y-3">
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What do you need? (e.g. Custom demo env for UDR with their unit data)" className="w-full text-sm border border-hairline rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-coral-200" />
@@ -112,7 +98,7 @@ export default function WorkRequests() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

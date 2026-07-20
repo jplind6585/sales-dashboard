@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import {
-  ArrowLeft,
   RefreshCw,
   TrendingUp,
   TrendingDown,
@@ -10,8 +9,7 @@ import {
   ArrowRight,
   Activity,
 } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import AppShell from '../../components/layout/AppShell'
 import { useAuthStore } from '../../stores/useAuthStore'
 import StageBadge from '../../components/ui/StageBadge'
 import { stageHex, stageLabel } from '../../lib/constants'
@@ -538,40 +536,20 @@ export default function StageAnalytics() {
   const pipelineDisplay = fmtValue(totalPipelineValue) || '$0'
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ── Header ── */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/modules')}
-              className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <Activity className="w-6 h-6 text-blue-600" />
-                Stage Analytics
-              </h1>
-              <p className="text-sm text-gray-500">How deals move through the pipeline</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <ModulesNav router={router} />
-            <button
-              onClick={() => loadData(true)}
-              disabled={refreshing}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <UserMenu />
-          </div>
-        </div>
-      </div>
-
+    <AppShell
+      title="Stage Analytics"
+      subtitle="How deals move through the pipeline"
+      actions={
+        <button
+          onClick={() => loadData(true)}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+      }
+    >
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
         {/* ── Stats Bar ── */}
@@ -627,6 +605,6 @@ export default function StageAnalytics() {
         {activeTab === 2 && <StallRiskTab data={data} router={router} />}
 
       </div>
-    </div>
+    </AppShell>
   )
 }

@@ -1,8 +1,6 @@
 import { useRouter } from 'next/router'
-import { ArrowLeft, PhoneCall, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart, Database, Target } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
-import ModulesNav from '../../../components/layout/ModulesNav'
-import { useAuthStore } from '../../../stores/useAuthStore'
+import { PhoneCall, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart, Database, Target } from 'lucide-react'
+import AppShell from '../../../components/layout/AppShell'
 
 // Calm, single-accent cards (BRAND_GUIDE.md). No rainbow gradients, no red "Live" pill on every
 // card (§5.7 — red misuse + zero information since they're all live).
@@ -40,27 +38,8 @@ function ReportCard({ report }) {
 }
 
 export default function SalesReports() {
-  const router = useRouter()
-  const { user } = useAuthStore()
-
   return (
-    <div className="min-h-screen bg-canvas">
-      <div className="bg-white border-b border-hairline">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/modules')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-              <ArrowLeft className="w-5 h-5 text-slate-500" />
-            </button>
-            <ModulesNav router={router} />
-            <div>
-              <h1 className="text-lg font-semibold text-ink font-display">Sales Reports</h1>
-              <p className="text-xs text-slate-400">Analytics and intelligence for the sales team</p>
-            </div>
-          </div>
-          {user && <UserMenu />}
-        </div>
-      </div>
-
+    <AppShell title="Sales Reports" subtitle="Analytics and intelligence for the sales team">
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {REPORTS.map((report) => (
@@ -68,6 +47,6 @@ export default function SalesReports() {
           ))}
         </div>
       </div>
-    </div>
+    </AppShell>
   )
 }

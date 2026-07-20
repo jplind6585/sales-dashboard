@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/router'
-import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Search, ChevronDown, ChevronUp } from 'lucide-react'
-import UserMenu from '../../../components/auth/UserMenu'
+import { RefreshCw, CheckCircle2, XCircle, Search, ChevronDown, ChevronUp } from 'lucide-react'
+import AppShell from '../../../components/layout/AppShell'
 
 const ACTION_LABELS = {
   note_created: 'Note created',
@@ -102,7 +101,6 @@ function EntryRow({ entry }) {
 }
 
 export default function HubSpotAuditLog() {
-  const router = useRouter()
   const [entries, setEntries] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -155,29 +153,15 @@ export default function HubSpotAuditLog() {
   const failCount = entries.filter(e => e.success === false).length
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <button onClick={() => router.push('/modules/sales-reports')} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft className="w-4 h-4 text-gray-500" />
-              </button>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">HubSpot Audit Log</h1>
-                <p className="text-xs text-gray-400">All HubSpot writes from the sales dashboard</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => load(0, search, actionFilter)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <RefreshCw className="w-4 h-4 text-gray-500" />
-              </button>
-              <UserMenu />
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <AppShell
+      title="HubSpot Audit Log"
+      subtitle="All HubSpot writes from the sales dashboard"
+      actions={
+        <button onClick={() => load(0, search, actionFilter)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+          <RefreshCw className="w-4 h-4 text-gray-500" />
+        </button>
+      }
+    >
       <div className="max-w-5xl mx-auto px-6 py-6">
         {/* Stats strip */}
         <div className="flex items-center gap-6 mb-5 text-sm text-gray-600">
@@ -271,6 +255,6 @@ export default function HubSpotAuditLog() {
           </div>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }

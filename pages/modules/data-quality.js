@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import {
-  ArrowLeft, RefreshCw, Link2, GitMerge, AlertCircle, CheckCircle,
+  RefreshCw, Link2, GitMerge, AlertCircle, CheckCircle,
   Search, ChevronRight, X, Plus, Tag, Globe, Undo2, Zap,
 } from 'lucide-react'
-import UserMenu from '../../components/auth/UserMenu'
-import ModulesNav from '../../components/layout/ModulesNav'
+import AppShell from '../../components/layout/AppShell'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 const TABS = [
@@ -304,7 +303,15 @@ export default function DataQuality() {
   const counts = data?.counts || {}
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <AppShell
+      title="Data Quality"
+      subtitle="Account deduplication, call matching, and alias management"
+      actions={
+        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+        </button>
+      }
+    >
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-[100] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 text-white'}`}>
@@ -316,28 +323,6 @@ export default function DataQuality() {
       {mergeModal && (
         <MergeModal pair={mergeModal} accounts={[]} onClose={() => setMergeModal(null)} onMerge={mergeAccounts} />
       )}
-
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm shrink-0">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/modules/settings')} className="p-2 hover:bg-gray-100 rounded-lg">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Data Quality</h1>
-              <p className="text-xs text-gray-400 mt-0.5">Account deduplication, call matching, and alias management</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <ModulesNav router={router} />
-            <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
-            </button>
-            {user && <UserMenu />}
-          </div>
-        </div>
-      </div>
 
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200 shrink-0">
@@ -799,6 +784,6 @@ export default function DataQuality() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }
