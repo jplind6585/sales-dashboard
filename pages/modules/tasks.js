@@ -1086,6 +1086,55 @@ function TodaysFocus() {
 
 // ─── Daily Focus Brief ───────────────────────────────────────────────────────
 
+// Start-of-day surface: the tasks that came out of TODAY's calls, grouped by call. Hidden when
+// there are none. Lets a rep act on today's calls before wading into the full backlog.
+function TodaysCallTasks({ onStatusChange }) {
+  const [calls, setCalls] = useState(null)
+  const [doneIds, setDoneIds] = useState(new Set())
+  useEffect(() => { fetch('/api/tasks/from-todays-calls').then(r => r.json()).then(d => setCalls(d.calls || [])).catch(() => setCalls([])) }, [])
+  if (!calls || calls.length === 0) return null
+  const complete = (id) => { setDoneIds(s => new Set([...s, id])); onStatusChange?.(id, 'complete') }
+  const total = calls.reduce((n, c) => n + c.tasks.length, 0)
+  return (
+    <div className="mb-5 bg-white rounded-xl border border-coral-200 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-coral-50 border-b border-coral-100">
+        <div className="flex items-center gap-2">
+          <Phone className="w-4 h-4 text-coral-600" />
+          <span className="text-sm font-semibold text-coral-800">From Today's Calls</span>
+          <span className="text-xs text-coral-400">{calls.length} call{calls.length !== 1 ? 's' : ''} · {total} task{total !== 1 ? 's' : ''}</span>
+        </div>
+        {doneIds.size > 0 && <span className="text-xs text-emerald-600 font-medium">{doneIds.size} done</span>}
+      </div>
+      <div className="divide-y divide-gray-100">
+        {calls.map(c => (
+          <div key={c.callId} className="px-4 py-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-medium text-gray-800 truncate">{c.title || 'Untitled call'}</span>
+              {c.stage && <StageBadge stage={c.stage} />}
+              {c.callDate && <span className="text-xs text-gray-400">{new Date(c.callDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>}
+            </div>
+            <ul className="space-y-1.5">
+              {c.tasks.map(t => {
+                const done = doneIds.has(t.id)
+                return (
+                  <li key={t.id} className="flex items-center gap-2">
+                    <button onClick={() => complete(t.id)} disabled={done} className="flex-shrink-0 text-gray-300 hover:text-green-500 transition-colors">
+                      {done ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Circle className="w-4 h-4" />}
+                    </button>
+                    <span className={`flex-1 text-sm truncate ${done ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.title}</span>
+                    {t.sourceType === 'gong_reengage' && <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-coral-50 text-coral-600 border border-coral-200">re-engage</span>}
+                    {t.sourceType === 'gong_commitment' && <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">commitment</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function DailyFocusBrief({ tasks, onWorkInClaude, onStatusChange }) {
   const [focus, setFocus] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -2662,6 +2711,7 @@ export default function TasksPage() {
               const waitingTasks = activeTasks.filter(t => t.momentum === 'waiting_on_them')
               return (
                 <>
+                  <TodaysCallTasks onStatusChange={handleStatusChange} />
                   <DailyFocusBrief tasks={activeTasks} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
                   <TodaysFocus />
                   <CallCommitmentsPanel onAddTask={handleCreate} />
