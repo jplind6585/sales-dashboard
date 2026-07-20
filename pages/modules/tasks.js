@@ -442,7 +442,7 @@ function WorkInClaude({ task, onClose }) {
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white border-l border-gray-200 flex flex-col shadow-2xl z-50">
+      <div className="fixed inset-y-0 right-0 w-full max-w-3xl bg-white border-l border-gray-200 flex flex-col shadow-2xl z-50">
         {/* Header */}
         <div className="flex items-start justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
           <div className="flex-1 min-w-0 mr-3">

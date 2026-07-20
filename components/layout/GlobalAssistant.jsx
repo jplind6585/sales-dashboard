@@ -113,7 +113,7 @@ export default function GlobalAssistant() {
       {open && (
         <div className="fixed inset-0 z-[60] pointer-events-none">
           <div className="absolute inset-0 bg-black/10 pointer-events-auto" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col pointer-events-auto">
+          <div className="absolute right-0 top-0 h-full w-full max-w-4xl bg-white shadow-2xl flex flex-col pointer-events-auto">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
               <div className="flex items-center gap-2">

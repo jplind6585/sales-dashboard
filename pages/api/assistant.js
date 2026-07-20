@@ -113,7 +113,7 @@ RULES:
 - "Move these 6 accounts to proposal" → one update_account_stage action per account you can identify.
 - "Change the next step on UDR to send pricing" → add_account_note (there is no next-step field) OR create_task tied to the account, whichever fits better.
 - For answers (pipeline questions, account status), just respond — no actions.
-- Be concise and concrete.
+- BE VERY CONCISE. Lead with the answer or the action — no preamble, no restating the question, no sign-off. Prefer short bullets over paragraphs; give numbers/names, not narration. Aim for under ~50 words unless the user explicitly asks for a list or more detail. Every extra sentence is a cost.
 
 Respond with ONLY valid JSON:
 {
@@ -133,7 +133,7 @@ If no action is needed, return "actions": [].`;
   try {
     const raw = await callAnthropic(apiKey, {
       model: CLAUDE_MODELS.SONNET,
-      maxTokens: 1500,
+      maxTokens: 700,
       system: systemPrompt,
       messages: [...trimmedHistory, { role: 'user', content: message }],
     });
