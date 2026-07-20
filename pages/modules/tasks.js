@@ -2164,6 +2164,7 @@ export default function TasksPage() {
   const [taskView, setTaskView] = useState('focus') // 'focus' | 'by_account' | 'all'
   const [backfilling, setBackfilling] = useState(false)
   const [clearingNoise, setClearingNoise] = useState(false)
+  const [startingClean, setStartingClean] = useState(false)
   const demoSeeded = useRef(false)
 
   const bulkMode = selectedTaskIds.size > 0
@@ -2450,6 +2451,20 @@ export default function TasksPage() {
     finally { setClearingNoise(false) }
   }
 
+  const handleStartClean = async () => {
+    setStartingClean(true)
+    try {
+      const prev = await fetch('/api/tasks/start-clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json())
+      const n = prev.count || 0
+      if (!n) { window.alert('Nothing to archive — your list already starts from today.'); return }
+      const kept = prev.keptScheduled ? `\n\nKept: ${prev.keptScheduled} future-scheduled task${prev.keptScheduled === 1 ? '' : 's'}.` : ''
+      if (!window.confirm(`Start clean from today?\n\nThis archives ${n} open task${n === 1 ? '' : 's'} from before today. New tasks from your calls still appear as they come in.${kept}\n\nThey're dismissed (recoverable), not deleted.`)) return
+      const res = await fetch('/api/tasks/start-clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ execute: true }) }).then(r => r.json())
+      if (res.cleared != null) fetchTasks()
+    } catch (e) { window.alert('Start clean failed: ' + e.message) }
+    finally { setStartingClean(false) }
+  }
+
   const filteredTasks = tasks.filter(t => {
     if (filterStatus === 'active') return t.status !== 'complete'
     if (filterStatus === 'complete') return t.status === 'complete'
@@ -2677,6 +2692,9 @@ export default function TasksPage() {
                 </button>
               ))}
               <div className="ml-auto flex items-center gap-3">
+                <button onClick={handleStartClean} disabled={startingClean} title="Archive the old backlog and start fresh from today. New tasks from your calls still appear. Reversible." className="text-xs text-gray-400 hover:text-coral-600 disabled:opacity-40 transition-colors">
+                  {startingClean ? 'Cleaning…' : 'Start clean'}
+                </button>
                 <button onClick={handleClearNoise} disabled={clearingNoise} title="Dismiss low-signal Gong tasks (in-call narration / boilerplate)" className="text-xs text-gray-400 hover:text-coral-600 disabled:opacity-40 transition-colors">
                   {clearingNoise ? 'Clearing…' : 'Clear noise'}
                 </button>
