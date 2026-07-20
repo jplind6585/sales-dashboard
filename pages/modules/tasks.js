@@ -2086,6 +2086,7 @@ export default function TasksPage() {
   const [sortBy, setSortBy] = useState('smart') // smart | due | priority | account | recent
   const [taskView, setTaskView] = useState('focus') // 'focus' | 'by_account' | 'all'
   const [backfilling, setBackfilling] = useState(false)
+  const [clearingNoise, setClearingNoise] = useState(false)
   const demoSeeded = useRef(false)
 
   const bulkMode = selectedTaskIds.size > 0
@@ -2358,6 +2359,20 @@ export default function TasksPage() {
   const currentUserId = user?.id
 
   // Filter tasks for rep view
+  const handleClearNoise = async () => {
+    setClearingNoise(true)
+    try {
+      const prev = await fetch('/api/tasks/clear-noise', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json())
+      const n = prev.count || 0
+      if (!n) { window.alert('No low-signal tasks to clear — your list is already clean.'); return }
+      const sample = (prev.sample || []).slice(0, 5).map(s => `• ${s}`).join('\n')
+      if (!window.confirm(`Clear ${n} low-signal task${n === 1 ? '' : 's'} (in-call narration / boilerplate from Gong)?\n\nExamples:\n${sample}\n\nThey'll be dismissed (recoverable), not deleted.`)) return
+      const res = await fetch('/api/tasks/clear-noise', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ execute: true }) }).then(r => r.json())
+      if (res.cleared != null) fetchTasks()
+    } catch (e) { window.alert('Clear noise failed: ' + e.message) }
+    finally { setClearingNoise(false) }
+  }
+
   const filteredTasks = tasks.filter(t => {
     if (filterStatus === 'active') return t.status !== 'complete'
     if (filterStatus === 'complete') return t.status === 'complete'
@@ -2584,14 +2599,19 @@ export default function TasksPage() {
                   {label}
                 </button>
               ))}
-              <span className="ml-auto text-sm text-gray-400">
-                {tasks.filter(t => t.status !== 'complete').length} open
-                {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length > 0 && (
-                  <span className="ml-1 text-amber-500">
-                    · {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length} waiting
-                  </span>
-                )}
-              </span>
+              <div className="ml-auto flex items-center gap-3">
+                <button onClick={handleClearNoise} disabled={clearingNoise} title="Dismiss low-signal Gong tasks (in-call narration / boilerplate)" className="text-xs text-gray-400 hover:text-coral-600 disabled:opacity-40 transition-colors">
+                  {clearingNoise ? 'Clearing…' : 'Clear noise'}
+                </button>
+                <span className="text-sm text-gray-400">
+                  {tasks.filter(t => t.status !== 'complete').length} open
+                  {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length > 0 && (
+                    <span className="ml-1 text-amber-500">
+                      · {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length} waiting
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>
 
             {/* Bulk action bar — all tabs */}
