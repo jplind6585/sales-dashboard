@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     .single();
 
   if (profileError || !profile) return apiError(res, 403, 'Manager access required');
-  if (profile.role !== 'manager') return apiError(res, 403, 'Manager access required');
+  if (!['manager','admin'].includes(profile.role)) return apiError(res, 403, 'Manager access required');
 
   const { callId, note } = req.body;
   if (!callId) return apiError(res, 400, 'callId is required');

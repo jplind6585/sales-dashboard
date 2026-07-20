@@ -30,7 +30,7 @@ export default async function handler(req, res) {
   const byOwner = {};
   for (const task of tasks) {
     const rep = task.profiles;
-    if (!rep || rep.role === 'manager') continue;
+    if (!rep || ['manager','admin'].includes(rep.role)) continue;
     if (!byOwner[rep.id]) byOwner[rep.id] = { rep, tasks: [] };
     byOwner[rep.id].tasks.push(task);
   }

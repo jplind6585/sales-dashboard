@@ -177,6 +177,23 @@ export default function SettingsPage() {
     <AppShell title="Settings">
       <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
 
+        {/* ── Your account ── */}
+        <div className="bg-white rounded-xl border p-5 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-gray-900 truncate">{profile?.full_name || profile?.email || 'Your account'}</h2>
+            <p className="text-xs text-gray-500 mt-0.5 truncate">{profile?.email}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs text-gray-400">Access</span>
+            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${profile?.role === 'admin' ? 'bg-coral-50 text-coral-700' : profile?.role === 'manager' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+              {({ admin: 'Admin', manager: 'Manager', rep: 'Rep' })[profile?.role] || 'Rep'}
+            </span>
+            {isAdmin
+              ? <button onClick={() => router.push('/modules/users')} className="text-xs px-3 py-1 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Manage users</button>
+              : <span className="text-[11px] text-gray-400">Set by an admin</span>}
+          </div>
+        </div>
+
         {/* ── Integrations health ── */}
         <div className="bg-white rounded-xl border p-5">
           <div className="flex items-center justify-between mb-3">

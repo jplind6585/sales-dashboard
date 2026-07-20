@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { Search } from 'lucide-react'
 import UserMenu from '../auth/UserMenu'
 import { GROUPS, MODULES } from '../../lib/moduleRegistry'
+import { isAdmin, isManager } from '../../lib/roles'
 
 // The one app frame — a persistent left rail (grouped from the single nav registry) + a slim top
 // bar — that every module renders inside, so navigation is identical everywhere. Pass title/subtitle
@@ -25,13 +26,24 @@ function PanelToggle({ collapsed }) {
 export default function AppShell({ title, subtitle, actions, children }) {
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
+  const [role, setRole] = useState('rep')
 
-  useEffect(() => { try { setCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1') } catch {} }, [])
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1')
+      const cached = localStorage.getItem('cached_role'); if (cached) setRole(cached)
+    } catch {}
+  }, [])
+  useEffect(() => {
+    fetch('/api/me').then(r => r.json()).then(d => { const r = d.profile?.role || 'rep'; setRole(r); try { localStorage.setItem('cached_role', r) } catch {} }).catch(() => {})
+  }, [])
   const toggle = () => setCollapsed(c => { const n = !c; try { localStorage.setItem(COLLAPSE_KEY, n ? '1' : '0') } catch {}; return n })
 
   const path = router.pathname
+  // minRole-gated items (e.g. admin-only Users) are hidden unless the viewer qualifies.
+  const canSee = (m) => !m.minRole || (m.minRole === 'admin' ? isAdmin(role) : m.minRole === 'manager' ? isManager(role) : true)
   const groups = GROUPS
-    .map(g => ({ group: g, items: MODULES.filter(m => m.group === g && m.nav && m.key !== 'settings') }))
+    .map(g => ({ group: g, items: MODULES.filter(m => m.group === g && m.nav && m.key !== 'settings' && canSee(m)) }))
     .filter(s => s.items.length)
   const settings = MODULES.find(m => m.key === 'settings')
 

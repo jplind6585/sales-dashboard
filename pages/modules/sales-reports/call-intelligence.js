@@ -2719,7 +2719,7 @@ export default function CallIntelligence() {
                 </div>
 
                 {/* Manager Note — manager-only */}
-                {user?.role === 'manager' && (
+                {['manager','admin'].includes(user?.role) && (
                   <div className="border-t border-gray-100 pt-4">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">

@@ -31,7 +31,7 @@ function findColumn(row, candidates) {
 
 export default function ActivityLeaderboard() {
   const profile = useAuthStore(s => s.profile)
-  const isAdmin = profile?.role === 'manager'
+  const isAdmin = ['manager','admin'].includes(profile?.role)
   const [period, setPeriod] = useState('30')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)

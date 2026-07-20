@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     .select('role')
     .eq('id', user.id)
     .single()
-  if (profile?.role !== 'manager') return apiError(res, 403, 'Manager access required')
+  if (!['manager','admin'].includes(profile?.role)) return apiError(res, 403, 'Manager access required')
 
   const { sessionId, items } = req.body || {}
   if (!sessionId || !Array.isArray(items)) return apiError(res, 400, 'sessionId and items array required')

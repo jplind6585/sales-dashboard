@@ -1729,7 +1729,7 @@ export default function TodayPage() {
     setRepType(type)
   }
 
-  const isManager = profile?.role === 'manager'
+  const isManager = ['manager','admin'].includes(profile?.role)
   const activeView = isManager ? 'manager' : (repType || 'ae')
 
   if (!isReady) {

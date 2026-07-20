@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     .eq('id', user.id)
     .single();
 
-  if (profile?.role !== 'manager') {
+  if (!['manager','admin'].includes(profile?.role)) {
     return res.status(403).json({ error: 'Manager role required' });
   }
 

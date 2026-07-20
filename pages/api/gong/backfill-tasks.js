@@ -86,7 +86,7 @@ export default async function handler(req, res) {
 
     const db = getSupabase();
     const { data: profile } = await db.from('profiles').select('role').eq('id', user.id).single();
-    if (profile?.role !== 'manager') return res.status(403).json({ error: 'Manager role required' });
+    if (!['manager','admin'].includes(profile?.role)) return res.status(403).json({ error: 'Manager role required' });
   }
 
   const db = getSupabase();

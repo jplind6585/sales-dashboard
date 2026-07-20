@@ -180,7 +180,7 @@ export default async function handler(req, res) {
   let sent = 0;
 
   for (const profile of profiles) {
-    const isManager = profile.role === 'manager';
+    const isManager = ['manager','admin'].includes(profile.role);
     let blocks;
 
     if (isManager) {

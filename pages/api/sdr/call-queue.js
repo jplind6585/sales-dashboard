@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
   const db = getSupabase();
   const { data: profile } = await db.from('profiles').select('id, full_name, role').eq('id', user.id).maybeSingle();
-  const isManager = profile?.role === 'manager';
+  const isManager = ['manager','admin'].includes(profile?.role);
   const scope = req.query.scope === 'all' ? 'all' : (req.query.scope === 'mine' ? 'mine' : (isManager ? 'all' : 'mine'));
   const target = Math.max(1, parseInt(req.query.target, 10) || DEFAULT_TARGET);
 

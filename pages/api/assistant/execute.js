@@ -42,7 +42,7 @@ export default async function handler(req, res) {
   const { data: profile } = await db.from('profiles').select('id, full_name, email, role').eq('id', user.id).maybeSingle();
   const userId = profile?.id || user.id;
   const userName = profile?.full_name || user.email;
-  const isManager = profile?.role === 'manager';
+  const isManager = ['manager','admin'].includes(profile?.role);
 
   // Reps may only act on accounts they own; managers on any. (acct.user_id may be null = unassigned.)
   const canTouchAccount = (acct) => isManager || !acct.user_id || acct.user_id === userId;
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
           if (await findTaskBySource('assistant', sourceId)) { results.push({ ok: true, label: a.label, detail: 'already created' }); continue; }
           const { data: team } = await db.from('profiles').select('id, full_name, email, rep_type, role');
           const recips = (team || []).filter(p =>
-            (['ae', 'sdr'].includes((p.rep_type || '').toLowerCase()) || p.role === 'manager') &&
+            (['ae', 'sdr'].includes((p.rep_type || '').toLowerCase()) || ['manager','admin'].includes(p.role)) &&
             !isExcludedRep(p.full_name) && !isExcludedRep(p.email)
           );
           if (!recips.length) { results.push({ ok: false, label: a.label, error: 'no eligible recipients' }); continue; }
