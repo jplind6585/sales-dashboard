@@ -23,7 +23,9 @@ export default async function handler(req, res) {
       redirectTo: `${siteUrl}/api/auth/callback`,
       queryParams: {
         access_type: 'offline',
-        prompt: 'select_account',
+        // 'consent' (not 'select_account') so Google re-issues a refresh token — needed for the
+        // server-side pre-call calendar cron to work without the user re-signing in daily.
+        prompt: 'consent',
       },
       skipBrowserRedirect: true,
     },

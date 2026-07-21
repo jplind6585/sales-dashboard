@@ -28,8 +28,16 @@ export default async function handler(req, res) {
     return redirect(res, '/login?error=unauthorized_domain')
   }
 
-  // Auto-provision profile on first sign-in
   const db = getSupabase()
+
+  // Capture the Google refresh token (offline access) so the server can pull the user's calendar
+  // for the pre-call prep cron without them re-signing in. Google only returns it with prompt=consent;
+  // keep any previously-stored token if this sign-in didn't include one.
+  if (session.provider_refresh_token) {
+    db.from('profiles').update({ google_refresh_token: session.provider_refresh_token }).eq('id', session.user.id).then(() => {}, () => {})
+  }
+
+  // Auto-provision profile on first sign-in
   const { data: profile } = await db
     .from('profiles')
     .select('id')
