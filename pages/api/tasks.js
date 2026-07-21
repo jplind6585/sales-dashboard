@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 
   // ── GET /api/tasks ──────────────────────────────────────────────────────────
   if (req.method === 'GET') {
-    const { ownerId, status, type, accountId, view } = req.query
+    const { ownerId, status, type, accountId, view, scope } = req.query
 
     // view=team returns the per-rep summary for the manager view
     if (view === 'team') {
@@ -32,8 +32,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, summary })
     }
 
+    // Scope to the caller by default. Only a manager/admin may widen to the whole team
+    // (scope=all) or another rep (ownerId=…); a rep asking for either is ignored and still
+    // gets only their own tasks. This is the ownership boundary the service-role client can't enforce.
+    let effectiveOwnerId = currentUser.id
+    if (currentUser.id !== 'local-user' && (scope === 'all' || ownerId)) {
+      const { data: prof } = await getSupabase().from('profiles').select('role').eq('id', currentUser.id).maybeSingle()
+      const isMgr = prof?.role === 'manager' || prof?.role === 'admin'
+      if (isMgr) effectiveOwnerId = ownerId || undefined // undefined => all reps
+    }
+
     const { tasks, error } = await getTasks({
-      ownerId: ownerId || undefined,
+      ownerId: effectiveOwnerId,
       status:  status  || undefined,
       type:    type    || undefined,
       accountId: accountId || undefined,

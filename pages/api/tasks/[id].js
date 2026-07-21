@@ -1,5 +1,6 @@
 import { getTask, updateTask, deleteTask, dismissTask } from '../../../lib/db/tasks'
-import { createServerSupabaseClient } from '../../../lib/supabase'
+import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase'
+import { sendSlackMessage, resolveAccountChannel } from '../../../lib/slack'
 
 export default async function handler(req, res) {
   const { id } = req.query
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
 
   // ── PATCH /api/tasks/[id] ───────────────────────────────────────────────────
   if (req.method === 'PATCH') {
-    const allowed = ['title', 'description', 'status', 'priority', 'dueDate', 'ownerId', 'visibleToManager', 'momentum']
+    const allowed = ['title', 'description', 'status', 'priority', 'dueDate', 'ownerId', 'visibleToManager', 'momentum', 'snoozeUntil']
     const updates = {}
 
     for (const key of allowed) {
@@ -55,32 +56,10 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to update task' })
     }
 
-    // Fire-and-forget HubSpot note on complete
+    // On complete, fire side effects server-side so EVERY path (quick / bulk / AI-modal) notifies
+    // exactly once — previously only the modal path posted to Slack, so most completions were silent.
     if (updates.status === 'complete' && task?.accountId) {
-      const { getSupabase: gs } = await import('../../../lib/supabase');
-      gs().from('accounts').select('hubspot_deal_id').eq('id', task.accountId).single()
-        .then(({ data: acct }) => {
-          if (!acct?.hubspot_deal_id || !process.env.HUBSPOT_API_KEY) return;
-          const noteBody = `Task completed: ${task.title}\nDate: ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-          return fetch(`https://api.hubapi.com/crm/v3/objects/notes`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.HUBSPOT_API_KEY}`,
-            },
-            body: JSON.stringify({
-              properties: {
-                hs_note_body: noteBody,
-                hs_timestamp: new Date().toISOString(),
-              },
-              associations: [{
-                to: { id: String(acct.hubspot_deal_id) },
-                types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }],
-              }],
-            }),
-          }).then(r => { if (!r.ok) r.text().then(t => console.error('[hubspot-note] failed:', t)) });
-        })
-        .catch(e => console.error('[hubspot-note] error:', e.message));
+      completeSideEffects(task, currentUser).catch(e => console.error('[task-complete] side effects:', e.message))
     }
 
     return res.status(200).json({ success: true, task })
@@ -116,4 +95,42 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' })
+}
+
+// Slack notify to the account channel + HubSpot note. Fire-and-forget; failures are logged, not fatal.
+async function completeSideEffects(task, currentUser) {
+  const db = getSupabase()
+  const { data: acct } = await db.from('accounts').select('name, slack_channel, hubspot_deal_id').eq('id', task.accountId).single()
+  if (!acct) return
+
+  // Slack — account's explicit channel override, else derived from the account name.
+  try {
+    const channel = acct.slack_channel || resolveAccountChannel({ name: acct.name })
+    let repName = null
+    if (currentUser?.id && currentUser.id !== 'local-user') {
+      const { data: prof } = await db.from('profiles').select('full_name, email').eq('id', currentUser.id).maybeSingle()
+      repName = prof?.full_name || prof?.email?.split('@')[0] || null
+    }
+    await sendSlackMessage({ text: `✅ *Task completed* — ${task.title}\n_${acct.name}${repName ? ` · ${repName}` : ''}_` }, channel)
+  } catch (e) {
+    console.error('[task-complete] slack:', e.message)
+  }
+
+  // HubSpot note on the associated deal.
+  if (acct.hubspot_deal_id && process.env.HUBSPOT_API_KEY) {
+    try {
+      const noteBody = `Task completed: ${task.title}\nDate: ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      const r = await fetch('https://api.hubapi.com/crm/v3/objects/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.HUBSPOT_API_KEY}` },
+        body: JSON.stringify({
+          properties: { hs_note_body: noteBody, hs_timestamp: new Date().toISOString() },
+          associations: [{ to: { id: String(acct.hubspot_deal_id) }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }] }],
+        }),
+      })
+      if (!r.ok) console.error('[task-complete] hubspot-note failed:', await r.text())
+    } catch (e) {
+      console.error('[task-complete] hubspot-note error:', e.message)
+    }
+  }
 }

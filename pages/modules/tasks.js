@@ -1343,13 +1343,23 @@ const TYPE_ORDER = ['triggered', 'assigned', 'recurring', 'project']
 // ─── AI Priority Score ────────────────────────────────────────────────────────
 // Client-side urgency score 0–100. Used to rank within each task type group.
 
+// Parse a task due date in LOCAL time. due_date is a date-only 'YYYY-MM-DD' string; new Date(str)
+// would read it as UTC midnight and shift it a day earlier in any negative-UTC zone (the whole US
+// team), so due-today renders "Yesterday"/overdue. Build from parts so midnight is local.
+function parseDueDate(dateStr) {
+  if (!dateStr) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return new Date(dateStr)
+}
+
 function computeTaskPriority(task) {
   let score = 0
   const today = new Date(); today.setHours(0,0,0,0)
 
   // Due date proximity
   if (task.dueDate) {
-    const d = new Date(task.dueDate)
+    const d = parseDueDate(task.dueDate)
     const diff = Math.floor((d - today) / 86400000)
     if (diff < 0)   score += 60   // overdue
     else if (diff === 0) score += 50 // due today
@@ -1378,7 +1388,7 @@ function computeTaskPriority(task) {
 
 function formatDate(dateStr) {
   if (!dateStr) return null
-  const d = new Date(dateStr)
+  const d = parseDueDate(dateStr)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diff = Math.floor((d - today) / (1000 * 60 * 60 * 24))
@@ -1392,7 +1402,8 @@ function formatDate(dateStr) {
 function isOverdue(task) {
   if (task.status === 'complete') return false
   if (!task.dueDate) return false
-  return new Date(task.dueDate) < new Date(new Date().toDateString())
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  return parseDueDate(task.dueDate) < today // due-today is NOT overdue
 }
 
 // ─── New Task Modal ───────────────────────────────────────────────────────────
@@ -2155,6 +2166,8 @@ export default function TasksPage() {
   const [showSearch, setShowSearch] = useState(false)
   const [users, setUsers] = useState([])
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set())
+  const [toast, setToast] = useState(null)
+  const showToast = (message) => { setToast(message); setTimeout(() => setToast(null), 3500) }
   const [filterStage, setFilterStage] = useState('all')
   const [filterAssignee, setFilterAssignee] = useState('mine')
   const [filterSource, setFilterSource] = useState('all')
@@ -2229,7 +2242,7 @@ export default function TasksPage() {
     setLoading(true)
     try {
       const [tasksRes, summaryRes] = await Promise.all([
-        fetch('/api/tasks'),
+        fetch('/api/tasks?scope=all'), // server returns the whole team only for managers, else just the caller
         fetch('/api/tasks?view=team'),
       ])
       const tasksData = await tasksRes.json()
@@ -2276,13 +2289,15 @@ export default function TasksPage() {
           setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'complete', _justCompleted: true } : t))
           setTimeout(() => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, _justCompleted: false } : t)), 1000)
           try {
-            await fetch(`/api/tasks/${taskId}`, {
+            const res = await fetch(`/api/tasks/${taskId}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ status: 'complete' }),
             })
+            if (!res.ok) throw new Error('save failed')
           } catch (err) {
             console.error('Failed to complete task:', err)
+            showToast("Couldn't complete task — reverted")
             fetchTasks()
           }
           return
@@ -2293,52 +2308,47 @@ export default function TasksPage() {
     }
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
+      if (!res.ok) throw new Error('save failed')
     } catch (err) {
       console.error('Failed to update task:', err)
+      showToast("Couldn't update task — reverted")
       fetchTasks()
     }
   }
 
   const handleConfirmComplete = async () => {
     if (!completeTask) return
-    setTasks(prev => prev.map(t => t.id === completeTask.id ? { ...t, status: 'complete' } : t))
+    const target = completeTask
+    setTasks(prev => prev.map(t => t.id === target.id ? { ...t, status: 'complete' } : t))
+    setCompleteTask(null)
     try {
-      await fetch(`/api/tasks/${completeTask.id}`, {
+      const res = await fetch(`/api/tasks/${target.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'complete' }),
       })
-      // Fire Slack notification to account's channel (non-blocking)
-      if (completeTask.account?.name) {
-        fetch('/api/slack/notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'task_complete',
-            accountName: completeTask.account.name,
-            slackChannel: completeTask.account.slackChannel || null,
-            taskTitle: completeTask.title,
-            repName: user?.email?.split('@')[0] || null,
-          }),
-        }).catch(() => {})
-      }
+      if (!res.ok) throw new Error('save failed')
+      // task_complete Slack notify now fires server-side in PATCH /api/tasks/[id] (every path).
     } catch (err) {
       console.error('Failed to complete task:', err)
+      showToast("Couldn't complete task — reverted")
+      fetchTasks()
     }
-    setCompleteTask(null)
   }
 
   const handleDelete = async (taskId) => {
     setTasks(prev => prev.filter(t => t.id !== taskId))
     try {
-      await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('delete failed')
     } catch (err) {
       console.error('Failed to delete task:', err)
+      showToast("Couldn't delete task — reverted")
       fetchTasks()
     }
   }
@@ -2346,13 +2356,15 @@ export default function TasksPage() {
   const handleDismiss = async (taskId, reason) => {
     setTasks(prev => prev.filter(t => t.id !== taskId))
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'dismiss', reason }),
       })
+      if (!res.ok) throw new Error('dismiss failed')
     } catch (err) {
       console.error('Failed to dismiss task:', err)
+      showToast("Couldn't dismiss task — reverted")
       fetchTasks()
     }
   }
@@ -2376,27 +2388,31 @@ export default function TasksPage() {
 
   const handleBulkComplete = async () => {
     const ids = [...selectedTaskIds]
-    await Promise.all(ids.map(id =>
+    const results = await Promise.all(ids.map(id =>
       fetch(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'complete' }),
-      })
+      }).then(r => r.ok).catch(() => false)
     ))
+    const failed = results.filter(ok => !ok).length
+    if (failed) showToast(`${failed} of ${ids.length} couldn't be completed`)
     setSelectedTaskIds(new Set())
     fetchTasks()
   }
 
   const handleBulkSnooze = async () => {
     const ids = [...selectedTaskIds]
-    const twodays = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
-    await Promise.all(ids.map(id =>
+    const until = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
+    const results = await Promise.all(ids.map(id =>
       fetch(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dueDate: twodays }),
-      })
+        body: JSON.stringify({ snoozeUntil: until }), // hides the task until it wakes; doesn't touch the real due date
+      }).then(r => r.ok).catch(() => false)
     ))
+    const failed = results.filter(ok => !ok).length
+    if (failed) showToast(`${failed} of ${ids.length} couldn't be snoozed`)
     setSelectedTaskIds(new Set())
     fetchTasks()
   }
@@ -2404,12 +2420,13 @@ export default function TasksPage() {
   const handleMomentumChange = async (taskId, momentum) => {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, momentum } : t))
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ momentum }),
       })
-    } catch { fetchTasks() }
+      if (!res.ok) throw new Error('save failed')
+    } catch { showToast("Couldn't update — reverted"); fetchTasks() }
   }
 
   const handleBulkCreate = (created) => {
@@ -2436,6 +2453,9 @@ export default function TasksPage() {
   }
 
   const currentUserId = user?.id
+  // Managers load the whole team's tasks (for the All/By-Account assignee filter), but the Focus
+  // landing tab and the header counters are always about YOUR own work — scope them to the caller.
+  const myTasks = currentUserId ? tasks.filter(t => t.ownerId === currentUserId) : tasks
 
   // Filter tasks for rep view
   const handleClearNoise = async () => {
@@ -2700,10 +2720,10 @@ export default function TasksPage() {
                   {clearingNoise ? 'Clearing…' : 'Clear noise'}
                 </button>
                 <span className="text-sm text-gray-400">
-                  {tasks.filter(t => t.status !== 'complete').length} open
-                  {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length > 0 && (
+                  {myTasks.filter(t => t.status !== 'complete').length} open
+                  {myTasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length > 0 && (
                     <span className="ml-1 text-amber-500">
-                      · {tasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length} waiting
+                      · {myTasks.filter(t => t.momentum === 'waiting_on_them' && t.status !== 'complete').length} waiting
                     </span>
                   )}
                 </span>
@@ -2725,7 +2745,7 @@ export default function TasksPage() {
 
             {/* ── FOCUS TAB ──────────────────────────────────────────────── */}
             {taskView === 'focus' && (() => {
-              const activeTasks = tasks.filter(t => t.status !== 'complete')
+              const activeTasks = myTasks.filter(t => t.status !== 'complete')
               const onMeTasks = activeTasks.filter(t => t.momentum !== 'waiting_on_them')
               const waitingTasks = activeTasks.filter(t => t.momentum === 'waiting_on_them')
               return (
@@ -2888,7 +2908,7 @@ export default function TasksPage() {
                             const firstTask = group[0]
                             const titleMatch = firstTask.title?.match(/Stage \d+:\s*(.+?)\s*[—-]/)
                             const accountLabel = titleMatch ? titleMatch[1] : (firstTask.account?.name || campaignId)
-                            const pastDue = group.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status === 'open').length
+                            const pastDue = group.filter(t => isOverdue(t) && t.status === 'open').length
                             const completed = group.filter(t => t.status === 'complete').length
                             return (
                               <div key={campaignId}>
@@ -2971,6 +2991,12 @@ export default function TasksPage() {
           onClose={() => setShowSearch(false)}
           router={router}
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg">
+          {toast}
+        </div>
       )}
     </AppShell>
   )
