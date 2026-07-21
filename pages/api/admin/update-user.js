@@ -1,4 +1,5 @@
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase'
+import { REP_TYPES } from '../../../lib/roles'
 
 export default async function handler(req, res) {
   if (req.method !== 'PATCH') return res.status(405).json({ error: 'Method not allowed' })
@@ -13,6 +14,9 @@ export default async function handler(req, res) {
 
   const { userId, rep_type } = req.body
   if (!userId) return res.status(400).json({ error: 'userId required' })
+  if (rep_type != null && rep_type !== '' && !REP_TYPES.includes(rep_type)) {
+    return res.status(400).json({ error: 'Invalid rep_type — expected ae or sdr' })
+  }
 
   const updates = {}
   if (rep_type !== undefined) updates.rep_type = rep_type || null

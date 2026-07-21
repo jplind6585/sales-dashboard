@@ -5,10 +5,16 @@ import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
 import AppShell from '../../components/layout/AppShell'
 import { STAGE_PROBABILITY, STAGE_LABELS, ACTIVE_STAGE_ORDER } from '../../lib/constants'
 
+// Invite designation: AE/SDR are seller types (-> rep_type); Manager is an access role (-> role).
 const ROLE_OPTIONS = [
   { value: 'ae', label: 'AE' },
   { value: 'sdr', label: 'SDR' },
   { value: 'manager', label: 'Manager' },
+]
+// The team-list editor here only changes rep_type; access role (Manager/Admin) is set on the Users page.
+const TYPE_OPTIONS = [
+  { value: 'ae', label: 'AE' },
+  { value: 'sdr', label: 'SDR' },
 ]
 
 export default function SettingsPage() {
@@ -163,14 +169,23 @@ export default function SettingsPage() {
   }
 
   const handleRoleChange = async (userId, newRole) => {
+    const snapshot = teamMembers
+    setTeamMembers(p => p.map(u => u.id === userId ? { ...u, rep_type: newRole } : u))
     try {
-      await fetch('/api/admin/update-user', {
+      const r = await fetch('/api/admin/update-user', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, rep_type: newRole }),
+        body: JSON.stringify({ userId, rep_type: newRole || null }),
       })
-      setTeamMembers(prev => prev.map(u => u.id === userId ? { ...u, rep_type: newRole } : u))
-    } catch {}
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        setTeamMembers(snapshot)
+        window.alert(d.error || 'Update failed')
+      }
+    } catch (e) {
+      setTeamMembers(snapshot)
+      window.alert(e.message)
+    }
   }
 
   return (
@@ -387,7 +402,7 @@ export default function SettingsPage() {
                         className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
                       >
                         <option value="">— type —</option>
-                        {ROLE_OPTIONS.map(r => (
+                        {TYPE_OPTIONS.map(r => (
                           <option key={r.value} value={r.value}>{r.label}</option>
                         ))}
                       </select>
