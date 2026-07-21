@@ -7,7 +7,7 @@ import {
   LayoutGrid, TrendingUp, Send, Sparkles,
   Target, BanIcon, Info, Star, MessageSquare, ArrowRight,
   Loader2, CornerDownLeft, Phone, Mic, Square, CheckCheck,
-  Copy, Search, FileText
+  Copy, Search, FileText, MoreHorizontal, GripVertical
 } from 'lucide-react';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
 import ReactMarkdown from 'react-markdown';
@@ -18,7 +18,7 @@ import { isSupabaseConfigured } from '../../lib/supabase';
 import AppShell from '../../components/layout/AppShell';
 import StageBadge from '../../components/ui/StageBadge';
 import { fmtUsd } from '../../lib/metrics';
-import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../lib/constants';
+import { PRIORITY_COLORS, PRIORITY_LABELS, stageHex, stageLabel, ACTIVE_STAGE_ORDER } from '../../lib/constants';
 import SmartSuggestionsPanel from '../../components/smart-suggestions/SmartSuggestionsPanel';
 import TaskCompleteModal from '../../components/tasks/TaskCompleteModal';
 
@@ -1650,6 +1650,132 @@ function renderMarkdown(text) {
   )
 }
 
+// ─── Kanban board ───────────────────────────────────────────────────────────
+// Columns are workflow status; dragging a card applies that status/momentum. Everything else
+// (account, stage, action-type, search) is a filter. Cards are tinted by the account's deal stage.
+const KANBAN_COLUMNS = [
+  { id: 'todo', label: 'To do' },
+  { id: 'in_progress', label: 'In progress' },
+  { id: 'waiting', label: 'Waiting on them' },
+  { id: 'done', label: 'Done' },
+]
+const KANBAN_APPLY = {
+  todo: { status: 'open', momentum: 'on_me' },
+  in_progress: { status: 'in_progress', momentum: 'on_me' },
+  waiting: { momentum: 'waiting_on_them' },
+  done: { status: 'complete' },
+}
+function kanbanColumnOf(t) {
+  if (t.status === 'complete') return 'done'
+  if (t.momentum === 'waiting_on_them') return 'waiting'
+  if (t.status === 'in_progress') return 'in_progress'
+  return 'todo'
+}
+// Action-type classification for the Type filter (matches James's categories).
+const ACTION_TYPE_OPTIONS = [
+  { value: 'all', label: 'All types' },
+  { value: 'pre_call', label: 'Pre-call' },
+  { value: 'call_followup', label: 'Call follow-ups' },
+  { value: 're_engage', label: 'Re-engage' },
+  { value: 'recurring', label: 'Recurring' },
+  { value: 'assigned', label: 'Assigned' },
+]
+function deriveActionType(task) {
+  const st = task.sourceType || ''
+  const title = (task.title || '').toLowerCase()
+  if (task.type === 'recurring') return 'recurring'
+  if (st === 'gong_reengage') return 're_engage'
+  if (/\b(prep|pre-?call|prepare)\b/.test(title)) return 'pre_call'
+  if (st === 'gong_commitment' || st === 'gong_next_step' || /\b(recap|follow.?up|post.?call)\b/.test(title)) return 'call_followup'
+  if (task.type === 'assigned') return 'assigned'
+  return 'other'
+}
+
+function KanbanCard({ task, onComplete, onWork, onDelete, onDismiss, onDragStart, onDragEnd, dragging }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => {
+    if (!menuOpen) return
+    const c = () => setMenuOpen(false)
+    const id = setTimeout(() => document.addEventListener('click', c), 0)
+    return () => { clearTimeout(id); document.removeEventListener('click', c) }
+  }, [menuOpen])
+  const stage = task.account?.stage
+  const tint = stage ? stageHex(stage) : '#cbd5e1'
+  const dateLabel = formatDate(task.dueDate)
+  const overdue = isOverdue(task)
+  const hasDraft = task.aiDraft?.content || (typeof task.aiDraft === 'string' && task.aiDraft.trim())
+  return (
+    <div
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart(task.id) }}
+      onDragEnd={onDragEnd}
+      className={`group relative bg-white rounded-lg border border-gray-200 p-2.5 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${dragging ? 'opacity-40' : ''}`}
+      style={{ borderLeft: `3px solid ${tint}` }}
+    >
+      <div className="flex items-start gap-2">
+        <button onClick={(e) => { e.stopPropagation(); onComplete(task.id) }} title="Complete" className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-green-500 transition-colors">
+          {task.status === 'complete' ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Circle className="w-4 h-4" />}
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className={`text-[13px] font-medium leading-snug ${task.status === 'complete' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</p>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            {task.priority === 1 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-medium">High</span>}
+            {stage && <StageBadge stage={stage} />}
+            {task.account?.name && <span className="text-[11px] text-gray-500 truncate max-w-[110px]">{task.account.name}</span>}
+            {dateLabel && <span className={`text-[11px] ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>{dateLabel}</span>}
+            {hasDraft && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Draft</span>}
+          </div>
+        </div>
+        <div className="relative flex-shrink-0">
+          <button onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o) }} className="text-gray-300 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"><MoreHorizontal className="w-4 h-4" /></button>
+          {menuOpen && (
+            <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-32 text-[13px]">
+              <button onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onWork(task) }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Work</button>
+              <button onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDismiss(task) }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2"><BanIcon className="w-3.5 h-3.5 text-gray-400" /> Dismiss</button>
+              <button onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(task.id) }} className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600 flex items-center gap-2"><X className="w-3.5 h-3.5" /> Delete</button>
+            </div>
+          )}
+        </div>
+      </div>
+      {hasDraft && task.status !== 'complete' && (
+        <button onClick={(e) => { e.stopPropagation(); onWork(task) }} className="mt-2 w-full text-[12px] font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md py-1 hover:bg-indigo-100 transition-colors flex items-center justify-center gap-1"><Sparkles className="w-3 h-3" /> Work the draft</button>
+      )}
+    </div>
+  )
+}
+
+function KanbanBoard({ tasks, onComplete, onMove, onWork, onDelete, onDismiss }) {
+  const [draggedId, setDraggedId] = useState(null)
+  const [overCol, setOverCol] = useState(null)
+  const byCol = { todo: [], in_progress: [], waiting: [], done: [] }
+  for (const t of tasks) (byCol[kanbanColumnOf(t)] || byCol.todo).push(t)
+  const drop = (colId) => { if (draggedId) onMove(draggedId, colId); setDraggedId(null); setOverCol(null) }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+      {KANBAN_COLUMNS.map(col => (
+        <div key={col.id}
+          onDragOver={(e) => { e.preventDefault(); setOverCol(col.id) }}
+          onDragLeave={() => setOverCol(c => (c === col.id ? null : c))}
+          onDrop={() => drop(col.id)}
+          className={`rounded-xl border p-2 min-h-[140px] transition-colors ${overCol === col.id ? 'border-coral-300 bg-coral-50/50' : 'border-gray-200 bg-gray-50/60'}`}>
+          <div className="flex items-center justify-between px-1.5 py-1 mb-2">
+            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{col.label}</span>
+            <span className="text-xs text-gray-400">{byCol[col.id].length}</span>
+          </div>
+          <div className="space-y-2">
+            {byCol[col.id].map(t => (
+              <KanbanCard key={t.id} task={t} dragging={draggedId === t.id}
+                onDragStart={setDraggedId} onDragEnd={() => setDraggedId(null)}
+                onComplete={onComplete} onWork={onWork} onDelete={onDelete} onDismiss={onDismiss} />
+            ))}
+            {!byCol[col.id].length && <p className="text-[11px] text-gray-300 text-center py-6 select-none">Drop here</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
 function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selected, onToggleSelect, bulkMode }) {
@@ -2285,6 +2411,8 @@ export default function TasksPage() {
   const [showNewTask, setShowNewTask] = useState(false)
   const [filterStatus, setFilterStatus] = useState('active') // 'active' | 'all' | 'complete'
   const [taskSearch, setTaskSearch] = useState('') // inline title/account search
+  const [filterAccount, setFilterAccount] = useState('all') // Kanban: filter by account
+  const [filterType, setFilterType] = useState('all')        // Kanban: filter by action-type
   const [sdrViewTab, setSdrViewTab] = useState('all') // 'all' | 'campaigns' | 'top50' | 'standard'
   const [repType, setRepType] = useState(null)
   const [providerToken, setProviderToken] = useState(null)
@@ -2303,7 +2431,7 @@ export default function TasksPage() {
   const [filterDue, setFilterDue] = useState('all')
   const [filterTier, setFilterTier] = useState('all')
   const [sortBy, setSortBy] = useState('smart') // smart | due | priority | account | recent
-  const [taskView, setTaskView] = useState('focus') // 'focus' | 'by_account' | 'all'
+  const [taskView, setTaskView] = useState('board') // 'board' (Kanban). Legacy focus/by_account/all blocks are unreachable.
   const [backfilling, setBackfilling] = useState(false)
   const [clearingNoise, setClearingNoise] = useState(false)
   const [startingClean, setStartingClean] = useState(false)
@@ -2399,7 +2527,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     const handler = (e) => {
-      if (e.detail === 'all') setTaskView('all')
+      if (e.detail === 'all') setTaskView('board')
     }
     window.addEventListener('tasks:switchTab', handler)
     return () => window.removeEventListener('tasks:switchTab', handler)
@@ -2411,6 +2539,17 @@ export default function TasksPage() {
     window.addEventListener('tasks:refresh', handler)
     return () => window.removeEventListener('tasks:refresh', handler)
   }, [fetchTasks])
+
+  // Kanban: dragging a card to a column applies that column's status/momentum.
+  const handleMoveToColumn = async (taskId, colId) => {
+    const apply = KANBAN_APPLY[colId]
+    if (!apply) return
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...apply } : t))
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(apply) })
+      if (!res.ok) throw new Error('move failed')
+    } catch { showToast("Couldn't move task — reverted"); fetchTasks() }
+  }
 
   // Completing a task just completes it — directly, optimistically. (No more opening a modal on the
   // check; drafting a deliverable lives behind the explicit "Work" action instead.)
@@ -2788,24 +2927,10 @@ export default function TasksPage() {
             {/* Debrief bar — always visible */}
             <DebriefBar onBulkCreate={handleBulkCreate} />
 
-            {/* Task view tabs */}
-            <div className="flex items-center gap-1 mb-5">
-              {[
-                { id: 'focus', label: 'Focus', icon: Target },
-                { id: 'by_account', label: 'By Account', icon: Building2 },
-                { id: 'all', label: 'All', icon: LayoutGrid },
-              ].map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setTaskView(id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    taskView === id ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </button>
-              ))}
+            {/* Board header */}
+            <div className="flex items-center gap-2 mb-4">
+              <LayoutGrid className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-semibold text-gray-700">Your board</span>
               <div className="ml-auto flex items-center gap-3">
                 <button onClick={handleStartClean} disabled={startingClean} title="Archive the old backlog and start fresh from today. New tasks from your calls still appear. Reversible." className="text-xs text-gray-400 hover:text-coral-600 disabled:opacity-40 transition-colors">
                   {startingClean ? 'Cleaning…' : 'Start clean'}
@@ -2837,7 +2962,66 @@ export default function TasksPage() {
               </div>
             )}
 
-            {/* ── FOCUS TAB ──────────────────────────────────────────────── */}
+            {/* ── BOARD (Kanban) ─────────────────────────────────────────── */}
+            {taskView === 'board' && (() => {
+              const weekAgo = Date.now() - 7 * 86400000
+              // Pool = your active tasks + anything completed in the last 7 days (so Done isn't flooded
+              // by your whole history but a fresh completion still lands there).
+              const pool = myTasks.filter(t => t.status !== 'complete' || !t.completedAt || new Date(t.completedAt).getTime() >= weekAgo)
+              const s = taskSearch.trim().toLowerCase()
+              const boardTasks = pool.filter(t => {
+                if (s && !(t.title || '').toLowerCase().includes(s) && !(t.account?.name || '').toLowerCase().includes(s)) return false
+                if (filterStage !== 'all' && t.account?.stage !== filterStage) return false
+                if (filterAccount !== 'all' && t.account?.id !== filterAccount) return false
+                if (filterType !== 'all' && deriveActionType(t) !== filterType) return false
+                return true
+              })
+              const acctOpts = []
+              const seenAcct = new Set()
+              for (const t of myTasks) { if (t.account?.id && !seenAcct.has(t.account.id)) { seenAcct.add(t.account.id); acctOpts.push({ id: t.account.id, name: t.account.name || 'Untitled' }) } }
+              acctOpts.sort((a, b) => a.name.localeCompare(b.name))
+              const anyFilter = s || filterStage !== 'all' || filterAccount !== 'all' || filterType !== 'all'
+              return (
+                <>
+                  <CadenceStrip />
+                  <DailyFocusBrief tasks={myTasks.filter(t => t.status !== 'complete')} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
+
+                  {/* Filter bar */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3 mt-5">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Search tasks or accounts…" className="text-sm border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-2 focus:ring-coral-200 focus:border-coral-400" />
+                    </div>
+                    <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} className={FILTER_SELECT_CLS}>
+                      <option value="all">All accounts</option>
+                      {acctOpts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className={FILTER_SELECT_CLS}>
+                      <option value="all">All stages</option>
+                      {ACTIVE_STAGE_ORDER.map(st => <option key={st} value={st}>{stageLabel(st)}</option>)}
+                    </select>
+                    <select value={filterType} onChange={e => setFilterType(e.target.value)} className={FILTER_SELECT_CLS}>
+                      {ACTION_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    {anyFilter && (
+                      <button onClick={() => { setTaskSearch(''); setFilterAccount('all'); setFilterStage('all'); setFilterType('all') }} className="text-xs text-gray-400 hover:text-coral-600">Clear filters</button>
+                    )}
+                    <span className="ml-auto text-xs text-gray-400">{boardTasks.length} shown · drag to move</span>
+                  </div>
+
+                  <KanbanBoard
+                    tasks={boardTasks}
+                    onComplete={handleStatusChange}
+                    onMove={handleMoveToColumn}
+                    onWork={task => setWorkTask(task)}
+                    onDelete={handleDelete}
+                    onDismiss={task => setDismissTask(task)}
+                  />
+                </>
+              )
+            })()}
+
+            {/* ── FOCUS TAB (legacy — unreachable; taskView is 'board') ────── */}
             {taskView === 'focus' && (() => {
               const activeTasks = myTasks.filter(t => t.status !== 'complete')
               const onMeTasks = activeTasks.filter(t => t.momentum !== 'waiting_on_them')
@@ -3108,7 +3292,7 @@ export default function TasksPage() {
           tasks={tasks}
           onClose={() => setShowSearch(false)}
           router={router}
-          onSelectTask={(t) => { setTaskView('all'); setTaskSearch(t.title || '') }}
+          onSelectTask={(t) => { setTaskView('board'); setTaskSearch(t.title || '') }}
         />
       )}
 
