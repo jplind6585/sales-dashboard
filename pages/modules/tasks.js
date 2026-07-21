@@ -1757,7 +1757,7 @@ function KanbanBoard({ tasks, onComplete, onMove, onWork, onDelete, onDismiss })
           onDragOver={(e) => { e.preventDefault(); setOverCol(col.id) }}
           onDragLeave={() => setOverCol(c => (c === col.id ? null : c))}
           onDrop={() => drop(col.id)}
-          className={`rounded-xl border p-2 min-h-[140px] transition-colors ${overCol === col.id ? 'border-coral-300 bg-coral-50/50' : 'border-gray-200 bg-gray-50/60'}`}>
+          className={`rounded-xl border p-2 min-h-[140px] transition-colors ${overCol === col.id ? 'border-coral-400 bg-coral-500/10' : 'border-gray-200 bg-gray-50/50'}`}>
           <div className="flex items-center justify-between px-1.5 py-1 mb-2">
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{col.label}</span>
             <span className="text-xs text-gray-400">{byCol[col.id].length}</span>
@@ -1768,7 +1768,7 @@ function KanbanBoard({ tasks, onComplete, onMove, onWork, onDelete, onDismiss })
                 onDragStart={setDraggedId} onDragEnd={() => setDraggedId(null)}
                 onComplete={onComplete} onWork={onWork} onDelete={onDelete} onDismiss={onDismiss} />
             ))}
-            {!byCol[col.id].length && <p className="text-[11px] text-gray-300 text-center py-6 select-none">Drop here</p>}
+            {!byCol[col.id].length && <p className="text-[11px] text-gray-400 text-center py-6 select-none">Drop here</p>}
           </div>
         </div>
       ))}
