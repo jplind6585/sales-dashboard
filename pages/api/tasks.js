@@ -19,7 +19,14 @@ export default async function handler(req, res) {
 
   // ── GET /api/tasks ──────────────────────────────────────────────────────────
   if (req.method === 'GET') {
-    const { ownerId, status, type, accountId, view, scope } = req.query
+    const { ownerId, status, type, accountId, view, scope, coached } = req.query
+
+    // coached=me → tasks from calls the caller coached (owned by other reps, tagged coached_by them).
+    if (coached === 'me') {
+      const { tasks, error } = await getTasks({ coachedBy: currentUser.id, status: status || undefined, type: type || undefined, accountId: accountId || undefined })
+      if (error) { console.error('getTasks(coached) error:', error); return res.status(500).json({ error: 'Failed to fetch coached tasks' }) }
+      return res.status(200).json({ success: true, tasks })
+    }
 
     // view=team returns the per-rep summary for the manager view
     if (view === 'team') {

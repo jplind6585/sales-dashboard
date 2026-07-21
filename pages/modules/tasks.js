@@ -2413,6 +2413,8 @@ export default function TasksPage() {
   const [taskSearch, setTaskSearch] = useState('') // inline title/account search
   const [filterAccount, setFilterAccount] = useState('all') // Kanban: filter by account
   const [filterType, setFilterType] = useState('all')        // Kanban: filter by action-type
+  const [filterCoached, setFilterCoached] = useState(false)  // Kanban: show tasks from calls I coached
+  const [coachedTasks, setCoachedTasks] = useState([])
   const [sdrViewTab, setSdrViewTab] = useState('all') // 'all' | 'campaigns' | 'top50' | 'standard'
   const [repType, setRepType] = useState(null)
   const [providerToken, setProviderToken] = useState(null)
@@ -2460,6 +2462,12 @@ export default function TasksPage() {
     // rep_type is assigned by an admin; read it from the profile, not a self-set toggle.
     fetch('/api/me').then(r => r.json()).then(d => setRepType(d.profile?.rep_type || null)).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    // Lazily load tasks from calls I coached (owned by other reps) when that filter is turned on.
+    if (!filterCoached) return
+    fetch('/api/tasks?coached=me').then(r => r.json()).then(d => setCoachedTasks(d.tasks || [])).catch(() => setCoachedTasks([]))
+  }, [filterCoached])
 
   useEffect(() => {
     const handler = (e) => {
@@ -2965,9 +2973,10 @@ export default function TasksPage() {
             {/* ── BOARD (Kanban) ─────────────────────────────────────────── */}
             {taskView === 'board' && (() => {
               const weekAgo = Date.now() - 7 * 86400000
-              // Pool = your active tasks + anything completed in the last 7 days (so Done isn't flooded
+              const boardSource = filterCoached ? coachedTasks : myTasks
+              // Pool = active tasks + anything completed in the last 7 days (so Done isn't flooded
               // by your whole history but a fresh completion still lands there).
-              const pool = myTasks.filter(t => t.status !== 'complete' || !t.completedAt || new Date(t.completedAt).getTime() >= weekAgo)
+              const pool = boardSource.filter(t => t.status !== 'complete' || !t.completedAt || new Date(t.completedAt).getTime() >= weekAgo)
               const s = taskSearch.trim().toLowerCase()
               const boardTasks = pool.filter(t => {
                 if (s && !(t.title || '').toLowerCase().includes(s) && !(t.account?.name || '').toLowerCase().includes(s)) return false
@@ -2978,9 +2987,9 @@ export default function TasksPage() {
               })
               const acctOpts = []
               const seenAcct = new Set()
-              for (const t of myTasks) { if (t.account?.id && !seenAcct.has(t.account.id)) { seenAcct.add(t.account.id); acctOpts.push({ id: t.account.id, name: t.account.name || 'Untitled' }) } }
+              for (const t of boardSource) { if (t.account?.id && !seenAcct.has(t.account.id)) { seenAcct.add(t.account.id); acctOpts.push({ id: t.account.id, name: t.account.name || 'Untitled' }) } }
               acctOpts.sort((a, b) => a.name.localeCompare(b.name))
-              const anyFilter = s || filterStage !== 'all' || filterAccount !== 'all' || filterType !== 'all'
+              const anyFilter = s || filterStage !== 'all' || filterAccount !== 'all' || filterType !== 'all' || filterCoached
               return (
                 <>
                   <CadenceStrip />
@@ -3003,8 +3012,15 @@ export default function TasksPage() {
                     <select value={filterType} onChange={e => setFilterType(e.target.value)} className={FILTER_SELECT_CLS}>
                       {ACTION_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
+                    <button
+                      onClick={() => setFilterCoached(v => !v)}
+                      title="Show action items from calls you coached (owned by the deal owner)"
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${filterCoached ? 'bg-coral-50 border-coral-300 text-coral-700 font-medium' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                    >
+                      Calls I coached
+                    </button>
                     {anyFilter && (
-                      <button onClick={() => { setTaskSearch(''); setFilterAccount('all'); setFilterStage('all'); setFilterType('all') }} className="text-xs text-gray-400 hover:text-coral-600">Clear filters</button>
+                      <button onClick={() => { setTaskSearch(''); setFilterAccount('all'); setFilterStage('all'); setFilterType('all'); setFilterCoached(false) }} className="text-xs text-gray-400 hover:text-coral-600">Clear filters</button>
                     )}
                     <span className="ml-auto text-xs text-gray-400">{boardTasks.length} shown · drag to move</span>
                   </div>

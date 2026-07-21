@@ -14,7 +14,7 @@ import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess';
 import { sendSlackMessage } from '../../../lib/slack';
 import { sendCallCoachingDM } from '../../../lib/coaching';
-import { isAutoProcessRep } from '../../../lib/repConfig';
+import { isAutoProcessRep, isCoachRep, COACH_REPS } from '../../../lib/repConfig';
 import { generateTaskDraft } from '../../../lib/taskActions';
 import { writeBackFromAnalysis, writeAccountSignals } from '../../../lib/accountWriteback';
 
@@ -272,7 +272,7 @@ function resolveReengageDate(when, callDate) {
   return null;
 }
 
-async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory, accountId, db }) {
+async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory, accountId, attendees = [], db }) {
   // Governance: only auto-process reps get auto-tasks, and never from CS-category calls.
   if (!isAutoProcessRep(repEmail) && !isAutoProcessRep(repName)) return;
   if (callCategory === 'cs') return;
@@ -290,6 +290,17 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     .maybeSingle();
   const userId = repProfile?.id;
   if (!userId) return;
+
+  // Coached-call attribution: if the lead rep is NOT a coach but a coach (e.g. James) was among the
+  // internal attendees, the tasks belong to the lead rep (deal owner) but are tagged coached_by the
+  // coach so they can filter "Calls I coached". No-op for a coach's OWN calls (they're the lead).
+  let coachedBy = null;
+  const leadIsCoach = isCoachRep(repEmail) || isCoachRep(repName);
+  const coachPresent = Array.isArray(attendees) && attendees.some(a => isCoachRep(a.email) || isCoachRep(a.name));
+  if (coachPresent && !leadIsCoach && COACH_REPS[0]?.email) {
+    const { data: coachProfile } = await db.from('profiles').select('id').ilike('email', COACH_REPS[0].email).maybeSingle();
+    coachedBy = coachProfile?.id || null;
+  }
 
   const repSteps = dedupSteps((analysis.next_steps_mentioned || []).filter(isRepOwnedStep).filter(s => !isLowSignalStep(s)));
   const triggerList = Array.isArray(analysis.reengagement_triggers) ? analysis.reengagement_triggers : [];
@@ -376,6 +387,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     if (!dup) { rows.push(row); keptTokenSets.push(toks); }
   }
   if (!rows.length) return;
+  if (coachedBy) for (const r of rows) r.coached_by = coachedBy; // tag coached-call tasks for the coach's filter
 
   // Base columns only on insert — keeps task creation working even before the
   // 20260628 migration adds trigger/ai_draft.
@@ -465,6 +477,7 @@ export default async function handler(req, res) {
   const hasPreloaded = preloadedTranscript && preloadedTranscript.length > 50 && preloadedTranscript !== '[No transcript available for this call]';
 
   let transcriptText = '';
+  let callAttendees = []; // [{ name, email, affiliation }] — for coached-call detection
   let claimedRow = false;
   const force = req.body?.force === true;
   // Resolve the DB client up front — used by the concurrency claim below and the persist later.
@@ -542,6 +555,10 @@ export default async function handler(req, res) {
           affiliation: p.affiliation,
         };
       });
+      // Capture attendees (internal parties) so a coach who rode along can be detected downstream.
+      callAttendees = (callDetails?.parties || [])
+        .filter(p => p.affiliation === 'internal')
+        .map(p => ({ name: p.name || null, email: p.emailAddress || null, affiliation: p.affiliation }));
 
       if (callTranscript?.transcript && Array.isArray(callTranscript.transcript)) {
         callTranscript.transcript.forEach(segment => {
@@ -715,7 +732,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
 
       // Auto-create tasks (gated inside). Awaited so the pre-generated drafts persist on serverless.
       try {
-        await autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory: callCat, accountId, db });
+        await autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repName, analysis, durationSeconds, callCategory: callCat, accountId, attendees: callAttendees, db });
       } catch (e) { console.error('[intel-analyze] autoCreateTasksFromAnalysis error:', e.message); }
 
       // Insert transcript, then per-call coaching DM (auto-process reps, sales calls, fresh only).
