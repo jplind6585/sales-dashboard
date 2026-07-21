@@ -305,7 +305,13 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
   const repSteps = dedupSteps((analysis.next_steps_mentioned || []).filter(isRepOwnedStep).filter(s => !isLowSignalStep(s)));
   const triggerList = Array.isArray(analysis.reengagement_triggers) ? analysis.reengagement_triggers : [];
   const hasCommitments = (analysis.commitments || []).some(c => c && c.length > 5 && !isLowSignalStep(c));
-  if (!repSteps.length && !triggerList.length && !hasCommitments) return;
+
+  // Post-call playbook: a fixed checklist added after every analyzed call (editable in /modules/playbooks).
+  const { data: postPlaybook } = await db.from('task_playbooks')
+    .select('steps').eq('trigger', 'post_call').eq('active', true).limit(1).maybeSingle();
+  const playbookSteps = Array.isArray(postPlaybook?.steps) ? postPlaybook.steps : [];
+
+  if (!repSteps.length && !triggerList.length && !hasCommitments && !playbookSteps.length) return;
 
   // Dedup: skip if tasks already exist for this gong call id
   const { count } = await db
@@ -318,6 +324,17 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
   const callDateStr = date
     ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : 'unknown date';
+
+  // Post-call checklist rows from the playbook — due = call date + the step's offset hours.
+  const playbookRows = playbookSteps.slice(0, 8).map(s => ({
+    owner_id: userId, created_by: userId, type: 'triggered',
+    priority: [1, 2, 3].includes(Number(s.priority)) ? Number(s.priority) : 2,
+    title: String(s.title || '').slice(0, 200),
+    description: `Post-call checklist — from Gong call: "${title || 'Untitled'}" on ${callDateStr} (call ID: ${callId})`,
+    status: 'open', source: 'gong', source_type: 'playbook_post_call', account_id: accountId || null,
+    due_date: new Date((date ? new Date(date) : new Date()).getTime() + (Number(s.due_offset_hours) || 0) * 3600000).toISOString().slice(0, 10),
+    rationale: 'Standard post-call step.', visible_to_manager: true,
+  })).filter(r => r.title.trim());
 
   // Rep-owned next steps (priority 2)
   const nextStepRows = repSteps.slice(0, 4).map(step => ({
@@ -386,6 +403,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     });
     if (!dup) { rows.push(row); keptTokenSets.push(toks); }
   }
+  rows.push(...playbookRows); // append the fixed post-call checklist (not deduped against extracted steps)
   if (!rows.length) return;
   if (coachedBy) for (const r of rows) r.coached_by = coachedBy; // tag coached-call tasks for the coach's filter
 
