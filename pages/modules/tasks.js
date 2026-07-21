@@ -7,7 +7,7 @@ import {
   LayoutGrid, TrendingUp, Send, Sparkles,
   Target, BanIcon, Info, Star, MessageSquare, ArrowRight,
   Loader2, CornerDownLeft, Phone, Mic, Square, CheckCheck,
-  Copy, Search
+  Copy, Search, FileText
 } from 'lucide-react';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -1088,6 +1088,25 @@ function TodaysFocus() {
 
 // ─── Daily Focus Brief ───────────────────────────────────────────────────────
 
+// Weekly cadence progress, surfaced where the work happens. Fed by /api/rep/cadence (AE
+// re-engagements/wk or SDR meetings/wk). Hidden until a target resolves.
+function CadenceStrip() {
+  const [data, setData] = useState(null)
+  useEffect(() => { fetch('/api/rep/cadence').then(r => r.json()).then(d => { if (d && d.success !== false && d.target != null) setData(d) }).catch(() => {}) }, [])
+  if (!data || !data.target) return null
+  const pct = Math.min(100, Math.round((data.current / data.target) * 100))
+  const done = data.current >= data.target
+  return (
+    <div className="mb-4 flex items-center gap-3 bg-white rounded-xl border border-gray-200 px-4 py-2.5">
+      <span className="text-xs font-medium text-gray-600 whitespace-nowrap">{data.label || 'This week'}</span>
+      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${done ? 'bg-emerald-500' : 'bg-coral-500'}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-xs font-semibold whitespace-nowrap ${done ? 'text-emerald-600' : 'text-gray-700'}`}>{data.current}/{data.target}{done ? ' ✓' : ''}</span>
+    </div>
+  )
+}
+
 // Start-of-day surface: the tasks that came out of TODAY's calls, grouped by call. Hidden when
 // there are none. Lets a rep act on today's calls before wading into the full backlog.
 function TodaysCallTasks({ onStatusChange }) {
@@ -1638,6 +1657,18 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
               </span>
             )}
 
+            {/* Ready AI draft — the engine pre-wrote a deliverable; flag it so the rep sees it at a glance */}
+            {task.status !== 'complete' && (task.aiDraft?.content || (typeof task.aiDraft === 'string' && task.aiDraft.trim())) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onWorkInClaude?.(task) }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                title="A draft is ready — open it"
+              >
+                <FileText className="w-3 h-3" />
+                Draft ready
+              </button>
+            )}
+
             {/* Work in Claude */}
             {onWorkInClaude && task.status !== 'complete' && (
               <button
@@ -2170,6 +2201,7 @@ export default function TasksPage() {
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set())
   const [toast, setToast] = useState(null)
   const showToast = (message) => { setToast(message); setTimeout(() => setToast(null), 3500) }
+  const [focusShowAll, setFocusShowAll] = useState(false)
   const [filterStage, setFilterStage] = useState('all')
   const [filterAssignee, setFilterAssignee] = useState('mine')
   const [filterSource, setFilterSource] = useState('all')
@@ -2744,17 +2776,19 @@ export default function TasksPage() {
               const activeTasks = myTasks.filter(t => t.status !== 'complete')
               const onMeTasks = activeTasks.filter(t => t.momentum !== 'waiting_on_them')
               const waitingTasks = activeTasks.filter(t => t.momentum === 'waiting_on_them')
+              // The AI hero (DailyFocusBrief) shows the top 3 by priority — dedup those out of the
+              // list below so the same task isn't the hero AND repeated in the wall.
+              const heroIds = new Set([...onMeTasks].sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a)).slice(0, 3).map(t => t.id))
+              const restTasks = onMeTasks.filter(t => !heroIds.has(t.id))
+              const CAP = 15
+              const shownRest = focusShowAll ? restTasks : restTasks.slice(0, CAP)
               return (
                 <>
+                  <CadenceStrip />
                   <TodaysCallTasks onStatusChange={handleStatusChange} />
                   <DailyFocusBrief tasks={activeTasks} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
-                  <TodaysFocus />
-                  <CallCommitmentsPanel onAddTask={handleCreate} />
-                  <div className="mb-6">
-                    <SmartSuggestionsPanel providerToken={providerToken} onAddTask={handleCreate} />
-                  </div>
                   <FocusListView
-                    tasks={onMeTasks}
+                    tasks={shownRest}
                     onStatusChange={handleStatusChange}
                     onDelete={handleDelete}
                     onDismiss={task => setDismissTask(task)}
@@ -2764,6 +2798,24 @@ export default function TasksPage() {
                     onToggleSelect={toggleTaskSelected}
                     bulkMode={bulkMode}
                   />
+                  {!focusShowAll && restTasks.length > CAP && (
+                    <button onClick={() => setFocusShowAll(true)} className="mt-3 text-xs font-medium text-coral-600 hover:text-coral-700">
+                      Show all {restTasks.length} tasks
+                    </button>
+                  )}
+                  {/* Secondary surfaces collapsed so Focus leads with the few things that matter. */}
+                  <details className="mt-5 group">
+                    <summary className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer hover:text-gray-700 list-none select-none py-1">
+                      <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                      <span className="font-medium">More to review</span>
+                      <span className="text-gray-400">— morning brief, recent calls, inbox &amp; calendar</span>
+                    </summary>
+                    <div className="mt-3 space-y-4">
+                      <TodaysFocus />
+                      <CallCommitmentsPanel onAddTask={handleCreate} />
+                      <SmartSuggestionsPanel providerToken={providerToken} onAddTask={handleCreate} />
+                    </div>
+                  </details>
                   {waitingTasks.length > 0 && (
                     <details className="mt-5">
                       <summary className="flex items-center gap-2 text-xs text-amber-600 cursor-pointer hover:text-amber-800 list-none select-none py-1">
