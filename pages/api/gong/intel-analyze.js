@@ -171,6 +171,9 @@ const PROSPECT_STEP_PREFIXES = [
 function isProspectStep(step) {
   const lower = step.toLowerCase().trim();
   if (PROSPECT_STEP_PREFIXES.some(p => lower.startsWith(p))) return true;
+  // First-person ("I'll send the deck", "we'll follow up") is the REP's own action, not the prospect's.
+  if (/^(i|we|i'?ll|we'?ll|i'?m|let me|let'?s)\b/.test(lower)) return false;
+  // A third-party subject + "to/will" ("Todd to review", "they will send it") is prospect-owned.
   if (/^[a-z]+ (to |will )/.test(lower) && !lower.startsWith('rep ')) return true;
   return false;
 }
@@ -205,6 +208,11 @@ function isLowSignalStep(step) {
 }
 
 const normStep = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+// Turn a raw extracted step into a clean task title: drop the "Rep will / I'll / to " lead-in and capitalize.
+const cleanStepTitle = (s) => {
+  const t = (s || '').replace(/^(rep|i|we)\s+(to\s+|will\s+|'ll\s+|should\s+|am going to\s+|going to\s+)?/i, '').replace(/^to\s+/i, '').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : (s || '');
+};
 // Drop near-identical steps within one call (the "Rep will keep Todd posted" ×5 problem) via
 // token-Jaccard ≥ 0.8. Keeps the first occurrence.
 function dedupSteps(steps) {
@@ -246,10 +254,21 @@ function resolveReengageDate(when, callDate) {
   if (/next quarter/.test(w)) { const d = new Date(base); d.setMonth(d.getMonth() + 3, 1); return iso(d); }
   if (/after the holidays|new year/.test(w)) return iso(new Date(now.getFullYear() + 1, 0, 15));
   if (/end of (the )?year|year[- ]?end/.test(w)) { const d = new Date(base.getFullYear(), 11, 15); return iso(d); }
+  const clampSoon = (d) => (d > now ? d : new Date(now.getTime() + 7 * 86400000)); // never schedule in the past — a week out at the soonest
   const qm = w.match(/q([1-4])/);
-  if (qm) { const q = parseInt(qm[1], 10); let d = new Date(base.getFullYear(), (q - 1) * 3, 1); if (d <= now) d = new Date(base.getFullYear() + 1, (q - 1) * 3, 1); return iso(d); }
+  if (qm) {
+    const q = parseInt(qm[1], 10);
+    const qEnd = new Date(base.getFullYear(), q * 3, 0); // last day of the quarter
+    // Only bump a full year when the WHOLE quarter is already past; if we're inside it, aim at its start (or a week out).
+    const d = qEnd < now ? new Date(base.getFullYear() + 1, (q - 1) * 3, 1) : clampSoon(new Date(base.getFullYear(), (q - 1) * 3, 1));
+    return iso(d);
+  }
   const mi = months.findIndex(mn => w.includes(mn));
-  if (mi >= 0) { let d = new Date(base.getFullYear(), mi, 15); if (d <= now) d = new Date(base.getFullYear() + 1, mi, 15); return iso(d); }
+  if (mi >= 0) {
+    const mEnd = new Date(base.getFullYear(), mi + 1, 0); // last day of that month
+    const d = mEnd < now ? new Date(base.getFullYear() + 1, mi, 15) : clampSoon(new Date(base.getFullYear(), mi, 15));
+    return iso(d);
+  }
   return null;
 }
 
@@ -295,7 +314,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     created_by:        userId,
     type:              'triggered',
     priority:          2,
-    title:             step.length > 120 ? step.slice(0, 117) + '...' : step,
+    title:             (t => t.length > 120 ? t.slice(0, 117) + '...' : t)(cleanStepTitle(step)),
     description:       `Auto-extracted from Gong call: "${title || 'Untitled'}" on ${callDateStr} (call ID: ${callId})`,
     status:            'open',
     source:            'gong',
@@ -312,7 +331,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     created_by:        userId,
     type:              'triggered',
     priority:          1,
-    title:             c.length > 120 ? c.slice(0, 117) + '...' : c,
+    title:             (t => t.length > 120 ? t.slice(0, 117) + '...' : t)(cleanStepTitle(c)),
     description:       `Rep commitment from Gong call: "${title || 'Untitled'}" on ${callDateStr} (call ID: ${callId})`,
     status:            'open',
     source:            'gong',
@@ -328,7 +347,8 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     const text = (typeof t === 'string' ? t : t?.text || '').trim();
     const when = typeof t === 'object' ? (t?.when || null) : null;
     if (!text || text.length < 5) return null;
-    const due = resolveReengageDate(when, date);
+    // Fall back to callDate+14d so an unparseable timeframe still lands on a real day (not a null due date).
+    const due = resolveReengageDate(when, date) || new Date((date ? new Date(date) : new Date()).getTime() + 14 * 86400000).toISOString().slice(0, 10);
     return {
       owner_id: userId, created_by: userId, type: 'triggered', priority: 2,
       title: (`Re-engage${when ? ` (${when})` : ''}: ${text}`).slice(0, 117),
@@ -340,7 +360,21 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     };
   }).filter(Boolean);
 
-  const rows = [...commitmentRows, ...reengageRows, ...nextStepRows];
+  // Cross-array dedup: one real action often surfaces as both a commitment AND a next-step (or a
+  // re-engage). Keep the highest-priority occurrence — rows are ordered commitments → reengage →
+  // next-steps, so the first survivor wins. Compare on the underlying text (strip the re-engage prefix).
+  const cmpText = (row) => normStep(row.source_type === 'gong_reengage' ? row.title.replace(/^re-engage[^:]*:\s*/i, '') : row.title);
+  const rows = [];
+  const keptTokenSets = [];
+  for (const row of [...commitmentRows, ...reengageRows, ...nextStepRows]) {
+    const toks = new Set(cmpText(row).split(' ').filter(w => w.length > 2));
+    const dup = toks.size > 0 && keptTokenSets.some(prev => {
+      const inter = [...toks].filter(t => prev.has(t)).length;
+      const uni = new Set([...toks, ...prev]).size;
+      return uni > 0 && inter / uni >= 0.7;
+    });
+    if (!dup) { rows.push(row); keptTokenSets.push(toks); }
+  }
   if (!rows.length) return;
 
   // Base columns only on insert — keeps task creation working even before the
@@ -384,10 +418,13 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     const durationMin = durationSeconds ? Math.round(durationSeconds / 60) : null;
     const callLabel = [title || 'Untitled call', durationMin ? `${durationMin} min` : null].filter(Boolean).join(' — ');
 
-    const taskLines = [
-      ...commitmentRows.map(r => `🔴 ${r.title}  _(commitment)_`),
-      ...nextStepRows.map(r => `• ${r.title}  _(next step)_`),
-    ];
+    // Derive from `rows` (the actually-inserted, cross-array-deduped set) so the DM matches the tasks
+    // created — and includes re-engage follow-ups, which were previously omitted.
+    const taskLines = rows.map(r => {
+      if (r.source_type === 'gong_commitment') return `🔴 ${r.title}  _(commitment)_`;
+      if (r.source_type === 'gong_reengage') return `📅 ${r.title}  _(re-engage${r.due_date ? `: ${r.due_date}` : ''})_`;
+      return `• ${r.title}  _(next step)_`;
+    });
 
     const blocks = [
       {

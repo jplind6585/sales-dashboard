@@ -839,6 +839,8 @@ function CallCommitmentsPanel({ onAddTask }) {
       type: 'triggered',
       priority: commitment.type === 'commitment' ? 1 : 2,
       source: 'gong',
+      accountId: commitment.accountId || null,
+      sourceType: commitment.type === 'commitment' ? 'gong_commitment' : 'gong_next_step',
     })
     setAdded(prev => new Set([...prev, commitment.id]))
     // Remove after a brief moment so user sees the checkmark
@@ -2654,16 +2656,6 @@ export default function TasksPage() {
             title="Refresh"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-
-          <button
-            onClick={handleBackfill}
-            disabled={backfilling}
-            title="Pull tasks from all Gong call analyses"
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${backfilling ? 'animate-spin' : ''}`} />
-            Sync Gong
           </button>
 
           <button

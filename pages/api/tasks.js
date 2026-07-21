@@ -59,7 +59,7 @@ export default async function handler(req, res) {
 
   // ── POST /api/tasks ─────────────────────────────────────────────────────────
   if (req.method === 'POST') {
-    const { title, description, type, priority, ownerId, accountId, dueDate, source, sourceId, visibleToManager } = req.body
+    const { title, description, type, priority, ownerId, accountId, dueDate, source, sourceId, sourceType, visibleToManager } = req.body
 
     if (!title) {
       return res.status(400).json({ error: 'title is required' })
@@ -81,6 +81,7 @@ export default async function handler(req, res) {
       dueDate:          dueDate || null,
       source:           source || 'manual',
       sourceId:         sourceId || null,
+      sourceType:       sourceType || null,
       visibleToManager: visibleToManager !== false,
     })
 
