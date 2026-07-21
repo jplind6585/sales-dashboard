@@ -278,7 +278,7 @@ function buildGmailUrl(subject, body, signature) {
   return `https://mail.google.com/mail/u/0/?view=cm&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(fullBody)}`
 }
 
-function WorkInClaude({ task, onClose }) {
+function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
   const storageKey = `wic_${task.id}`
   const playbook = getPlaybook(task)
   const needsFetch = playbook?.fetchContext === 'calls' && task.accountId
@@ -286,6 +286,33 @@ function WorkInClaude({ task, onClose }) {
   const [callsLoading, setCallsLoading] = useState(!!needsFetch)
   const [copiedId, setCopiedId] = useState(null)
   const [hubspotLoggedFor, setHubspotLoggedFor] = useState(new Set())
+  const [sendOpenFor, setSendOpenFor] = useState(null) // msg key whose Send-row is open
+  const [sendTo, setSendTo] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sentKeys, setSentKeys] = useState(new Set())
+  const [markedDone, setMarkedDone] = useState(false)
+
+  const sendEmail = async (msgKey, draft) => {
+    if (!sendTo.trim()) return
+    setSending(true)
+    try {
+      const res = await fetch('/api/gmail/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: sendTo.trim(), subject: draft.subject, body: draft.body, providerToken }),
+      })
+      const d = await res.json()
+      if (res.ok && d.success !== false) {
+        setSentKeys(prev => new Set([...prev, msgKey]))
+        setSendOpenFor(null); setSendTo('')
+        if (task.accountId) {
+          fetch('/api/hubspot/log-note', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountId: task.accountId, subject: draft.subject }) }).catch(() => {})
+        }
+      } else {
+        window.alert(d.error || 'Send failed')
+      }
+    } catch (e) { window.alert(e.message || 'Send failed') }
+    finally { setSending(false) }
+  }
   const [messages, setMessages] = useState(() => {
     try {
       const saved = localStorage.getItem(storageKey)
@@ -458,6 +485,15 @@ function WorkInClaude({ task, onClose }) {
             )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            {task.status !== 'complete' && onStatusChange && (
+              <button
+                onClick={() => { if (markedDone) return; setMarkedDone(true); onStatusChange(task.id, 'complete'); onClose() }}
+                disabled={markedDone}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" /> Mark done
+              </button>
+            )}
             <button onClick={clearThread} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
               Clear
             </button>
@@ -521,7 +557,26 @@ function WorkInClaude({ task, onClose }) {
                           <Send className="w-3 h-3" />
                           Open in Gmail
                         </button>
-                        {task.accountId && (
+                        {sentKeys.has(msgKey) ? (
+                          <span className="flex items-center gap-1 text-xs font-medium text-emerald-600"><CheckCheck className="w-3.5 h-3.5" /> Sent</span>
+                        ) : sendOpenFor === msgKey ? (
+                          <span className="flex items-center gap-1.5">
+                            <input value={sendTo} onChange={e => setSendTo(e.target.value)} placeholder="recipient@company.com" type="email"
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 w-52 focus:outline-none focus:ring-1 focus:ring-coral-300" autoFocus
+                              onKeyDown={e => e.key === 'Enter' && sendEmail(msgKey, emailDraft)} />
+                            <button onClick={() => sendEmail(msgKey, emailDraft)} disabled={sending || !sendTo.trim()}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-coral-500 text-white rounded-lg text-xs font-medium hover:bg-coral-600 disabled:opacity-40">
+                              {sending ? 'Sending…' : 'Send'}
+                            </button>
+                            <button onClick={() => { setSendOpenFor(null); setSendTo('') }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                          </span>
+                        ) : (
+                          <button onClick={() => { setSendOpenFor(msgKey); setSendTo('') }}
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-coral-500 text-white rounded-lg text-xs font-medium hover:bg-coral-600 transition-colors shadow-sm">
+                            <Send className="w-3 h-3" /> Send from app
+                          </button>
+                        )}
+                        {task.accountId && !sentKeys.has(msgKey) && (
                           <span className="text-xs text-gray-400">
                             {isLogged ? 'Logged to HubSpot' : 'Will log to HubSpot'}
                           </span>
@@ -3029,6 +3084,8 @@ export default function TasksPage() {
         <WorkInClaude
           task={workTask}
           onClose={() => setWorkTask(null)}
+          onStatusChange={handleStatusChange}
+          providerToken={providerToken}
         />
       )}
 
