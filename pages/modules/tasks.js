@@ -1950,7 +1950,7 @@ const STAGE_WEIGHT = {
 function ByAccountView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selectedTaskIds, onToggleSelect, bulkMode }) {
   const [collapsed, setCollapsed] = useState(new Set())
   const toggleCollapse = (id) => setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const open = tasks.filter(t => t.status !== 'complete')
+  const open = tasks // parent already applied the Active/All/Complete status filter (sortedFilteredTasks)
   const grouped = {}
   const noAccount = []
 
@@ -2041,7 +2041,7 @@ function ByAccountView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInCla
 
 // ─── Global Search (Cmd+K) ────────────────────────────────────────────────────
 
-function GlobalSearch({ tasks, onClose, router }) {
+function GlobalSearch({ tasks, onClose, router, onSelectTask }) {
   const [query, setQuery] = useState('')
   const [accounts, setAccounts] = useState([])
   const [selectedIdx, setSelectedIdx] = useState(0)
@@ -2083,7 +2083,7 @@ function GlobalSearch({ tasks, onClose, router }) {
     if (item.type === 'account') {
       router.push(`/modules/account-pipeline?account=${item.id}`)
     } else {
-      router.push(`/modules/tasks`)
+      onSelectTask?.(item.data) // filter the list to this task instead of a no-op self-navigation
     }
     onClose()
   }
@@ -2220,6 +2220,7 @@ export default function TasksPage() {
   const seedDemoTasks = useCallback(async () => {
     if (demoSeeded.current) return
     demoSeeded.current = true
+    try { localStorage.setItem('tasks_seeded', '1') } catch {}
     const demos = [
       { title: 'Set up your Slack ID in Settings', description: 'Add your Slack Member ID so you receive daily digests with your deal updates and commitments.', type: 'assigned', priority: 1 },
       { title: 'Review your accounts in Account Pipeline', description: 'Open Account Pipeline to see all your active deals. Check for stale accounts and review any AI-analyzed calls.', type: 'assigned', priority: 2 },
@@ -2252,10 +2253,12 @@ export default function TasksPage() {
       const fetched = tasksData.tasks || []
       if (tasksData.success) setTasks(fetched)
       if (summaryData.success) setSummary(summaryData.summary || [])
-      // Auto-seed demo tasks if list is empty
-      if (fetched.length === 0 && isSupabaseConfigured()) {
-        seedDemoTasks()
-      }
+      // Seed demo tasks ONLY for a genuine first-time user. Once they've ever had tasks (or ran a
+      // Start Clean), the flag is set and we never repopulate — clearing the backlog must stay clear.
+      let seeded = true
+      try { seeded = !!localStorage.getItem('tasks_seeded') } catch {}
+      if (fetched.length > 0) { try { localStorage.setItem('tasks_seeded', '1') } catch {} }
+      else if (isSupabaseConfigured() && !seeded) { seedDemoTasks() }
     } catch (err) {
       console.error('Failed to fetch tasks:', err)
     } finally {
@@ -2483,6 +2486,7 @@ export default function TasksPage() {
       const kept = prev.keptScheduled ? `\n\nKept: ${prev.keptScheduled} future-scheduled task${prev.keptScheduled === 1 ? '' : 's'}.` : ''
       if (!window.confirm(`Start clean from today?\n\nThis archives ${n} open task${n === 1 ? '' : 's'} from before today. New tasks from your calls still appear as they come in.${kept}\n\nThey're dismissed (recoverable), not deleted.`)) return
       const res = await fetch('/api/tasks/start-clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ execute: true }) }).then(r => r.json())
+      try { localStorage.setItem('tasks_seeded', '1') } catch {} // don't repopulate demo tasks into a just-cleared list
       if (res.cleared != null) fetchTasks()
     } catch (e) { window.alert('Start clean failed: ' + e.message) }
     finally { setStartingClean(false) }
@@ -2982,6 +2986,7 @@ export default function TasksPage() {
           tasks={tasks}
           onClose={() => setShowSearch(false)}
           router={router}
+          onSelectTask={(t) => { setTaskView('all'); setTaskSearch(t.title || '') }}
         />
       )}
 

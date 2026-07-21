@@ -395,9 +395,15 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
       const suggestions = emailData.suggestions || []
       const meetings = calData.salesMeetings || []
       const metrics = emailData.responseMetrics || null
-      const bookings = (opsData.bookings || []).filter(b =>
-        b.ae?.toLowerCase().includes('james')
-      )
+      // Show bookings where the CURRENT user is the AE (was hardcoded to 'james' — dead for every
+      // other rep). Match the booking's AE name against the caller's name / email handle.
+      const meProfile = await fetch('/api/me').then(r => r.json()).then(d => d.profile).catch(() => null)
+      const meName = (meProfile?.full_name || meProfile?.email?.split('@')[0] || '').toLowerCase()
+      const meFirst = meName.split(/[\s.@]/)[0] || ''
+      const bookings = (opsData.bookings || []).filter(b => {
+        const ae = (b.ae || '').toLowerCase()
+        return meFirst && (ae.includes(meFirst) || (meName && ae.includes(meName)))
+      })
 
       setEmailSuggestions(suggestions)
       setResponseMetrics(metrics)
@@ -476,6 +482,7 @@ export default function SmartSuggestionsPanel({ providerToken, onAddTask }) {
         priority: event.hoursUntil <= 24 ? 1 : 2,
         dueDate: new Date(new Date(event.start).getTime() - 30 * 60 * 1000).toISOString().split('T')[0],
         source: 'calendar',
+        sourceId: `cal_prep_${event.id}`, // match the live sync path so POST /api/tasks dedups (no dup prep tasks)
       })
       autoPrepCreatedRef.current.add(event.id)
     })
