@@ -42,6 +42,7 @@ export default async function handler(req, res) {
       email: session.user.email,
       full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
       role: 'rep',
+      rep_type: session.user.user_metadata?.rep_type || null, // set by admin at invite time
     })
 
     const baseUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host'] || req.headers.host}`

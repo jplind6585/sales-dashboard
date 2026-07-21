@@ -2187,7 +2187,8 @@ export default function TasksPage() {
   }, [])
 
   useEffect(() => {
-    try { setRepType(localStorage.getItem('user_rep_type') || null) } catch {}
+    // rep_type is assigned by an admin; read it from the profile, not a self-set toggle.
+    fetch('/api/me').then(r => r.json()).then(d => setRepType(d.profile?.rep_type || null)).catch(() => {})
   }, [])
 
   useEffect(() => {

@@ -1122,8 +1122,7 @@ function OnboardingCard({ profile, router }) {
   }, [])
 
   const hasSlack = !!profile?.slack_user_id
-  const hasRepType = !!localStorage.getItem('user_rep_type')
-  const allDone = hasSlack && hasRepType
+  const allDone = hasSlack
 
   const dismiss = () => {
     localStorage.setItem('onboarding_card_dismissed', '1')
@@ -1135,23 +1134,11 @@ function OnboardingCard({ profile, router }) {
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start justify-between gap-4">
       <div className="flex-1">
-        <p className="text-sm font-semibold text-blue-900 mb-2">Get set up — 2 steps</p>
+        <p className="text-sm font-semibold text-blue-900 mb-2">Finish setting up</p>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-sm">
-            {hasRepType
-              ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-              : <div className="w-4 h-4 rounded-full border-2 border-blue-300 shrink-0" />
-            }
-            <span className={hasRepType ? 'text-gray-400 line-through' : 'text-blue-800'}>
-              Set your role (SDR or AE) using the toggle above
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            {hasSlack
-              ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-              : <div className="w-4 h-4 rounded-full border-2 border-blue-300 shrink-0" />
-            }
-            <span className={hasSlack ? 'text-gray-400 line-through' : 'text-blue-800'}>
+            <div className="w-4 h-4 rounded-full border-2 border-blue-300 shrink-0" />
+            <span className="text-blue-800">
               <button onClick={() => router.push('/modules/settings')} className="underline hover:text-blue-600">
                 Add your Slack ID
               </button>
@@ -1747,7 +1734,6 @@ export default function TodayPage() {
   const [isReady, setIsReady] = useState(false)
   const [profile, setProfile] = useState(null)
   const [providerToken, setProviderToken] = useState(null)
-  const [repType, setRepType] = useState(null)
 
   useEffect(() => {
     const init = async () => {
@@ -1758,9 +1744,6 @@ export default function TodayPage() {
         setUser(session.user)
         if (session?.provider_token) setProviderToken(session.provider_token)
       }
-
-      const stored = localStorage.getItem('user_rep_type')
-      setRepType(stored || 'ae')
 
       try {
         const res = await fetch('/api/me')
@@ -1773,13 +1756,9 @@ export default function TodayPage() {
     init()
   }, [])
 
-  const handleRepTypeToggle = (type) => {
-    localStorage.setItem('user_rep_type', type)
-    setRepType(type)
-  }
-
-  const isManager = ['manager','admin'].includes(profile?.role)
-  const activeView = isManager ? 'manager' : (repType || 'ae')
+  const isManager = ['manager', 'admin'].includes(profile?.role)
+  const isSdr = (profile?.rep_type || '').toLowerCase() === 'sdr'
+  const activeView = isManager ? 'manager' : (isSdr ? 'sdr' : 'ae')
 
   if (!isReady) {
     return (
@@ -1793,26 +1772,6 @@ export default function TodayPage() {
     <AppShell
       title="Today"
       subtitle="Your daily focus"
-      actions={!isManager && (
-        <div className="flex bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => handleRepTypeToggle('sdr')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeView === 'sdr' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            SDR
-          </button>
-          <button
-            onClick={() => handleRepTypeToggle('ae')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeView === 'ae' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            AE
-          </button>
-        </div>
-      )}
     >
       <div className="max-w-6xl mx-auto px-6 py-8">
         {activeView === 'manager' && <ManagerView router={router} />}

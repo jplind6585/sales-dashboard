@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, slack_user_id')
+      .select('id, full_name, email, role, rep_type, slack_user_id')
       .eq('id', user.id)
       .single()
     if (error) return res.status(500).json({ error: error.message })
@@ -22,7 +22,8 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PATCH') {
-    const allowed = ['slack_user_id', 'full_name', 'rep_type']
+    // rep_type is assigned by an admin (invite / Users page), not self-set here.
+    const allowed = ['slack_user_id', 'full_name']
     const updates = {}
     for (const key of allowed) {
       if (key in req.body) updates[key] = req.body[key]
