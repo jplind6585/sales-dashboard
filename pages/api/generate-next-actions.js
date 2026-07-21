@@ -1,6 +1,6 @@
 import { STAGES, MEDDICC } from '../../lib/constants';
 import { createTasks } from '../../lib/db/tasks';
-import { getSupabase } from '../../lib/supabase';
+import { getSupabase, createServerSupabaseClient } from '../../lib/supabase';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -122,8 +122,8 @@ Generate 3-5 prioritized next actions. Return ONLY valid JSON array.`;
     // Write actions to the tasks table if Supabase is enabled
     if (process.env.NEXT_PUBLIC_USE_SUPABASE !== 'false' && actions.length > 0) {
       try {
-        const supabase = getSupabase(req, res)
-        const { data: { user } } = await supabase.auth.getUser()
+        const auth = createServerSupabaseClient(req, res)
+        const { data: { user } } = await auth.auth.getUser()
 
         if (user && account.id) {
           const priorityMap = { high: 1, medium: 2, low: 3 }

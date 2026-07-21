@@ -2476,9 +2476,9 @@ export default function TasksPage() {
     return (t.title || '').toLowerCase().includes(s) || (t.account?.name || '').toLowerCase().includes(s)
   }).filter(task => {
     if (repType !== 'sdr' || sdrViewTab === 'all') return true
-    if (sdrViewTab === 'campaigns') return task.source_type === 'campaign'
-    if (sdrViewTab === 'top50') return task.source_type === 'pursuit'
-    if (sdrViewTab === 'standard') return task.source_type !== 'campaign' && task.source_type !== 'pursuit'
+    if (sdrViewTab === 'campaigns') return task.sourceType === 'campaign'
+    if (sdrViewTab === 'top50') return task.sourceType === 'pursuit'
+    if (sdrViewTab === 'standard') return task.sourceType !== 'campaign' && task.sourceType !== 'pursuit'
     return true
   }).filter(task => {
     if (filterStage !== 'all' && task.account?.stage !== filterStage) return false
@@ -2878,7 +2878,7 @@ export default function TasksPage() {
                   </div>
                   {repType === 'sdr' && sdrViewTab === 'campaigns' ? (
                     (() => {
-                      const campaignGroups = sortedFilteredTasks.reduce((acc, task) => { const key = task.source_id || 'ungrouped'; if (!acc[key]) acc[key] = []; acc[key].push(task); return acc }, {})
+                      const campaignGroups = sortedFilteredTasks.reduce((acc, task) => { const key = task.sourceId || 'ungrouped'; if (!acc[key]) acc[key] = []; acc[key].push(task); return acc }, {})
                       const groupKeys = Object.keys(campaignGroups)
                       if (!groupKeys.length) return <div className="text-center py-16 text-gray-400"><CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-30" /><p className="text-sm">No campaign tasks yet.</p></div>
                       return (
