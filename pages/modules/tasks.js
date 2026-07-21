@@ -437,6 +437,7 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
           },
         }),
       })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'request failed')
       const data = await res.json()
       if (data.message) {
         const assistantMsg = { role: 'assistant', content: data.message, ts: Date.now() }
@@ -446,6 +447,8 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
       }
     } catch (e) {
       console.error('Work in Claude error:', e)
+      const errMsg = { role: 'assistant', content: '⚠️ Something went wrong — try again.', ts: Date.now(), _error: true }
+      setMessages(prev => [...prev, errMsg])
     } finally {
       setLoading(false)
       inputRef.current?.focus()
@@ -1054,7 +1057,7 @@ function TodaysFocus() {
       <div className="flex items-center justify-between px-5 py-3 border-b border-indigo-100">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-indigo-600" />
-          <span className="text-sm font-semibold text-indigo-900">Today's Focus</span>
+          <span className="text-sm font-semibold text-indigo-900">Morning Brief</span>
           {task_count && (
             <span className="text-xs text-indigo-500 font-normal">
               {task_count.total} open{task_count.overdue > 0 ? ` · ${task_count.overdue} overdue` : ''}{task_count.today > 0 ? ` · ${task_count.today} due today` : ''}
@@ -1217,7 +1220,11 @@ function DailyFocusBrief({ tasks, onWorkInClaude, onStatusChange }) {
   const CACHE_KEY = 'daily_focus_cache'
   const CACHE_DATE_KEY = 'daily_focus_date'
   const removeItem = (i) => setFocus(f => { const next = (f || []).filter((_, idx) => idx !== i); try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)) } catch {} return next })
-  const completeItem = (task, i) => { if (task && onStatusChange) onStatusChange(task.id, 'complete'); removeItem(i) }
+  // Only drop the item optimistically for tasks that complete instantly. Tasks with a primaryAction
+  // open the completion modal — if the rep cancels there, we mustn't have already removed it (it
+  // disappears on its own once the parent's task list updates post-confirm).
+  const completesInstantly = (t) => !t?.primaryAction || (t.type === 'triggered' && t.source === 'manual')
+  const completeItem = (task, i) => { if (task && onStatusChange) onStatusChange(task.id, 'complete'); if (completesInstantly(task)) removeItem(i) }
 
   useEffect(() => {
     if (!tasks?.length) return
@@ -1618,6 +1625,12 @@ function renderMarkdown(text) {
 function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selected, onToggleSelect, bulkMode }) {
   const [expanded, setExpanded] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
+  useEffect(() => {
+    if (!statusOpen) return
+    const close = () => setStatusOpen(false)
+    const id = setTimeout(() => document.addEventListener('click', close), 0) // attach next tick so the opening click doesn't close it
+    return () => { clearTimeout(id); document.removeEventListener('click', close) }
+  }, [statusOpen])
   const overdue = isOverdue(task)
   const dateLabel = formatDate(task.dueDate)
   const isGong = task.source === 'gong'
