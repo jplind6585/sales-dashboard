@@ -421,6 +421,7 @@ Do not run these again:
 - **name_cleanup** (2026-05-06): `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'active'`; stripped " - New Deal" suffix from all 551 account names
 - **stakeholders_hubspot** (2026-05-06): `ALTER TABLE stakeholders ADD COLUMN IF NOT EXISTS email TEXT` and `hubspot_contact_id TEXT`
 - **2026-06-28 build set** (applied 2026-06-29): `20260628_task_engine_vision.sql`, `20260628_gong_call_analyses_columns.sql`, `20260628_coaching_cards_dedup.sql` (adds `uq_coaching_gong_call_id`), `20260628_sdr_touches.sql` (SDR touch log — 8 cols, RLS, `sdr_touches_rw`).
+- **2026-07-20 role + tasks set** (applied 2026-07-20): `20260720_handle_new_user_rep_type.sql` (trigger copies role+rep_type from invite metadata onto the profile), `20260720_profiles_rls_lockdown.sql` (DROPs the self-write "Users can update/insert own profile" policies so a rep can't self-escalate role from the browser; recreates the `on_auth_user_created` trigger idempotently), `20260720_tasks_schema_drift.sql` (documents `tasks.momentum/source_type/primary_action/rationale` as IF NOT EXISTS). **Role model:** rep_type (SDR/AE) + access role (rep/manager/admin) are admin-assigned (invite form / Users page), never self-set; `/api/me` fixed to authenticate server-side (was a browser client → 401). Today has a manager-only My Day/Team switch.
 
 ## How to run migrations (no MCP needed)
 
