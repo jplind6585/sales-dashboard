@@ -60,11 +60,14 @@ export default async function handler(req, res) {
       const meetingMs = new Date(start).getTime()
       const when = new Date(start).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
+      const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
       for (let i = 0; i < steps.length; i++) {
         const s = steps[i]
         const sourceId = `precall:${ev.id}:${i}`
         if (await findTaskBySource('calendar', sourceId)) continue
-        const due = new Date(meetingMs + (Number(s.due_offset_hours) || 0) * 3600000).toISOString().slice(0, 10)
+        // Clamp so a "24h before" step on a meeting that's already <24h out isn't due in the past.
+        const rawDue = meetingMs + (Number(s.due_offset_hours) || 0) * 3600000
+        const due = new Date(Math.max(rawDue, startOfToday.getTime())).toISOString().slice(0, 10)
         const { error } = await createTask(u.id, {
           title: `${s.title} — ${ev.summary || 'meeting'}`,
           description: `Pre-call checklist for "${ev.summary || 'meeting'}" (${when})`,
