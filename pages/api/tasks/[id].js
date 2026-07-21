@@ -103,6 +103,10 @@ async function completeSideEffects(task, currentUser) {
   const { data: acct } = await db.from('accounts').select('name, slack_channel, hubspot_deal_id').eq('id', task.accountId).single()
   if (!acct) return
 
+  // Task→account loop: completing a task IS a touch on the deal — bump its signal recency so an
+  // account whose work you just cleared doesn't keep reading as stale in NBA/cadence ranking.
+  db.from('account_signals').update({ updated_at: new Date().toISOString() }).eq('account_id', task.accountId).then(() => {}, () => {})
+
   // Slack — account's explicit channel override, else derived from the account name.
   try {
     const channel = acct.slack_channel || resolveAccountChannel({ name: acct.name })

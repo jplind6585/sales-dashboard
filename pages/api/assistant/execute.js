@@ -5,7 +5,7 @@
 
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 import { apiError, apiSuccess, validateMethod, logRequest } from '../../../lib/apiUtils';
-import { createTask, findTaskBySource } from '../../../lib/db/tasks';
+import { createTask, findTaskBySource, updateTask, dismissTask } from '../../../lib/db/tasks';
 import { addNote } from '../../../lib/db/notes';
 import { isExcludedRep } from '../../../lib/repConfig';
 import { VERTICALS } from '../../../lib/constants';
@@ -128,6 +128,28 @@ export default async function handler(req, res) {
         if (!canTouchAccount(acct)) { results.push({ ok: false, label: a.label, error: 'not your account' }); continue; }
         const { error } = await addNote(a.accountId, { content: a.content, category: 'Assistant' });
         results.push({ ok: !error, label: a.label, error: error?.message });
+
+      // ── Task lifecycle (own tasks only) ─────────────────────────────────────────
+      } else if (a.type === 'complete_task' || a.type === 'update_task' || a.type === 'dismiss_task') {
+        if (!a.taskId) { results.push({ ok: false, label: a.label, error: 'no task' }); continue; }
+        const { data: t } = await db.from('tasks').select('owner_id, title').eq('id', a.taskId).maybeSingle();
+        if (!t) { results.push({ ok: false, label: a.label, error: 'task not found' }); continue; }
+        if (t.owner_id !== userId) { results.push({ ok: false, label: a.label, error: 'not your task' }); continue; }
+        if (a.type === 'complete_task') {
+          const { error } = await updateTask(a.taskId, { status: 'complete' });
+          results.push({ ok: !error, label: a.label || `Completed "${t.title}"`, error: error?.message });
+        } else if (a.type === 'dismiss_task') {
+          const { error } = await dismissTask(a.taskId, userId, 'Dismissed via assistant');
+          results.push({ ok: !error, label: a.label || `Dismissed "${t.title}"`, error: error?.message });
+        } else {
+          const upd = {};
+          if (a.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(a.dueDate)) upd.dueDate = a.dueDate;
+          if ([1, 2, 3].includes(Number(a.priority))) upd.priority = Number(a.priority);
+          if (['on_me', 'waiting_on_them', 'no_next_step'].includes(a.momentum)) upd.momentum = a.momentum;
+          if (!Object.keys(upd).length) { results.push({ ok: false, label: a.label, error: 'nothing to update' }); continue; }
+          const { error } = await updateTask(a.taskId, upd);
+          results.push({ ok: !error, label: a.label || `Updated "${t.title}"`, error: error?.message });
+        }
 
       } else {
         results.push({ ok: false, label: a.label || a.type, error: 'unsupported action' });

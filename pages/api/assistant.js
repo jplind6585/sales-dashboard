@@ -44,6 +44,28 @@ function resolveAccount(query, accounts) {
   return null;
 }
 
+// Resolve a free-text task reference against the caller's own open tasks (id-prefix, strong
+// substring, else best token-Jaccard ≥ 0.4). Fail-closed to null on a weak match.
+function resolveTask(query, tasks) {
+  if (!query) return null;
+  const q = norm(query);
+  const byId = tasks.find(t => t.id === query || (query.length >= 6 && t.id.startsWith(query)));
+  if (byId) return byId;
+  const qToks = new Set(q.split(' ').filter(w => w.length > 2));
+  let best = null, bestScore = 0;
+  for (const t of tasks) {
+    const nt = norm(t.title);
+    if (q.length > 4 && nt.includes(q)) return t;
+    const tToks = new Set(nt.split(' ').filter(w => w.length > 2));
+    if (!tToks.size || !qToks.size) continue;
+    const inter = [...qToks].filter(x => tToks.has(x)).length;
+    const uni = new Set([...qToks, ...tToks]).size;
+    const score = uni ? inter / uni : 0;
+    if (score > bestScore) { bestScore = score; best = t; }
+  }
+  return bestScore >= 0.4 ? best : null;
+}
+
 function resolveRep(query, profiles) {
   const q = norm(query);
   if (!q) return null;
@@ -68,18 +90,24 @@ export default async function handler(req, res) {
   const { message, history = [], context = {} } = req.body;
   const db = getSupabase();
 
-  const [acctRes, profRes] = await Promise.all([
+  const [acctRes, profRes, taskRes] = await Promise.all([
     db.from('accounts').select('id, name, stage, owner_name, deal_value, vertical, tier, close_date').order('name').limit(1000),
     db.from('profiles').select('id, full_name, email, role'),
+    db.from('tasks').select('id, title, priority, due_date, momentum, source_type, account_id')
+      .eq('owner_id', user.id).neq('status', 'complete').is('dismissed_at', null)
+      .order('priority', { ascending: true }).limit(60),
   ]);
   const accounts = acctRes.data || [];
   const profiles = profRes.data || [];
+  const myTasks = taskRes.data || [];
 
   // Compact pipeline context for grounding (names + stages + value; keep the prompt lean).
   const acctLines = accounts.slice(0, 600).map(a =>
     `${a.name} | ${a.stage || 'no stage'}${a.deal_value ? ` | $${a.deal_value}` : ''}${a.owner_name ? ` | ${a.owner_name}` : ''}`
   ).join('\n');
   const repLines = profiles.map(p => `${p.full_name || p.email} (${p.email})`).join(', ');
+  const acctNameById = (id) => accounts.find(a => a.id === id)?.name || '';
+  const taskLines = myTasks.map(t => `${t.id.slice(0, 8)} | ${t.title} | ${t.due_date || 'no due'} | P${t.priority || 2}${t.account_id ? ` | ${acctNameById(t.account_id)}` : ''}`).join('\n');
 
   let focusAccount = null;
   let focusContext = '';
@@ -98,11 +126,17 @@ You can DO these actions (the user confirms before anything is executed):
 - update_account_field: set ${UPDATABLE_FIELDS.join(', ')} on an account.
 - create_task: create a task. scope is "me" (the user), "rep" (a named teammate), or "team" (everyone). Optionally tie to an account and set dueDate (YYYY-MM-DD) and priority (1 high, 2 med, 3 low).
 - add_account_note: log a note on an account (also good for capturing a "next step").
+- complete_task: mark one of the user's OWN open tasks done. Reference it by taskTitle (the task's title text from YOUR OPEN TASKS).
+- update_task: reschedule/reprioritize one of the user's OWN tasks. taskTitle + any of: dueDate (YYYY-MM-DD), priority (1/2/3), momentum (on_me | waiting_on_them | no_next_step).
+- dismiss_task: dismiss (archive) one of the user's OWN tasks that isn't worth doing. taskTitle.
 
 PIPELINE (account | stage | value | owner):
 ${acctLines || 'No accounts.'}
 
 TEAM: ${repLines || 'unknown'}
+
+YOUR OPEN TASKS (short-id | title | due | priority | account) — you can complete / reschedule / reprioritize / dismiss these:
+${taskLines || 'none'}
 ${focusAccount ? `\nThe user is currently viewing: ${focusAccount.name} (${focusAccount.stage}).` : ''}
 ${context.module ? `Current screen: ${context.module}.` : ''}
 ${focusContext}
@@ -122,7 +156,10 @@ Respond with ONLY valid JSON:
     { "type": "update_account_stage", "accountName": "UDR", "stage": "proposal" },
     { "type": "update_account_field", "accountName": "UDR", "field": "vertical", "value": "multifamily" },
     { "type": "create_task", "title": "Send pricing to UDR", "scope": "me", "repName": null, "accountName": "UDR", "dueDate": null, "priority": 2 },
-    { "type": "add_account_note", "accountName": "UDR", "content": "Next step: send pricing deck" }
+    { "type": "add_account_note", "accountName": "UDR", "content": "Next step: send pricing deck" },
+    { "type": "complete_task", "taskTitle": "Send proposal to UDR" },
+    { "type": "update_task", "taskTitle": "Follow up with Acme", "dueDate": "2026-07-25", "priority": 1 },
+    { "type": "dismiss_task", "taskTitle": "come back to that" }
   ]
 }
 If no action is needed, return "actions": [].`;
@@ -179,6 +216,23 @@ If no action is needed, return "actions": [].`;
       return { ...a, accountId: acct?.id || null, accountName: acct?.name || a.accountName,
         ok: !!acct && !!a.content,
         label: acct ? `Note on ${acct.name}: "${a.content}"` : `Couldn't find "${a.accountName}"` };
+    }
+    if (a.type === 'complete_task') {
+      const t = resolveTask(a.taskTitle, myTasks);
+      return { ...a, taskId: t?.id || null, ok: !!t, label: t ? `Complete task: "${t.title}"` : `Couldn't find a task matching "${a.taskTitle}"` };
+    }
+    if (a.type === 'update_task') {
+      const t = resolveTask(a.taskTitle, myTasks);
+      const changes = [];
+      if (a.dueDate) changes.push(`due ${a.dueDate}`);
+      if (a.priority) changes.push(`P${a.priority}`);
+      if (a.momentum) changes.push(String(a.momentum).replace(/_/g, ' '));
+      return { ...a, taskId: t?.id || null, ok: !!t && changes.length > 0,
+        label: t ? `Update "${t.title}": ${changes.join(', ') || '(no change)'}` : `Couldn't find a task matching "${a.taskTitle}"` };
+    }
+    if (a.type === 'dismiss_task') {
+      const t = resolveTask(a.taskTitle, myTasks);
+      return { ...a, taskId: t?.id || null, ok: !!t, label: t ? `Dismiss task: "${t.title}"` : `Couldn't find a task matching "${a.taskTitle}"` };
     }
     return { ...a, ok: false, label: `Unsupported action: ${a.type}` };
   });
