@@ -10,6 +10,8 @@ import {
   Copy, Search, FileText
 } from 'lucide-react';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
@@ -292,6 +294,12 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
   const [sentKeys, setSentKeys] = useState(new Set())
   const [markedDone, setMarkedDone] = useState(false)
 
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   const sendEmail = async (msgKey, draft) => {
     if (!sendTo.trim()) return
     setSending(true)
@@ -468,8 +476,9 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      {/* Backdrop — dims the page but does NOT close on click, so an accidental click-away can't
+          discard your draft. Close explicitly via the X (or Esc). */}
+      <div className="fixed inset-0 bg-black/30 z-40" />
 
       {/* Panel */}
       <div className="fixed inset-y-0 right-0 w-full max-w-3xl bg-white border-l border-gray-200 flex flex-col shadow-2xl z-50">
@@ -1607,27 +1616,38 @@ function NewTaskModal({ onClose, onCreate, currentUserId, users }) {
 }
 
 // ─── Markdown renderer (handles **bold**, # headers, line breaks) ─────────────
+// Render AI output as real, skimmable markdown — headers, bullets, tables (via GFM), bold, code —
+// instead of a dense wrapped wall. Tables scroll horizontally so long plans don't blow out the panel.
 function renderMarkdown(text) {
   if (!text) return null
-  return text.split('\n').map((line, i, arr) => {
-    let tag = 'span'
-    let content = line
-    if (line.startsWith('### ')) { tag = 'h3'; content = line.slice(4) }
-    else if (line.startsWith('## ')) { tag = 'h2'; content = line.slice(3) }
-    else if (line.startsWith('# ')) { tag = 'h1'; content = line.slice(2) }
-
-    const parts = content.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
-      part.startsWith('**') && part.endsWith('**')
-        ? <strong key={j}>{part.slice(2, -2)}</strong>
-        : part
-    )
-
-    const br = i < arr.length - 1 ? <br /> : null
-    if (tag === 'h1') return <span key={i} style={{ display: 'block', fontWeight: 700, fontSize: '0.9em', marginTop: '0.5em' }}>{parts}{br}</span>
-    if (tag === 'h2') return <span key={i} style={{ display: 'block', fontWeight: 600, marginTop: '0.4em' }}>{parts}{br}</span>
-    if (tag === 'h3') return <span key={i} style={{ display: 'block', fontWeight: 600, color: '#374151', marginTop: '0.3em' }}>{parts}{br}</span>
-    return <span key={i}>{parts}{br}</span>
-  })
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: (p) => <h3 className="text-[15px] font-bold text-gray-900 mt-4 mb-1.5 first:mt-0" {...p} />,
+        h2: (p) => <h4 className="text-sm font-semibold text-gray-900 mt-3 mb-1 first:mt-0" {...p} />,
+        h3: (p) => <h5 className="text-[13px] font-semibold text-gray-700 mt-2.5 mb-0.5" {...p} />,
+        p: (p) => <p className="my-1.5" {...p} />,
+        ul: (p) => <ul className="my-1.5 ml-4 list-disc space-y-1" {...p} />,
+        ol: (p) => <ol className="my-1.5 ml-4 list-decimal space-y-1" {...p} />,
+        li: (p) => <li className="pl-0.5" {...p} />,
+        strong: (p) => <strong className="font-semibold text-gray-900" {...p} />,
+        em: (p) => <em className="italic" {...p} />,
+        a: (p) => <a className="text-coral-600 underline" target="_blank" rel="noreferrer" {...p} />,
+        hr: () => <hr className="my-3 border-gray-200" />,
+        blockquote: (p) => <blockquote className="border-l-2 border-gray-300 pl-3 my-2 text-gray-600 italic" {...p} />,
+        code: ({ inline, ...p }) => inline
+          ? <code className="px-1 py-0.5 bg-gray-200 rounded text-[12px] font-mono" {...p} />
+          : <code className="block bg-gray-900 text-gray-100 rounded-lg p-3 my-2 text-[12px] font-mono overflow-x-auto" {...p} />,
+        table: (p) => <div className="my-2 overflow-x-auto"><table className="text-[12px] border-collapse w-full" {...p} /></div>,
+        thead: (p) => <thead className="bg-gray-50" {...p} />,
+        th: (p) => <th className="border border-gray-300 px-2 py-1 text-left font-semibold whitespace-nowrap" {...p} />,
+        td: (p) => <td className="border border-gray-200 px-2 py-1 align-top" {...p} />,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  )
 }
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
@@ -2392,33 +2412,11 @@ export default function TasksPage() {
     return () => window.removeEventListener('tasks:refresh', handler)
   }, [fetchTasks])
 
+  // Completing a task just completes it — directly, optimistically. (No more opening a modal on the
+  // check; drafting a deliverable lives behind the explicit "Work" action instead.)
   const handleStatusChange = async (taskId, newStatus) => {
-    if (newStatus === 'complete') {
-      const task = tasks.find(t => t.id === taskId)
-      if (task) {
-        const isSimple = !task.primaryAction || (task.type === 'triggered' && task.source === 'manual')
-        if (isSimple) {
-          setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'complete', _justCompleted: true } : t))
-          setTimeout(() => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, _justCompleted: false } : t)), 1000)
-          try {
-            const res = await fetch(`/api/tasks/${taskId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'complete' }),
-            })
-            if (!res.ok) throw new Error('save failed')
-          } catch (err) {
-            console.error('Failed to complete task:', err)
-            showToast("Couldn't complete task — reverted")
-            fetchTasks()
-          }
-          return
-        }
-        setCompleteTask(task)
-        return
-      }
-    }
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, _justCompleted: newStatus === 'complete' } : t))
+    if (newStatus === 'complete') setTimeout(() => setTasks(prev => prev.map(t => t.id === taskId ? { ...t, _justCompleted: false } : t)), 1000)
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -2428,7 +2426,7 @@ export default function TasksPage() {
       if (!res.ok) throw new Error('save failed')
     } catch (err) {
       console.error('Failed to update task:', err)
-      showToast("Couldn't update task — reverted")
+      showToast(newStatus === 'complete' ? "Couldn't complete task — reverted" : "Couldn't update task — reverted")
       fetchTasks()
     }
   }
