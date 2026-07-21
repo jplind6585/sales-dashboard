@@ -1,18 +1,22 @@
-import { createClient, getSupabase } from '../../lib/supabase'
+import { createServerSupabaseClient, getSupabase } from '../../lib/supabase'
 
 /**
- * GET  /api/me — return current user's profile
- * PATCH /api/me — update current user's profile fields
+ * GET   /api/me — return the current user's profile
+ * PATCH /api/me — update the current user's own fields (slack_user_id, full_name).
+ *
+ * Auth is read from request cookies via createServerSupabaseClient; DB ops use the service-role
+ * client. (Using createClient() here 401'd server-side — it's a browser client with no cookies.)
  */
 export default async function handler(req, res) {
-  const supabase = createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const auth = createServerSupabaseClient(req, res)
+  const { data: { user }, error: authError } = await auth.auth.getUser()
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  getSupabase().from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id).then(() => {})
+  const db = getSupabase()
+  db.from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id).then(() => {})
 
   if (req.method === 'GET') {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('profiles')
       .select('id, full_name, email, role, rep_type, slack_user_id')
       .eq('id', user.id)
@@ -31,7 +35,7 @@ export default async function handler(req, res) {
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' })
     }
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('profiles')
       .update(updates)
       .eq('id', user.id)

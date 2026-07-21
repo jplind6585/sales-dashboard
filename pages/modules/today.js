@@ -1734,6 +1734,7 @@ export default function TodayPage() {
   const [isReady, setIsReady] = useState(false)
   const [profile, setProfile] = useState(null)
   const [providerToken, setProviderToken] = useState(null)
+  const [teamView, setTeamView] = useState(false) // managers/admins only — default to their own day
 
   useEffect(() => {
     const init = async () => {
@@ -1758,7 +1759,8 @@ export default function TodayPage() {
 
   const isManager = ['manager', 'admin'].includes(profile?.role)
   const isSdr = (profile?.rep_type || '').toLowerCase() === 'sdr'
-  const activeView = isManager ? 'manager' : (isSdr ? 'sdr' : 'ae')
+  const personalView = isSdr ? 'sdr' : 'ae'          // a manager sells too — their own day follows rep_type
+  const activeView = isManager && teamView ? 'manager' : personalView
 
   if (!isReady) {
     return (
@@ -1772,6 +1774,26 @@ export default function TodayPage() {
     <AppShell
       title="Today"
       subtitle="Your daily focus"
+      actions={isManager && (
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setTeamView(false)}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              !teamView ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            My Day
+          </button>
+          <button
+            onClick={() => setTeamView(true)}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              teamView ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Team
+          </button>
+        </div>
+      )}
     >
       <div className="max-w-6xl mx-auto px-6 py-8">
         {activeView === 'manager' && <ManagerView router={router} />}
