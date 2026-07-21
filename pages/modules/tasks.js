@@ -1467,6 +1467,16 @@ function computeTaskPriority(task) {
   return Math.min(score, 100)
 }
 
+// Shared sort comparator so the Sort control is honored everywhere — the flat list AND the grouped
+// All / By-Account views (which previously hardcoded computeTaskPriority and ignored the control).
+function taskComparator(sortBy) {
+  if (sortBy === 'due') return (a, b) => (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31')
+  if (sortBy === 'priority') return (a, b) => (a.priority || 3) - (b.priority || 3)
+  if (sortBy === 'account') return (a, b) => (a.account?.name || 'zzz').localeCompare(b.account?.name || 'zzz')
+  if (sortBy === 'recent') return (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  return (a, b) => computeTaskPriority(b) - computeTaskPriority(a)
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr) {
@@ -1836,16 +1846,13 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
 
 // ─── Rep View ─────────────────────────────────────────────────────────────────
 
-function RepView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, onNewTask, selectedTaskIds, onToggleSelect, bulkMode }) {
+function RepView({ tasks, sortBy = 'smart', onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, onNewTask, selectedTaskIds, onToggleSelect, bulkMode }) {
+  // Honor the chosen Sort within each type group; 'Smart' keeps overdue-first + priority.
+  const cmp = sortBy && sortBy !== 'smart'
+    ? taskComparator(sortBy)
+    : (a, b) => { const aOver = isOverdue(a) ? 1 : 0, bOver = isOverdue(b) ? 1 : 0; if (bOver !== aOver) return bOver - aOver; return computeTaskPriority(b) - computeTaskPriority(a) }
   const grouped = TYPE_ORDER.reduce((acc, type) => {
-    const items = tasks
-      .filter(t => t.type === type)
-      .sort((a, b) => {
-        const aOver = isOverdue(a) ? 1 : 0
-        const bOver = isOverdue(b) ? 1 : 0
-        if (bOver !== aOver) return bOver - aOver
-        return computeTaskPriority(b) - computeTaskPriority(a)
-      })
+    const items = tasks.filter(t => t.type === type).sort(cmp)
     if (items.length) acc[type] = items
     return acc
   }, {})
@@ -2046,7 +2053,7 @@ const STAGE_WEIGHT = {
   active_pursuit: 5, intro_scheduled: 4, qualifying: 3,
 }
 
-function ByAccountView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selectedTaskIds, onToggleSelect, bulkMode }) {
+function ByAccountView({ tasks, sortBy = 'smart', onStatusChange, onDelete, onDismiss, onWorkInClaude, onMomentumChange, selectedTaskIds, onToggleSelect, bulkMode }) {
   const [collapsed, setCollapsed] = useState(new Set())
   const toggleCollapse = (id) => setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const open = tasks // parent already applied the Active/All/Complete status filter (sortedFilteredTasks)
@@ -2091,7 +2098,7 @@ function ByAccountView({ tasks, onStatusChange, onDelete, onDismiss, onWorkInCla
             </button>
             {!isCollapsed && (
               <div className="space-y-2">
-                {grpTasks.sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a)).map(task => (
+                {[...grpTasks].sort(taskComparator(sortBy)).map(task => (
                   <TaskRow
                     key={task.id}
                     task={task}
@@ -2657,14 +2664,7 @@ export default function TasksPage() {
     { value: 'account', label: 'Account' },
     { value: 'recent', label: 'Recently added' },
   ]
-  const sortTasks = (list) => {
-    const arr = [...list]
-    if (sortBy === 'due') return arr.sort((a, b) => (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31'))
-    if (sortBy === 'priority') return arr.sort((a, b) => (a.priority || 3) - (b.priority || 3))
-    if (sortBy === 'account') return arr.sort((a, b) => (a.account?.name || 'zzz').localeCompare(b.account?.name || 'zzz'))
-    if (sortBy === 'recent') return arr.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-    return arr.sort((a, b) => computeTaskPriority(b) - computeTaskPriority(a))
-  }
+  const sortTasks = (list) => [...list].sort(taskComparator(sortBy))
   const sortedFilteredTasks = sortTasks(filteredTasks)
 
   // One filter+sort bar, rendered on every task tab so the affordance is consistent (Tasks v2).
@@ -2919,6 +2919,7 @@ export default function TasksPage() {
                 {renderFilters()}
                 <ByAccountView
                   tasks={sortedFilteredTasks}
+                  sortBy={sortBy}
                   onStatusChange={handleStatusChange}
                   onDelete={handleDelete}
                   onDismiss={task => setDismissTask(task)}
@@ -3046,6 +3047,7 @@ export default function TasksPage() {
                   ) : (
                     <RepView
                       tasks={sortedFilteredTasks}
+                      sortBy={sortBy}
                       onStatusChange={handleStatusChange}
                       onDelete={handleDelete}
                       onDismiss={task => setDismissTask(task)}
