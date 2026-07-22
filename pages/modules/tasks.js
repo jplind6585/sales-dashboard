@@ -1223,7 +1223,7 @@ function TodaysCallTasks({ onStatusChange }) {
   )
 }
 
-function DailyFocusBrief({ tasks, onWorkInClaude, onStatusChange }) {
+function DailyFocusBrief({ tasks, allTasks, onWorkInClaude, onStatusChange }) {
   const [focus, setFocus] = useState(null)
   const [loading, setLoading] = useState(false)
   const CACHE_KEY = 'daily_focus_cache'
@@ -1258,6 +1258,21 @@ function DailyFocusBrief({ tasks, onWorkInClaude, onStatusChange }) {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [tasks?.length])
+
+  // Drop any focused item whose task has been completed through ANY path (own checkmark, the Work
+  // panel's Mark done, a task row, etc.). Without this, completing from the Work panel only hid the
+  // Work button; the ranked row lingered because it renders from this cached list, not from `tasks`.
+  useEffect(() => {
+    const completedIds = new Set((allTasks || []).filter(t => t.status === 'complete').map(t => t.id))
+    if (!completedIds.size) return
+    setFocus(f => {
+      if (!f?.length) return f
+      const next = f.filter(item => !completedIds.has(item.taskId))
+      if (next.length === f.length) return f
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [allTasks])
 
   const refresh = () => {
     localStorage.removeItem(CACHE_DATE_KEY)
@@ -2993,7 +3008,7 @@ export default function TasksPage() {
               return (
                 <>
                   <CadenceStrip />
-                  <DailyFocusBrief tasks={myTasks.filter(t => t.status !== 'complete')} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
+                  <DailyFocusBrief tasks={myTasks.filter(t => t.status !== 'complete')} allTasks={tasks} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
 
                   {/* Filter bar */}
                   <div className="flex flex-wrap items-center gap-2 mb-3 mt-5">
@@ -3052,7 +3067,7 @@ export default function TasksPage() {
                 <>
                   <CadenceStrip />
                   <TodaysCallTasks onStatusChange={handleStatusChange} />
-                  <DailyFocusBrief tasks={activeTasks} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
+                  <DailyFocusBrief tasks={activeTasks} allTasks={tasks} onWorkInClaude={task => setWorkTask(task)} onStatusChange={handleStatusChange} />
                   <FocusListView
                     tasks={shownRest}
                     onStatusChange={handleStatusChange}

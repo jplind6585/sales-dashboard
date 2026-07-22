@@ -24,6 +24,11 @@ export default async function handler(req, res) {
     }),
   })
   const d = await r.json()
-  if (!d.ok) return res.status(500).json({ error: d.error || 'Slack DM failed' })
+  if (!d.ok) {
+    const detail = d.error === 'missing_scope' && d.needed
+      ? `missing_scope (add "${d.needed}" to Bot Token Scopes, then reinstall)`
+      : (d.error || 'Slack DM failed')
+    return res.status(500).json({ error: detail, needed: d.needed, provided: d.provided })
+  }
   return res.status(200).json({ ok: true })
 }
