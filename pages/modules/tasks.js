@@ -340,6 +340,15 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
   const inputRef = useRef(null)
   const { listening: micListening, transcript: micTranscript, start: micStart, stop: micStop, supported: micSupported } = useSpeechInput()
 
+  // Auto-grow the composer to fit what's typed (up to a max, then scroll) so multi-line answers don't
+  // cram into a fixed 2-row box and clip against the bottom edge / run under the scrollbar.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+  }, [input, micTranscript, micListening])
+
   // For playbooks that need call context: fetch account calls once on open (skip if thread already has history)
   useEffect(() => {
     if (!needsFetch) return
@@ -427,6 +436,7 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
             dueDate: task.dueDate,
             source: task.source,
             sourceType: task.sourceType,
+            gongCallId: task.sourceId || (task.description || '').match(/call ID:\s*([^\s)]+)/i)?.[1] || null,
             role: playbook?.id || 'generic',
             account: task.account ? { name: task.account.name, stage: task.account.stage } : null,
             calls: accountCalls.length ? accountCalls.slice(0, 10).map(c => ({
@@ -627,7 +637,7 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
                 placeholder={micListening ? 'Listening…' : 'Ask Claude to draft an email, prep talking points, handle objections…'}
                 rows={2}
                 className="w-full resize-none border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-400"
-                style={{ minHeight: '60px', maxHeight: '120px', fontStyle: micListening ? 'italic' : 'normal' }}
+                style={{ minHeight: '60px', maxHeight: '160px', fontStyle: micListening ? 'italic' : 'normal' }}
               />
               {micListening && (
                 <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />

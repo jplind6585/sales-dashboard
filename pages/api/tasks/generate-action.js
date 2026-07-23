@@ -35,9 +35,29 @@ export default async function handler(req, res) {
     return apiSuccess(res, { aiDraft: task.ai_draft, cached: true });
   }
 
-  // Pull recent call history for the account to ground the draft.
+  // Ground the draft. Prefer the SPECIFIC Gong call this task came from — that carries the transcript
+  // and works even when no account exists yet (e.g. an inbound intro). The call id lives on source_id
+  // (newer tasks) or embedded in the description ("call ID: ..."). Fall back to the account's history.
   let calls = [];
-  if (task.account_id) {
+  let transcript = null;
+  const callId = task.source_id || (task.description || '').match(/call ID:\s*([^\s)]+)/i)?.[1] || null;
+  if (callId) {
+    const { data: c } = await db
+      .from('gong_call_analyses')
+      .select('title, call_date, analysis, transcript_text')
+      .eq('gong_call_id', callId)
+      .maybeSingle();
+    if (c) {
+      transcript = c.transcript_text || null;
+      calls = [{
+        title: c.title, date: c.call_date, summary: c.analysis?.summary,
+        painPoints: c.analysis?.pain_points_identified || c.analysis?.pain_points,
+        nextSteps: c.analysis?.next_steps_mentioned, commitments: c.analysis?.commitments,
+        objections: (c.analysis?.objections || []).map(o => (typeof o === 'string' ? o : o?.text)).filter(Boolean),
+      }];
+    }
+  }
+  if (!transcript && task.account_id) {
     const { data: rows } = await db
       .from('gong_call_analyses')
       .select('title, call_date, analysis')
@@ -67,6 +87,7 @@ export default async function handler(req, res) {
     },
     account: task.accounts || null,
     calls,
+    transcript,
     repName: user.email?.split('@')[0] || 'the rep',
   });
 

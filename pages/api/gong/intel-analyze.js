@@ -331,7 +331,7 @@ async function autoCreateTasksFromAnalysis({ callId, title, date, repEmail, repN
     priority: [1, 2, 3].includes(Number(s.priority)) ? Number(s.priority) : 2,
     title: String(s.title || '').slice(0, 200),
     description: `Post-call checklist â€” from Gong call: "${title || 'Untitled'}" on ${callDateStr} (call ID: ${callId})`,
-    status: 'open', source: 'gong', source_type: 'playbook_post_call', account_id: accountId || null,
+    status: 'open', source: 'gong', source_id: callId, source_type: 'playbook_post_call', account_id: accountId || null,
     due_date: new Date((date ? new Date(date) : new Date()).getTime() + (Number(s.due_offset_hours) || 0) * 3600000).toISOString().slice(0, 10),
     rationale: 'Standard post-call step.', visible_to_manager: true,
   })).filter(r => r.title.trim());
@@ -646,6 +646,7 @@ Return ONLY valid JSON:
   "buying_signals": ["specific buying signal from the call"],
   "red_flags": ["specific concern or red flag"],
   "next_steps_mentioned": ["next step discussed in the call"],
+  "no_show": false,
   "icp_score": 7,
   "icp_rationale": "one sentence on why this score â€” what fit or mismatch was present",
   "discovery_score": 6,
@@ -674,6 +675,8 @@ Return ONLY valid JSON:
   }
 }
 
+Set "no_show" to true ONLY if the other party (the prospect or customer) never actually joined the meeting and the Banner team waited and then ended the call with no real conversation. If the other side spoke at all, or this was an internal Banner call, set it to false.
+
 Count filler words in the rep's speech only (not the customer's). Be accurate â€” count every occurrence. For "like", only count conversational filler uses ("it was, like, really good"), not legitimate uses ("it looks like", "something like that"). For "per_minute", divide the total by the call duration in minutes (${durationMin} minutes); set to null if duration is 0.`;
 
     const rawAnalysis = await callAnthropic(apiKey, {
@@ -692,6 +695,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate â€
       buying_signals: [],
       red_flags: [],
       next_steps_mentioned: [],
+      no_show: false,
       reengagement_triggers: [],
       icp_score: null,
       icp_rationale: null,
@@ -710,6 +714,12 @@ Count filler words in the rep's speech only (not the customer's). Be accurate â€
       filler_words: null,
     });
 
+    // Auto-flag a no-show that the crude <2min rule (webhook/nightly) misses: the LLM read the transcript
+    // and the counterparty never joined. Bounded to short calls (<=15m) to stay precise â€” a no-show is a
+    // call we wait on and leave, not a long real conversation. Kept in the table but ignored from analysis.
+    const isNoShowCall = analysis?.no_show === true && (durationSeconds || 0) > 0 && (durationSeconds || 0) <= 900;
+    const noShowFlags = isNoShowCall ? { ignored: true, ignore_reason: 'no_show', derived_call_type: 'no_show' } : {};
+
     // Persist to Supabase â€” this is the source of truth across sessions. (db + isCron resolved up top.)
     const { error: upsertError } = await db.from('gong_call_analyses').upsert(
       {
@@ -726,6 +736,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate â€
         transcript_text: transcriptText || null,
         derived_call_type: deriveDerivedCallType(title),
         call_category: deriveCallCategory(deriveDerivedCallType(title)),
+        ...noShowFlags,
       },
       { onConflict: 'gong_call_id' }
     );
@@ -737,6 +748,10 @@ Count filler words in the rep's speech only (not the customer's). Be accurate â€
         try { await db.from('gong_call_analyses').update({ analyzed_at: null }).eq('gong_call_id', callId); }
         catch (e) { console.error('[intel-analyze] claim release (upsert fail) failed for', callId, e.message); }
       }
+    } else if (isNoShowCall) {
+      // No-show: it's flagged ignored above and kept for the record, but it has no real content â€”
+      // skip tasks, transcript insert, account write-back, and coaching so it stays out of the workflow.
+      console.log('[intel-analyze] no-show detected â€” flagged ignored, skipping tasks/transcript/coaching for', callId);
     } else {
       const callCat = deriveCallCategory(deriveDerivedCallType(title));
 

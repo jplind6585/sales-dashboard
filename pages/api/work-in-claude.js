@@ -8,8 +8,9 @@
 // Powers the "Work in Claude" side panel on tasks.
 // Conversation history is stored client-side (localStorage); backend is stateless.
 
-import { createServerSupabaseClient } from '../../lib/supabase';
+import { createServerSupabaseClient, getSupabase } from '../../lib/supabase';
 import { callAnthropic, logRequest } from '../../lib/apiUtils';
+import { followUpEmailGuide, displayName, stripDashes } from '../../lib/emailTemplates';
 
 export default async function handler(req, res) {
   logRequest(req, 'work-in-claude');
@@ -25,10 +26,26 @@ export default async function handler(req, res) {
   const { messages, taskContext } = req.body || {};
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
-  const { title, description, rationale, primaryAction, dueDate, source, sourceType, account, calls, role } = taskContext || {};
+  const { title, description, rationale, primaryAction, dueDate, source, sourceType, account, calls, role, gongCallId } = taskContext || {};
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const repName = user.email?.split('@')[0] || 'the rep';
+
+  // Pull the source call's raw transcript so drafting works straight from the conversation, even when
+  // the structured analysis is thin or the call has no account yet (inbound intro). Best-effort.
+  let transcriptContext = '';
+  if (gongCallId) {
+    try {
+      const { data: c } = await getSupabase()
+        .from('gong_call_analyses')
+        .select('transcript_text')
+        .eq('gong_call_id', String(gongCallId))
+        .maybeSingle();
+      if (c?.transcript_text) {
+        transcriptContext = `\n\nCALL TRANSCRIPT (draft directly from this — speakers are tagged [REP]/[PROSPECT]):\n${String(c.transcript_text).slice(0, 16000)}`;
+      }
+    } catch (e) { console.error('[work-in-claude] transcript fetch failed:', e.message); }
+  }
 
   const ROLE_INSTRUCTIONS = {
     'prepare-deck': `
@@ -45,10 +62,8 @@ Be concise — the rep needs to be ready fast, not read an essay.`,
 You are helping the rep plan exactly what to ask for at the close of the next meeting and how to ask for it.
 Given the MEDDIC gaps and deal stage, recommend: the ideal next step (be specific — not "schedule a meeting" but "get the CFO on a 30-minute call to review the ROI model"), how to ask for it on the call, and how to respond if they resist or try to kick it to email.`,
 
-    'email-draft': `
-You are drafting a follow-up email after a sales call.
-Rules: reference specific things from the call (don't be generic), keep it under 120 words, one clear ask at the end, no "per our conversation" or "as discussed" openings, no em dashes.
-Format: subject line, then body. If they gave you context about what was discussed, incorporate it.`,
+    'email-draft': followUpEmailGuide(displayName(repName)),
+    'follow-up-email': followUpEmailGuide(displayName(repName)),
 
     'gong-deliverable': `
 You are helping the rep complete a specific deliverable that came out of a Gong call — a next step they committed to or a follow-up action.
@@ -87,7 +102,7 @@ The context from the call is in the task rationale above. Be direct and practica
     dueDate        ? `DUE: ${dueDate}` : null,
     account?.name  ? `ACCOUNT: ${account.name}${account.stage ? ` (stage: ${account.stage})` : ''}` : null,
     sourceType === 'gong_next_step' ? `SOURCE: Extracted from a Gong call recording` : null,
-    callsContext || null,
+    transcriptContext || callsContext || null,
     roleInstructions || null,
     ``,
     `TODAY: ${today}`,
@@ -111,7 +126,9 @@ The context from the call is in the task rationale above. Be direct and practica
       messages: trimmedMessages,
     });
 
-    return res.status(200).json({ success: true, message: reply });
+    // Guarantee no em/en dashes on the email-drafting paths (these go to clients as-is).
+    const isEmail = role === 'email-draft' || role === 'follow-up-email';
+    return res.status(200).json({ success: true, message: isEmail ? stripDashes(reply) : reply });
   } catch (e) {
     console.error('[work-in-claude] Error:', e.message);
     return res.status(500).json({ error: e.message });
