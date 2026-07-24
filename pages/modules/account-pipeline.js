@@ -27,6 +27,7 @@ import OverviewTab from '../../components/tabs/OverviewTab';
 import TranscriptsTab from '../../components/tabs/TranscriptsTab';
 import CurrentStateTab from '../../components/tabs/CurrentStateTab';
 import StakeholdersTab from '../../components/tabs/StakeholdersTab';
+import PeopleTab from '../../components/tabs/PeopleTab';
 import InformationGapsTab from '../../components/tabs/InformationGapsTab';
 import ContentTab from '../../components/tabs/ContentTab';
 import TimelineTab from '../../components/tabs/TimelineTab';
@@ -795,6 +796,8 @@ export default function Home() {
             onBulkAddStakeholders={handleBulkAddStakeholders}
           />
         );
+      case 'people':
+        return <PeopleTab account={selectedAccount} />;
       case 'gaps':
         return <InformationGapsTab account={selectedAccount} />;
       case 'content':
