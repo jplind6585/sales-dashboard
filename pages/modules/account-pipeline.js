@@ -28,6 +28,7 @@ import TranscriptsTab from '../../components/tabs/TranscriptsTab';
 import CurrentStateTab from '../../components/tabs/CurrentStateTab';
 import StakeholdersTab from '../../components/tabs/StakeholdersTab';
 import PeopleTab from '../../components/tabs/PeopleTab';
+import OverviewBriefTab from '../../components/tabs/OverviewBriefTab';
 import InformationGapsTab from '../../components/tabs/InformationGapsTab';
 import ContentTab from '../../components/tabs/ContentTab';
 import TimelineTab from '../../components/tabs/TimelineTab';
@@ -781,8 +782,8 @@ export default function Home() {
 
     switch (activeTab) {
       case 'overview':
-        return <OverviewTab account={selectedAccount} onUpdateAccount={updateAccountField} />;
-      case 'timeline':
+        return <OverviewBriefTab account={selectedAccount} onUpdateAccount={updateAccountField} />;
+      case 'activity':
         return <TimelineTab account={selectedAccount} />;
       case 'transcripts':
         return <TranscriptsTab account={selectedAccount} onOpenTranscriptModal={() => setShowNewTranscript(true)} />;

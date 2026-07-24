@@ -18,7 +18,8 @@ export default function TimelineTab({ account }) {
     setEvents(null); setErr(null);
     fetch(`/api/accounts/timeline?accountId=${account.id}`)
       .then((r) => r.json())
-      .then((j) => { if (cancelled) return; if (j.success === false) throw new Error(j.error); setEvents(j.events || []); })
+      // Activity is events only, never open tasks (spec 7.1). Open tasks live in the Tasks module.
+      .then((j) => { if (cancelled) return; if (j.success === false) throw new Error(j.error); setEvents((j.events || []).filter((e) => e.type !== 'task')); })
       .catch((e) => { if (!cancelled) setErr(e.message); });
     return () => { cancelled = true; };
   }, [account?.id]);
