@@ -1,5 +1,6 @@
 import { createServerSupabaseClient, getSupabase } from '../../lib/supabase'
 import { ROLES, REP_TYPES, isAdmin } from '../../lib/roles'
+import { personaCategory } from '../../lib/repConfig'
 
 // GET  /api/users — all user profiles merged with reps seen in Gong call data (reps who haven't
 //                   logged in yet still appear via their Gong rep_name/email, role 'rep').
@@ -22,16 +23,21 @@ export default async function handler(req, res) {
     ])
     if (error) return res.status(500).json({ error: error.message })
 
+    // Two classes of people. Users = real app accounts (profiles). Personas = reps who appear only in
+    // call data and have no account; they are kept for attribution/analysis, tagged by category, and are
+    // NOT app users. The Settings page renders them in separate sections.
     const profileEmails = new Set((profiles || []).map(p => p.email?.toLowerCase()))
     const gongRepMap = {}
     for (const r of (gongReps || [])) {
       const email = r.rep_email?.toLowerCase()
       if (!email || profileEmails.has(email) || gongRepMap[email]) continue
-      gongRepMap[email] = { id: null, full_name: r.rep_name, email: r.rep_email, role: 'rep', rep_type: null, last_active_at: null, fromGong: true }
+      gongRepMap[email] = { id: null, full_name: r.rep_name, email: r.rep_email, role: 'rep', rep_type: null, last_active_at: null, fromGong: true, persona: personaCategory(r.rep_name) }
     }
-    const merged = [...(profiles || []), ...Object.values(gongRepMap)]
-      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
-    return res.status(200).json({ users: merged })
+    const byName = (a, b) => (a.full_name || '').localeCompare(b.full_name || '')
+    const users = (profiles || []).slice().sort(byName)
+    const personas = Object.values(gongRepMap).sort(byName)
+    // `users` stays the merged shape for backward compatibility; `personas` is the new call-reps group.
+    return res.status(200).json({ users, personas })
   }
 
   if (req.method === 'PATCH') {

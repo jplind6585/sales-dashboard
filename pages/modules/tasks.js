@@ -400,6 +400,11 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
   const persistMessages = (msgs) => {
     try { localStorage.setItem(storageKey, JSON.stringify(msgs.slice(-20))) } catch {}
   }
+  // Persist to the DB chat (Tasks v2 Layer 3) alongside the localStorage cache. Fire-and-forget:
+  // a failure here must never block the chat. The DB read-migration comes with the shared panel.
+  const saveMsg = (role, content) => {
+    fetch(`/api/tasks/${task.id}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role, content }) }).catch(() => {})
+  }
 
   const toggleWicMic = () => {
     if (micListening) {
@@ -419,6 +424,7 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
     const withUser = [...messages, userMsg]
     setMessages(withUser)
     persistMessages(withUser)
+    saveMsg('user', text)
     setInput('')
     setLoading(true)
 
@@ -462,6 +468,7 @@ function WorkInClaude({ task, onClose, onStatusChange, providerToken }) {
         const withReply = [...withUser, assistantMsg]
         setMessages(withReply)
         persistMessages(withReply)
+        saveMsg('assistant', data.message)
       }
     } catch (e) {
       console.error('Work in Claude error:', e)

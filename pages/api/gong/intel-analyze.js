@@ -773,7 +773,7 @@ Count filler words in the rep's speech only (not the customer's). Be accurate �
         await autoInsertTranscript({ accountId, callId, transcriptText, date, callType, analysis, gongUrl, db });
         // Write MEDDICC/stakeholders/gaps back to the account (North Star output a, §1.8/§2.2). Fires
         // for any sales call with a resolved account — this is account data, not rep-gated. Best-effort.
-        if (accountId && callCat !== 'cs') { await writeBackFromAnalysis(db, accountId, analysis); await writeAccountSignals(db, accountId, analysis, date); }
+        if (accountId && callCat !== 'cs') { await writeBackFromAnalysis(db, accountId, analysis, callId, date); await writeAccountSignals(db, accountId, analysis, date); }
         const autoProcess = isAutoProcessRep(repEmail) || isAutoProcessRep(repName);
         const isFreshForCoaching = date && (Date.now() - new Date(date).getTime()) < AUTO_TASK_MAX_AGE_MS;
         if (autoProcess && callCat !== 'cs' && isFreshForCoaching && repEmail) {

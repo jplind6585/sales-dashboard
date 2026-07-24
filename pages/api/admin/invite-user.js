@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   let meta
   if (designation === 'manager') meta = { role: 'manager', rep_type: null }
   else if (REP_TYPES.includes(designation)) meta = { role: 'rep', rep_type: designation }
-  else return res.status(400).json({ error: 'Invalid designation — expected ae, sdr, or manager' })
+  else return res.status(400).json({ error: 'Invalid designation. Expected ae, sdr, support, or manager.' })
 
   const { data, error } = await db.auth.admin.inviteUserByEmail(email, { data: meta })
   if (error) return res.status(500).json({ error: error.message })

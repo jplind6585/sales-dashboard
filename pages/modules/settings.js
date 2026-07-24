@@ -9,13 +9,16 @@ import { STAGE_PROBABILITY, STAGE_LABELS, ACTIVE_STAGE_ORDER } from '../../lib/c
 const ROLE_OPTIONS = [
   { value: 'ae', label: 'AE' },
   { value: 'sdr', label: 'SDR' },
+  { value: 'support', label: 'Sales Admin' },
   { value: 'manager', label: 'Manager' },
 ]
 // The team-list editor here only changes rep_type; access role (Manager/Admin) is set on the Users page.
 const TYPE_OPTIONS = [
   { value: 'ae', label: 'AE' },
   { value: 'sdr', label: 'SDR' },
+  { value: 'support', label: 'Sales Admin' },
 ]
+const PERSONA_LABELS = { cs: 'CS / non-sales', former: 'Former rep', rep: 'Rep (no account)' }
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -37,6 +40,7 @@ export default function SettingsPage() {
 
   // Team (admin only)
   const [teamMembers, setTeamMembers] = useState([])
+  const [personas, setPersonas] = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('ae')
   const [inviteSending, setInviteSending] = useState(false)
@@ -74,9 +78,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!isAdmin) return
-    fetch('/api/users')
+    fetch('/api/users') // sets teamMembers (accounts) + personas (call reps, no account)
       .then(r => r.json())
-      .then(d => setTeamMembers(d.users || d || []))
+      .then(d => { setTeamMembers(d.users || d || []); setPersonas(d.personas || []) })
       .catch(() => {})
 
     fetch('/api/sales-process')
@@ -409,6 +413,29 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ── Personas: reps seen in calls, not app users ── */}
+            {personas.length > 0 && (
+              <div className="mt-6 pt-5 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-900">Personas, call reps</h3>
+                <p className="text-xs text-gray-400 mt-0.5 mb-3">
+                  People who appear in call data but do not have an app account. Kept for call attribution and analysis, not app users. Invite one above to make them a user.
+                </p>
+                <div className="space-y-2">
+                  {personas.map(u => (
+                    <div key={u.email} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">{u.full_name || u.name || '—'}</p>
+                        <p className="text-xs text-gray-400">{u.email}</p>
+                      </div>
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${u.persona === 'cs' ? 'bg-slate-100 text-slate-600' : u.persona === 'former' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                        {PERSONA_LABELS[u.persona] || 'Rep'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
