@@ -9,7 +9,8 @@ import { sendSlackMessage } from '../../../lib/slack';
 
 const JAMES_SLACK_DM = process.env.SLACK_MANAGER_CHANNEL || 'D02PGNHTR53';
 
-const INACCESSIBLE_STAGES = ['won', 'closed_won', 'closed_lost', 'lost'];
+// inactive_* deals are dead → excluded from the exec pipeline snapshot exactly like closed_lost (CEO rule 2026-07-24)
+const INACCESSIBLE_STAGES = ['won', 'closed_won', 'closed_lost', 'lost', 'inactive_sdr_follow_up', 'inactive_ae_follow_up'];
 
 export default async function handler(req, res) {
   logRequest(req, 'manager/weekly-brief');

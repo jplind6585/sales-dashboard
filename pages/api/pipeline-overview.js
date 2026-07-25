@@ -169,7 +169,7 @@ export default async function handler(req, res) {
           })()
         }))
 
-      const activeAccounts = repAccounts.filter(a => a.stage !== 'closed_won' && a.stage !== 'closed_lost')
+      const activeAccounts = repAccounts.filter(a => a.stage !== 'closed_won' && a.stage !== 'closed_lost' && a.stage !== 'inactive_sdr_follow_up' && a.stage !== 'inactive_ae_follow_up')
       const repConfidence = activeAccounts.length > 0
         ? Math.round(activeAccounts.reduce((sum, a) => sum + accountConfidence(a), 0) / activeAccounts.length)
         : null
@@ -248,7 +248,7 @@ export default async function handler(req, res) {
     }
 
     // Overall pipeline confidence + dollar values
-    const activeAccounts = accounts.filter(a => a.stage !== 'closed_won' && a.stage !== 'closed_lost')
+    const activeAccounts = accounts.filter(a => a.stage !== 'closed_won' && a.stage !== 'closed_lost' && a.stage !== 'inactive_sdr_follow_up' && a.stage !== 'inactive_ae_follow_up')
     const overallConfidence = activeAccounts.length > 0
       ? Math.round(activeAccounts.reduce((sum, a) => sum + accountConfidence(a), 0) / activeAccounts.length)
       : null

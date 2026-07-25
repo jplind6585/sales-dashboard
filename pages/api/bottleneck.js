@@ -44,7 +44,9 @@ export default async function handler(req, res) {
 
   // Win rate
   const wonCount = stageCounts['closed_won'] || 0
-  const lostCount = stageCounts['closed_lost'] || 0
+  // inactive_* deals are dead → counted as losses (CEO rule 2026-07-24). They are not in STAGE_ORDER,
+  // so they never land in stageCounts; count them directly off the accounts array.
+  const lostCount = (stageCounts['closed_lost'] || 0) + accounts.filter(a => a.stage === 'inactive_sdr_follow_up' || a.stage === 'inactive_ae_follow_up').length
   const winRate = wonCount + lostCount > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : null
 
   // Compute conversion rates between consecutive active stages

@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   const outcomeMap = {};
   for (const a of accounts) {
     if (a.stage === 'closed_won') outcomeMap[a.id] = 'won';
-    else if (a.stage === 'closed_lost') outcomeMap[a.id] = 'lost';
+    else if (a.stage === 'closed_lost' || a.stage === 'inactive_sdr_follow_up' || a.stage === 'inactive_ae_follow_up') outcomeMap[a.id] = 'lost'; // inactive_* = dead → lost (CEO rule 2026-07-24)
     else outcomeMap[a.id] = 'active';
   }
 
