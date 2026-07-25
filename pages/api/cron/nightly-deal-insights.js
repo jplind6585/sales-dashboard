@@ -40,7 +40,9 @@ export default async function handler(req, res) {
   const { data: accounts, error: acctErr } = await db
     .from('accounts')
     .select('id, name, stage, owner_name, updated_at, risk_score, risk_factors')
-    .not('stage', 'in', '(closed_won,closed_lost)')
+    // inactive_* are dead deals (CEO rule 2026-07-24) — exclude from risk insights + "Deal at Risk"
+    // manager alerts so we don't generate noise/AI spend on accounts we've already written off.
+    .not('stage', 'in', '(closed_won,closed_lost,inactive_sdr_follow_up,inactive_ae_follow_up)')
     .neq('tier', 'archived')
     .limit(200)
 
