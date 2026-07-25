@@ -5,6 +5,7 @@
 
 import { apiError, apiSuccess, logRequest } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
+import { bestAccountForTitle } from '../../../lib/accountMatch';
 
 // Preferred stages: active prospects score a bonus so they beat closed_won on ties
 const STAGE_PRIORITY = {
@@ -111,60 +112,35 @@ export default async function handler(req, res) {
 
   const db = getSupabase();
 
-  // Load all accounts with stage for priority scoring
-  const [{ data: accounts }, { data: calls }] = await Promise.all([
-    db.from('accounts').select('id, name, stage'),
-    db.from('gong_call_analyses')
-      .select('id, gong_call_id, title')
-      .is('account_id', null)
-      .eq('ignored', false)
-      .not('title', 'is', null),
-  ]);
+  // Load accounts (paginated — the table exceeds PostgREST's 1k default cap) with the fields the
+  // shared matcher needs: aliases + email_domains for scoring, is_master/parent so a company's calls
+  // land on the MASTER (company) rather than a dead sibling deal.
+  let accounts = [];
+  for (let from = 0; ; from += 1000) {
+    const { data } = await db.from('accounts')
+      .select('id, name, stage, aliases, email_domains, is_master, parent_account_id')
+      .range(from, from + 999);
+    accounts = accounts.concat(data || []);
+    if (!data || data.length < 1000) break;
+  }
+  const { data: calls } = await db.from('gong_call_analyses')
+    .select('id, gong_call_id, title')
+    .is('account_id', null).eq('ignored', false).not('title', 'is', null)
+    .limit(5000);
 
-  if (!accounts?.length) return apiSuccess(res, { matched: 0, total: 0, reason: 'no accounts synced yet' });
+  if (!accounts.length) return apiSuccess(res, { matched: 0, total: 0, reason: 'no accounts synced yet' });
   if (!calls?.length) return apiSuccess(res, { matched: 0, total: 0 });
 
-  // Minimum quality thresholds
-  const MIN_SCORE_EXTRACTED = 6;   // structured title extraction: need a solid name match
-  const MIN_SCORE_FALLBACK = 2;    // unstructured: only single distinctive-word matches
-
   const updates = [];
-
   for (const call of calls) {
-    const extracted = extractCompanyFromTitle(call.title);
-    const minScore = extracted ? MIN_SCORE_EXTRACTED : MIN_SCORE_FALLBACK;
-
-    let bestAccount = null;
-    let bestScore = 0;
-    let bestStagePriority = -1;
-
-    for (const account of accounts) {
-      const score = extracted
-        ? scoreMatch(account.name, extracted, true)
-        : scoreMatch(account.name, call.title, false);
-
-      if (score < minScore) continue;
-
-      const sp = stagePriority(account.stage);
-
-      // Prefer higher score; break ties by stage priority (active prospects win)
-      if (
-        score > bestScore ||
-        (score === bestScore && sp > bestStagePriority)
-      ) {
-        bestScore = score;
-        bestStagePriority = sp;
-        bestAccount = account;
-      }
-    }
-
-    if (bestAccount) {
+    const best = bestAccountForTitle(call.title, accounts); // shared matcher: alias/domain + master-preference
+    if (best) {
       updates.push({
         id:               call.id,
         gong_call_id:     call.gong_call_id,
-        account_id:       bestAccount.id,
-        match_confidence: bestScore / 10,
-        match_method:     extracted ? 'title_structured' : 'title_fuzzy',
+        account_id:       best.id,
+        match_confidence: best.score / 10,
+        match_method:     extractCompanyFromTitle(call.title) ? 'title_structured' : 'title_fuzzy',
       });
     }
   }

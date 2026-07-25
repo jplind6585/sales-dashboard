@@ -161,6 +161,10 @@ export default async function handler(req, res) {
     await recordStageChange(db, { ...ch, changedByName: 'HubSpot sync' });
   }
 
+  // Regroup the company hierarchy so a newly-synced deal for an existing company becomes a CHILD of
+  // that company's master instead of a new top-level duplicate (Phase 0.3 dedup prevention). Idempotent.
+  await db.rpc('regroup_account_hierarchy').then(() => {}, (e) => console.error('[sync-deals] regroup error:', e?.message));
+
   console.log(`[hubspot/sync-deals] synced ${synced} accounts (${errors} batch errors, ${stageChanges.length} stage moves recorded)`);
   return apiSuccess(res, { synced, total: deals.length, errors, stageChanges: stageChanges.length });
 }

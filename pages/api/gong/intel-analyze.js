@@ -12,6 +12,7 @@ import {
 } from '../../../lib/apiUtils';
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
 import { getSalesProcessConfig, buildSalesProcessContext } from '../../../lib/salesProcess';
+import { bestAccountForTitle } from '../../../lib/accountMatch';
 import { sendSlackMessage } from '../../../lib/slack';
 import { sendCallCoachingDM } from '../../../lib/coaching';
 import { isAutoProcessRep, isCoachRep, COACH_REPS } from '../../../lib/repConfig';
@@ -98,30 +99,28 @@ function matchScore(accountName, callTitle) {
 }
 
 async function tryMatchCallToAccount(callId, callTitle, db) {
-  if (!callTitle?.trim()) return;
+  if (!callTitle?.trim()) return null;
   try {
-    const { data: accounts } = await db.from('accounts').select('id, name, stage').limit(600);
-    if (!accounts?.length) return;
-    const extracted = extractCompanyFromTitle(callTitle);
-    const minScore = extracted ? 6 : 2;
-    let best = null, bestScore = 0, bestStage = -1;
-    for (const account of accounts) {
-      const score = extracted
-        ? scoreMatch(account.name, extracted, true)
-        : scoreMatch(account.name, callTitle, false);
-      if (score < minScore) continue;
-      const sp = STAGE_PRIORITY[account.stage] ?? 4;
-      if (score > bestScore || (score === bestScore && sp > bestStage)) {
-        bestScore = score; bestStage = sp; best = account;
-      }
+    // Paginate (table exceeds the 1k default cap; the old .limit(600) silently missed accounts) and
+    // fetch the fields the shared matcher needs, incl. is_master/parent so calls land on the company.
+    let accounts = [];
+    for (let from = 0; ; from += 1000) {
+      const { data } = await db.from('accounts')
+        .select('id, name, stage, aliases, email_domains, is_master, parent_account_id')
+        .range(from, from + 999);
+      accounts = accounts.concat(data || []);
+      if (!data || data.length < 1000) break;
     }
+    if (!accounts.length) return null;
+    const best = bestAccountForTitle(callTitle, accounts); // shared: alias/domain + master-preference
     if (best) {
+      const extracted = extractCompanyFromTitle(callTitle);
       await db.from('gong_call_analyses').update({
         account_id: best.id,
-        match_confidence: bestScore / 10,
+        match_confidence: best.score / 10,
         match_method: extracted ? 'title_structured_inline' : 'title_fuzzy_inline',
       }).eq('gong_call_id', callId);
-      console.log(`[intel-analyze] matched "${callTitle}" → "${best.name}" (score ${bestScore})`);
+      console.log(`[intel-analyze] matched "${callTitle}" → "${best.name}" (score ${best.score})`);
       return best.id;
     }
   } catch (e) {
