@@ -89,44 +89,9 @@ export default async function handler(req, res) {
     if (!['manager','admin'].includes(profile?.role)) return res.status(403).json({ error: 'Manager role required' });
   }
 
-  const db = getSupabase();
-
-  const { data: calls, error: fetchError } = await db
-    .from('gong_call_analyses')
-    .select('gong_call_id, title, call_date, rep_email, analysis')
-    .eq('rep_email', 'james@withbanner.com')
-    .not('analyzed_at', 'is', null);
-
-  if (fetchError) return res.status(500).json({ error: fetchError.message });
-  if (!calls?.length) return res.status(200).json({ success: true, data: { processed: 0, tasksCreated: 0, skipped: 0 } });
-
-  let processed = 0;
-  let tasksCreated = 0;
-  let skipped = 0;
-
-  for (const call of calls) {
-    const { count } = await db
-      .from('tasks')
-      .select('id', { count: 'exact', head: true })
-      .eq('source', 'gong')
-      .ilike('description', `%${call.gong_call_id}%`);
-
-    if (count > 0) {
-      skipped++;
-      continue;
-    }
-
-    processed++;
-    const created = await createTasksForCall({
-      callId: call.gong_call_id,
-      title: call.title,
-      date: call.call_date,
-      repEmail: call.rep_email,
-      analysis: call.analysis || {},
-      db,
-    });
-    tasksCreated += created;
-  }
-
-  return res.status(200).json({ success: true, data: { processed, tasksCreated, skipped } });
+  // DISABLED (Phase 1). This endpoint created ~1,624 account-less, raw-titled, unfiltered tasks
+  // (hardcoded to James, no freshness gate, never set account_id). The live path (intel-analyze
+  // autoCreateTasksFromAnalysis) creates account-linked, noise-filtered tasks properly. Kept as a
+  // no-op so the drain-backlog GitHub Action doesn't 404.
+  return res.status(200).json({ success: true, disabled: true, data: { processed: 0, tasksCreated: 0, skipped: 0 } });
 }

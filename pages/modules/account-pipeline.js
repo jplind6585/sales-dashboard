@@ -472,9 +472,12 @@ export default function Home() {
   // Auto-select account from query param (e.g. when navigating from Outbound Engine)
   useEffect(() => {
     const { account: accountId } = router.query;
-    if (accountId && accounts.length > 0) {
-      const target = accounts.find(a => a.id === accountId);
-      if (target) handleSelectAccount(target);
+    if (accountId) {
+      // Resolve by id even for CHILD accounts, which are hidden from the masters-only browse list.
+      // getAccountDetail loads any account by id, so fall back to an id-only object rather than
+      // stranding the page on a blank view when a deep-link carries a child id.
+      const target = accounts.find(a => a.id === accountId) || { id: accountId };
+      handleSelectAccount(target);
     }
   }, [router.query, accounts]);
 

@@ -119,6 +119,7 @@ export default async function handler(req, res) {
   for (let from = 0; ; from += 1000) {
     const { data } = await db.from('accounts')
       .select('id, name, stage, aliases, email_domains, is_master, parent_account_id')
+      .order('id', { ascending: true })
       .range(from, from + 999);
     accounts = accounts.concat(data || []);
     if (!data || data.length < 1000) break;

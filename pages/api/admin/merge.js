@@ -47,14 +47,12 @@ export default async function handler(req, res) {
     })
     if (restoreErr) return apiError(res, 500, `Restore failed: ${restoreErr.message}`)
 
-    // Move data back to absorbed account
-    await Promise.all([
-      db.from('gong_call_analyses').update({ account_id: log.absorbed_account_id }).eq('account_id', log.canonical_account_id).not('gong_call_id', 'is', null),
-      db.from('tasks').update({ account_id: log.absorbed_account_id }).eq('account_id', log.canonical_account_id),
-      db.from('stakeholders').update({ account_id: log.absorbed_account_id }).eq('account_id', log.canonical_account_id),
-      db.from('notes').update({ account_id: log.absorbed_account_id }).eq('account_id', log.canonical_account_id),
-      db.from('transcripts').update({ account_id: log.absorbed_account_id }).eq('account_id', log.canonical_account_id),
-    ])
+    // NOTE: unmerge restores the absorbed account RECORD only. Merge keeps no per-row provenance, so we
+    // cannot tell which of canonical's rows originally came from the absorbed account. The previous
+    // canonical-wide sweep (.eq account_id = canonical) wrongly moved canonical's OWN calls/tasks/
+    // stakeholders/notes onto the resurrected account — data corruption. So we no longer move data on
+    // unmerge: it stays on canonical; re-run call matching (match-calls) if the restored account needs
+    // its calls re-linked.
 
     // Mark log reversed
     await db.from('account_merge_log').update({ reversed_at: new Date().toISOString(), reversed_by: user.email }).eq('id', unmergeId)
@@ -118,8 +116,10 @@ export default async function handler(req, res) {
     notes_reassigned: noteCount || 0,
   })
 
-  // Delete absorbed account (data is now under canonical)
-  await db.from('accounts').delete().eq('id', absorbedId)
+  // Delete absorbed account (data is now under canonical). If it fails, the re-parent already succeeded
+  // (data is safe on canonical) — surface it so the operator knows the absorbed row wasn't removed.
+  const { error: delErr } = await db.from('accounts').delete().eq('id', absorbedId)
+  if (delErr) return apiError(res, 500, `Re-parent succeeded (data safe on canonical) but deleting the absorbed account failed: ${delErr.message}`)
 
   return apiSuccess(res, {
     merged: true,
