@@ -78,7 +78,7 @@ export default function OverviewBriefTab({ account, onUpdateAccount }) {
       )}
 
       {/* Knowledge */}
-      {(brief?.knowledge?.know?.length || brief?.knowledge?.missing?.length) && (
+      {((brief?.knowledge?.know?.length || 0) + (brief?.knowledge?.missing?.length || 0)) > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-xs font-bold tracking-wide text-gray-400 uppercase mb-2">What we know</p>
