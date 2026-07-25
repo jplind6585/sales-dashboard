@@ -90,14 +90,12 @@ export default async function handler(req, res) {
   const mergedAliases = [...new Set([...(canonical.aliases || []), ...(absorbed.aliases || []), absorbed.name])]
   const mergedDomains = [...new Set([...(canonical.email_domains || []), ...(absorbed.email_domains || [])])]
 
-  // Reassign all data from absorbed → canonical
-  await Promise.all([
-    db.from('gong_call_analyses').update({ account_id: canonicalId }).eq('account_id', absorbedId),
-    db.from('tasks').update({ account_id: canonicalId }).eq('account_id', absorbedId),
-    db.from('stakeholders').update({ account_id: canonicalId }).eq('account_id', absorbedId),
-    db.from('notes').update({ account_id: canonicalId }).eq('account_id', absorbedId),
-    db.from('transcripts').update({ account_id: canonicalId }).eq('account_id', absorbedId),
-  ])
+  // Reassign ALL account_id-referencing tables (31) from absorbed → canonical, atomically and
+  // conflict-safe, via the merge_accounts_reparent Postgres fn. The previous 5-table version left
+  // ~26 tables behind, so the delete below silently cascade-deleted signals/facts/history/content/etc.
+  // Abort before the delete if re-parent fails, so no data is lost.
+  const { error: reparentErr } = await db.rpc('merge_accounts_reparent', { p_canonical: canonicalId, p_absorbed: absorbedId })
+  if (reparentErr) return apiError(res, 500, `Merge re-parent failed (nothing deleted): ${reparentErr.message}`)
 
   // Update canonical with merged aliases/domains (keep canonical's deal value if present)
   await db.from('accounts').update({
