@@ -9,6 +9,6 @@ export default async function handler(req, res) {
   const { data: { user } } = await auth.auth.getUser();
   if (!user) return apiError(res, 401, 'Unauthorized');
   const db = getSupabase();
-  const { data } = await db.from('accounts').select('id, name, stage, owner_name').order('name').limit(1500);
+  const { data } = await db.from('accounts').select('id, name, stage, owner_name').order('name').limit(5000);
   return apiSuccess(res, { accounts: data || [] });
 }

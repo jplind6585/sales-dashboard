@@ -41,6 +41,7 @@ export default async function handler(req, res) {
         transcripts ( id, date, created_at )
       `)
       .order('updated_at', { ascending: false })
+      .limit(5000)
 
     if (accountsError) throw accountsError
 

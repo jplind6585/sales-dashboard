@@ -31,7 +31,7 @@ export default async function handler(req, res) {
   } else {
     q = q.in('stage', ACTIVE_STAGE_ORDER)
   }
-  const { data: accounts, error } = await q.limit(800)
+  const { data: accounts, error } = await q.limit(5000)
   if (error) return apiError(res, 500, error.message)
 
   let scope = accounts || []

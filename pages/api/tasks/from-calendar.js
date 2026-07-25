@@ -58,7 +58,7 @@ export default async function handler(req, res) {
     account = a || null;
   }
   if (!account) {
-    const { data: accounts } = await db.from('accounts').select('id, name, stage').limit(800);
+    const { data: accounts } = await db.from('accounts').select('id, name, stage').limit(5000);
     account = matchAccount(event.title, accounts || []);
   }
 

@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     db.from('accounts')
       .select('id, name, stage, owner_name, deal_value, close_date, hubspot_stage')
       .order('deal_value', { ascending: false })
-      .limit(600),
+      .limit(5000),
     db.from('lead_pipeline')
       .select('year, seq, sdr, ae, intro_status, qualify_status, closed_status, arr_value, date_booked')
       .order('year', { ascending: true }),

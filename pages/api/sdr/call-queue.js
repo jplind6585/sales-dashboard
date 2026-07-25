@@ -45,7 +45,7 @@ export default async function handler(req, res) {
 
   // Pull active accounts + (for recency/ICP) their analyzed calls.
   const [acctRes, callsRes] = await Promise.all([
-    db.from('accounts').select('id, name, stage, tier, owner_name, vertical, deal_value, user_id').limit(1500),
+    db.from('accounts').select('id, name, stage, tier, owner_name, vertical, deal_value, user_id').limit(5000),
     db.from('gong_call_analyses').select('account_id, call_date, analysis')
       .not('account_id', 'is', null).eq('ignored', false).not('analyzed_at', 'is', null)
       .or('call_category.is.null,call_category.neq.cs')

@@ -91,7 +91,7 @@ export default async function handler(req, res) {
   const db = getSupabase();
 
   const [acctRes, profRes, taskRes] = await Promise.all([
-    db.from('accounts').select('id, name, stage, owner_name, deal_value, vertical, tier, close_date').order('name').limit(1000),
+    db.from('accounts').select('id, name, stage, owner_name, deal_value, vertical, tier, close_date').order('name').limit(5000),
     db.from('profiles').select('id, full_name, email, role'),
     db.from('tasks').select('id, title, priority, due_date, momentum, source_type, account_id')
       .eq('owner_id', user.id).neq('status', 'complete').is('dismissed_at', null)

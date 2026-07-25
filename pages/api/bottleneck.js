@@ -18,6 +18,7 @@ export default async function handler(req, res) {
     .from('accounts')
     .select('id, name, stage, vertical, updated_at, user_id, owner_name, created_at')
     .order('created_at', { ascending: true })
+    .limit(5000)
 
   if (error) return res.status(500).json({ error: error.message })
 

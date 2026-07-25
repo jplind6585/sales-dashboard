@@ -31,7 +31,7 @@ export default async function handler(req, res) {
 
   const [initRes, acctRes] = await Promise.all([
     db.from('initiatives').select('*').order('created_at', { ascending: false }),
-    db.from('accounts').select('stage, deal_value, close_date, created_at, owner_name'),
+    db.from('accounts').select('stage, deal_value, close_date, created_at, owner_name').limit(5000),
   ]);
   const initiatives = initRes.data || [];
   const accounts = acctRes.data || [];

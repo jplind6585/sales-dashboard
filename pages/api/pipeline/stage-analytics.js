@@ -47,7 +47,8 @@ export default async function handler(req, res) {
   const { data: accounts, error: accountsError } = await db
     .from('accounts')
     .select('id, name, stage, deal_value, owner_name, updated_at')
-    .not('stage', 'in', `(${[...CLOSED_STAGES].join(',')})`);
+    .not('stage', 'in', `(${[...CLOSED_STAGES].join(',')})`)
+    .limit(5000);
 
   if (accountsError) {
     return apiError(res, 500, 'Failed to fetch accounts', accountsError.message);

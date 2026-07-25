@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
   const [leadsRes, accountsRes] = await Promise.all([
     db.from('lead_pipeline').select('id, year, seq, company, vertical, sdr, ae, date_booked, intro_status, qualify_status, closed_status, account_id, match_confidence, match_method, arr_value, grade').order('year', { ascending: false }).order('date_booked', { ascending: false }),
-    db.from('accounts').select('id, name, stage, owner_name, vertical, hubspot_deal_id, deal_value, close_date, hubspot_stage'),
+    db.from('accounts').select('id, name, stage, owner_name, vertical, hubspot_deal_id, deal_value, close_date, hubspot_stage').limit(5000),
   ]);
 
   if (leadsRes.error) return apiError(res, 500, leadsRes.error.message);
