@@ -474,14 +474,27 @@ export default function Home() {
   const [stakeholderRole, setStakeholderRole] = useState('Neutral');
 
   // Auto-select account from query param (e.g. when navigating from Outbound Engine)
+  const deepLinkTabRef = useRef(null);
   useEffect(() => {
-    const { account: accountId } = router.query;
+    const { account: accountId, tab } = router.query;
     if (accountId) {
       // Resolve by id even for CHILD accounts, which are hidden from the masters-only browse list.
       // getAccountDetail loads any account by id, so fall back to an id-only object rather than
       // stranding the page on a blank view when a deep-link carries a child id.
       const target = accounts.find(a => a.id === accountId) || { id: accountId };
       handleSelectAccount(target);
+    }
+    // Deep-linked tab, applied ONCE per unique link. The old 'chat' tab was retired into the
+    // action-capable assistant sidebar (Phase 2), so &tab=chat — used by Today's "Work in Claude"
+    // deal cards — opens that instead of silently landing on Overview. This effect also re-runs on
+    // every `accounts` reference change (any note/stakeholder mutation, and the assistant-writes →
+    // accounts:refresh loop), and the URL keeps tab=…, so the ref-guard prevents reopening a sidebar
+    // the user just closed or snapping them back to the deep-linked tab.
+    const linkKey = accountId && tab ? `${accountId}:${tab}` : null;
+    if (linkKey && deepLinkTabRef.current !== linkKey) {
+      deepLinkTabRef.current = linkKey;
+      if (tab === 'chat') setShowAISidebar(true);
+      else if (TABS.some(t => t.id === tab)) setActiveTab(tab);
     }
   }, [router.query, accounts]);
 
