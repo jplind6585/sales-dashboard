@@ -43,18 +43,21 @@ export default async function handler(req, res) {
     return apiSuccess(res, { role: 'sdr', week: ws, metric: 'meetings', label: 'Meetings booked this week', target: goalFor('meetings', 3), current: count || 0, picks: [] })
   }
 
-  // AE: deals ADVANCED forward this week = distinct accounts (owned by the AE) that moved to a later
-  // pipeline stage this week, from account_stage_history (carries owner_name + from/to stage).
+  // AE: deals ADVANCED forward this week = distinct accounts owned by the AE that moved to a later
+  // pipeline stage this week. NOTE: account_stage_history.owner_name is NULL for all rows since the
+  // populating trigger was dropped (2026-05), so we resolve ownership from accounts, not the history row.
   const me = (profile?.full_name || '').toLowerCase()
   const { data: moves } = await db.from('account_stage_history')
-    .select('account_id, from_stage, to_stage, owner_name, changed_at')
+    .select('account_id, from_stage, to_stage, changed_at')
     .gte('changed_at', ws).limit(5000)
-  const advanced = new Set()
-  for (const m of moves || []) {
-    if ((m.owner_name || '').toLowerCase() !== me) continue
-    if ((STAGE_ORDER[m.to_stage] || 0) > (STAGE_ORDER[m.from_stage] || 0)) advanced.add(m.account_id)
+  const forwardIds = [...new Set((moves || [])
+    .filter(m => (STAGE_ORDER[m.to_stage] || 0) > (STAGE_ORDER[m.from_stage] || 0))
+    .map(m => m.account_id))]
+  let current = 0
+  if (forwardIds.length) {
+    const { data: cand } = await db.from('accounts').select('id, owner_name, user_id').in('id', forwardIds)
+    current = (cand || []).filter(a => a.user_id === user.id || (a.owner_name || '').toLowerCase() === me).length
   }
-  const current = advanced.size
 
   // "Deals to advance": the AE's active-pipeline accounts, ranked (stalled/at-risk first) — the ones to push.
   const { data: active } = await db.from('accounts')

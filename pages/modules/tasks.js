@@ -1884,8 +1884,8 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
             </span>
 
             {/* Priority */}
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${BAND_COLOR[task.priorityBand] || PRIORITY_COLOR[task.priority]}`}>
-              {BAND_LABEL[task.priorityBand] || PRIORITY_LABEL[task.priority]}
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${BAND_COLOR[task.priorityBand] || PRIORITY_COLOR[task.priority] || BAND_COLOR.low}`}>
+              {BAND_LABEL[task.priorityBand] || PRIORITY_LABEL[task.priority] || 'Med'}
             </span>
 
             {/* Momentum badge */}
