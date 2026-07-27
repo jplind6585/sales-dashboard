@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-import { PhoneCall, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart, Database, Target } from 'lucide-react'
+import { PhoneCall, BarChart2, ShieldAlert, LayoutDashboard, ClipboardList, LineChart, Database, Target, TrendingUp, Trophy } from 'lucide-react'
 import AppShell from '../../../components/layout/AppShell'
 
 // Calm, single-accent cards (BRAND_GUIDE.md). No rainbow gradients, no red "Live" pill on every
@@ -13,6 +13,8 @@ const REPORTS = [
   { id: 'data-validation', name: 'Data Validation', icon: ShieldAlert, href: '/modules/sales-reports/data-validation', description: 'Admin queue for uncertain data — unmatched leads, duplicate accounts, multi-year companies, missing fields, and low-confidence HubSpot links. Keeps reporting clean.', tags: ['Admin', 'Data Quality'] },
   { id: 'hubspot-audit', name: 'HubSpot Audit Log', icon: ClipboardList, href: '/modules/sales-reports/hubspot-audit', description: 'Every write the dashboard makes to HubSpot — notes, stage syncs, deal updates, contact creates. What was sent, when, by whom, and whether it succeeded.', tags: ['HubSpot', 'Audit'] },
   { id: 'call-registry', name: 'Call Registry', icon: Database, href: '/modules/sales-reports/call-registry', description: 'Every Gong call in one table — date, rep, account, stage, analysis status, transcript, discovery and ICP scores. Filter by rep, status, or date. Source of truth for coverage.', tags: ['Gong', 'All calls'] },
+  { id: 'roi-tracker', name: 'ROI Tracker', icon: TrendingUp, href: '/modules/roi-tracker', description: 'What each investment returns — pipeline generated, revenue closed, and payback by source and initiative.', tags: ['ROI', 'Revenue', 'Payback'] },
+  { id: 'activity-leaderboard', name: 'Activity Leaderboard', icon: Trophy, href: '/modules/sales-reports/activity-leaderboard', description: 'SDR/AE activity ranking — calls, connects, meetings booked, and touches, ranked across the team.', tags: ['SDR', 'AE', 'Ranking'] },
 ]
 
 function ReportCard({ report }) {
