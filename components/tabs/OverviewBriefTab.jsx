@@ -2,7 +2,7 @@
 // risks, knowledge (know / missing), prepared moves. On load error it falls back to the legacy Overview
 // so replacing the default tab can never strand the rep.
 import { useState, useEffect } from 'react';
-import { AlertTriangle, Sparkles, Loader2, Eye, ArrowRight, CheckCircle2, HelpCircle, FileText } from 'lucide-react';
+import { AlertTriangle, Sparkles, Loader2, Eye, ArrowRight, CheckCircle2, HelpCircle, FileText, Megaphone, Plus } from 'lucide-react';
 import OverviewTab from './OverviewTab';
 
 const MODE_LABEL = { post_call: 'Post-call', pre_call: 'Pre-call', nurture: 'Nurture', working: 'Working' };
@@ -118,6 +118,9 @@ export default function OverviewBriefTab({ account, onUpdateAccount }) {
         </div>
       )}
 
+      {/* Campaigns this account is enrolled in (+ add to one) — the former Reengage lives here now. */}
+      <CampaignMembership account={account} />
+
       {/* Content — replaces the former Content tab: draft/manage this account's content in the Studio. */}
       <a
         href={`/modules/content?account=${account?.id}`}
@@ -132,6 +135,50 @@ export default function OverviewBriefTab({ account, onUpdateAccount }) {
       </a>
 
       <p className="text-[11px] text-gray-300">AI brief. Facts trace to this account's calls, stakeholders, and open gaps.</p>
+    </div>
+  );
+}
+
+// Shows the campaigns this account belongs to + a quick add-to-campaign picker (Phase 2C).
+function CampaignMembership({ account }) {
+  const [campaigns, setCampaigns] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [all, setAll] = useState([]);
+  const refresh = () => fetch(`/api/campaigns?accountId=${account.id}`).then((r) => r.json()).then((d) => setCampaigns(d?.campaigns || [])).catch(() => setCampaigns([]));
+  useEffect(() => { if (account?.id) refresh(); /* eslint-disable-next-line */ }, [account?.id]);
+  const openAdd = async () => { setAdding(true); const d = await fetch('/api/campaigns').then((r) => r.json()).catch(() => null); setAll(d?.campaigns || []); };
+  const add = async (cid) => { await fetch(`/api/campaigns/${cid}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountIds: [account.id] }) }); setAdding(false); refresh(); };
+  if (campaigns == null) return null;
+  const memberIds = new Set(campaigns.map((c) => c.id));
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2"><Megaphone className="w-4 h-4 text-coral-600" /><span className="text-xs font-bold tracking-wide text-gray-400 uppercase">Campaigns</span></div>
+        <button onClick={openAdd} className="inline-flex items-center gap-1 text-xs text-coral-700 hover:underline"><Plus className="w-3 h-3" /> Add to campaign</button>
+      </div>
+      {campaigns.length === 0 ? (
+        <p className="text-sm text-gray-400">Not in any campaign.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {campaigns.map((c) => (
+            <a key={c.id} href="/modules/campaigns" className="inline-flex items-center gap-1 text-xs bg-coral-50 text-coral-700 border border-coral-200 rounded-full px-2 py-1 hover:bg-coral-100">
+              {c.name}{c.status !== 'active' && <span className="text-gray-400">· {c.status}</span>}
+            </a>
+          ))}
+        </div>
+      )}
+      {adding && (
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          <p className="text-xs text-gray-500 mb-1.5">Add to:</p>
+          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+            {all.filter((c) => !memberIds.has(c.id)).map((c) => (
+              <button key={c.id} onClick={() => add(c.id)} className="text-xs bg-gray-50 border border-gray-200 rounded-full px-2 py-1 hover:bg-coral-50 hover:border-coral-200">{c.name}</button>
+            ))}
+            {all.filter((c) => !memberIds.has(c.id)).length === 0 && <span className="text-xs text-gray-400">No other campaigns. <a href="/modules/campaigns" className="text-coral-600 hover:underline">Create one</a></span>}
+          </div>
+          <button onClick={() => setAdding(false)} className="text-xs text-gray-400 hover:text-gray-600 mt-2">Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
