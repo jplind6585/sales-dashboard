@@ -33,6 +33,10 @@ import InformationGapsTab from '../../components/tabs/InformationGapsTab';
 import ContentTab from '../../components/tabs/ContentTab';
 import TimelineTab from '../../components/tabs/TimelineTab';
 import ChatTab from '../../components/tabs/ChatTab';
+// Phase 2 merged tabs (collapse 10 -> 4): Activity (Timeline+Transcripts), Stakeholders (People+Manage), Intel (Current State+Gaps)
+import ActivityTab from '../../components/tabs/ActivityTab';
+import StakeholdersMergedTab from '../../components/tabs/StakeholdersMergedTab';
+import IntelTab from '../../components/tabs/IntelTab';
 
 const INACTIVE_STAGES = new Set([...INACTIVE_STAGE_IDS, 'won', 'lost'])
 const CLOSED_STAGES = new Set([...CLOSED_STAGE_IDS, 'won', 'lost'])
@@ -787,33 +791,22 @@ export default function Home() {
       case 'overview':
         return <OverviewBriefTab account={selectedAccount} onUpdateAccount={updateAccountField} />;
       case 'activity':
-        return <TimelineTab account={selectedAccount} />;
-      case 'transcripts':
-        return <TranscriptsTab account={selectedAccount} onOpenTranscriptModal={() => setShowNewTranscript(true)} />;
-      case 'current_state':
-        return <CurrentStateTab account={selectedAccount} />;
+        return <ActivityTab account={selectedAccount} onOpenTranscriptModal={() => setShowNewTranscript(true)} />;
       case 'stakeholders':
         return (
-          <StakeholdersTab
+          <StakeholdersMergedTab
             account={selectedAccount}
             onOpenStakeholderModal={() => setShowNewStakeholder(true)}
             onBulkAddStakeholders={handleBulkAddStakeholders}
           />
         );
-      case 'people':
-        return <PeopleTab account={selectedAccount} />;
-      case 'gaps':
-        return <InformationGapsTab account={selectedAccount} />;
-      case 'content':
-        return <ContentTab account={selectedAccount} />;
-      case 'chat':
-        return <ChatTab account={selectedAccount} />;
-      case 'journey':
-        return <JourneyTab account={selectedAccount} />;
+      case 'intel':
+        return <IntelTab account={selectedAccount} />;
       case 'cs_handover':
         return <CSHandoverTab account={selectedAccount} />;
       default:
-        return null;
+        // Stale tab ids (transcripts/people/gaps/content/chat/journey) fall back to the hub.
+        return <OverviewBriefTab account={selectedAccount} onUpdateAccount={updateAccountField} />;
     }
   };
 
@@ -1143,8 +1136,6 @@ export default function Home() {
                           )
                         })()}
                       </div>
-                      {/* Competitor tags */}
-                      <CompetitorTags account={selectedAccount} onSave={updateAccountField} />
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {/* Quick note button */}
@@ -1155,19 +1146,6 @@ export default function Home() {
                       >
                         <MessageSquare className="w-4 h-4" />
                         Note
-                      </button>
-                      {/* Reengagement button */}
-                      <button
-                        onClick={handleReengage}
-                        disabled={reengageLoading}
-                        className="flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 text-sm transition-all disabled:opacity-50"
-                      >
-                        {reengageLoading ? (
-                          <span className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Flame className="w-4 h-4" />
-                        )}
-                        Reengage
                       </button>
                       {['demo', 'solution_validation', 'proposal'].includes(selectedAccount?.stage) && (
                         <button

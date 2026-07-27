@@ -2,7 +2,7 @@
 // risks, knowledge (know / missing), prepared moves. On load error it falls back to the legacy Overview
 // so replacing the default tab can never strand the rep.
 import { useState, useEffect } from 'react';
-import { AlertTriangle, Sparkles, Loader2, Eye, ArrowRight, CheckCircle2, HelpCircle } from 'lucide-react';
+import { AlertTriangle, Sparkles, Loader2, Eye, ArrowRight, CheckCircle2, HelpCircle, FileText } from 'lucide-react';
 import OverviewTab from './OverviewTab';
 
 const MODE_LABEL = { post_call: 'Post-call', pre_call: 'Pre-call', nurture: 'Nurture', working: 'Working' };
@@ -117,6 +117,19 @@ export default function OverviewBriefTab({ account, onUpdateAccount }) {
           </div>
         </div>
       )}
+
+      {/* Content — replaces the former Content tab: draft/manage this account's content in the Studio. */}
+      <a
+        href={`/modules/content?account=${account?.id}`}
+        className="flex items-center justify-between gap-3 bg-white rounded-xl border border-gray-200 p-4 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-indigo-600" />
+          <span className="text-sm font-medium text-gray-900">Content</span>
+          <span className="text-xs text-gray-400">emails, agendas, business cases, one-pagers</span>
+        </div>
+        <span className="inline-flex items-center gap-1 text-xs text-indigo-700 font-medium">Open Content Studio <ArrowRight className="w-3 h-3" /></span>
+      </a>
 
       <p className="text-[11px] text-gray-300">AI brief. Facts trace to this account's calls, stakeholders, and open gaps.</p>
     </div>
