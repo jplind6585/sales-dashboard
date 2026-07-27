@@ -71,6 +71,7 @@ export default async function handler(req, res) {
     .from('accounts')
     .select('id, name, stage')
     .in('stage', INSIGHT_STAGES)
+    .is('parent_account_id', null)   // one row per company (masters) — no duplicate account cards
     .order('name')
     .limit(50)
 
@@ -113,10 +114,10 @@ export default async function handler(req, res) {
       account_name: account.name,
       account_id: account.id,
       stage: account.stage,
-      headline: lastCall ? `No call in ${daysCold} days` : 'No calls on record',
+      headline: lastCall ? `No call in ${daysCold} days` : 'No calls linked yet',
       insight_text: lastCall
         ? `Last Gong call was ${daysCold} days ago. Deal may be going cold.`
-        : 'No Gong calls have been analyzed for this account.',
+        : 'No Gong calls are linked to this company yet — either none have happened, or calls exist but aren’t matched. Verify before assuming no activity.',
       recommended_action: 'Schedule a check-in',
       type: 'gone_cold',
       urgency: (daysCold == null || daysCold > 30) ? 'high' : 'medium',
@@ -141,6 +142,7 @@ async function computeIdleQueue(db, user) {
     .from('accounts')
     .select('id, name, stage')
     .not('stage', 'in', '(closed_won,closed_lost)')
+    .is('parent_account_id', null)   // masters only — one row per company
     .order('name')
     .limit(80)
 

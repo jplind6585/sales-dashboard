@@ -11,7 +11,7 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import AppShell from '../../components/layout/AppShell';
-import { PRIORITY_COLORS } from '../../lib/constants';
+import { BAND_LABEL, BAND_COLOR } from '../../lib/taskPriority';
 import StageBadge from '../../components/ui/StageBadge';
 
 // ─── Touch type helpers ───────────────────────────────────────────────────────
@@ -387,10 +387,8 @@ function MorningBriefCard({ fallbackTasks }) {
                 <ul className="space-y-1.5">
                   {fallbackTasks.slice(0, 3).map(task => (
                     <li key={task.id} className="flex items-start gap-2">
-                      <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${
-                        task.priority === 1 ? PRIORITY_COLORS[1] : task.priority === 2 ? PRIORITY_COLORS[2] : PRIORITY_COLORS[3]
-                      }`}>
-                        {task.priority === 1 ? 'High' : task.priority === 2 ? 'Med' : 'Low'}
+                      <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${BAND_COLOR[task.priorityBand] || BAND_COLOR.low}`}>
+                        {BAND_LABEL[task.priorityBand] || 'Low'}
                       </span>
                       <p className="text-xs text-gray-700 leading-snug">{task.title}</p>
                     </li>
@@ -421,21 +419,9 @@ function MorningBriefCard({ fallbackTasks }) {
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Deals to Watch</p>
                 <ul className="space-y-1">
-                  {brief.deals_to_watch.slice(0, 3).map((d, i) => (
+                  {brief.deals_to_watch.slice(0, 2).map((d, i) => (
                     <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5">
                       <span className="text-amber-400 mt-0.5">•</span>{d}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {brief.quick_wins?.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Quick Wins</p>
-                <ul className="space-y-1">
-                  {brief.quick_wins.slice(0, 3).map((w, i) => (
-                    <li key={i} className="text-sm text-gray-700 flex items-start gap-1.5">
-                      <span className="text-green-500 mt-0.5">✓</span>{w}
                     </li>
                   ))}
                 </ul>
@@ -462,7 +448,9 @@ function TodaysTasksCard({ router, coldDeals, onTasksLoaded }) {
       .then(r => r.json())
       .then(d => {
         const open = (d.tasks || []).filter(t => t.status !== 'complete')
-        open.sort((a, b) => (a.priority || 3) - (b.priority || 3))
+        // Rank by the holistic priority score (same as the Tasks board) so the top 5 are the truly
+        // urgent/important ones — not "everything High" from the coarse 1/2/3.
+        open.sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0))
         const top5 = open.slice(0, 5)
         setTasks(top5)
         if (onTasksLoaded) onTasksLoaded(open)
@@ -470,8 +458,6 @@ function TodaysTasksCard({ router, coldDeals, onTasksLoaded }) {
       .catch(() => { if (onTasksLoaded) onTasksLoaded([]) })
       .finally(() => setLoading(false))
   }, [])
-
-  const PRIORITY_LABEL = { 1: 'High', 2: 'Med', 3: 'Low' }
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -519,8 +505,8 @@ function TodaysTasksCard({ router, coldDeals, onTasksLoaded }) {
           <ul className="space-y-2">
             {tasks.map(task => (
               <li key={task.id} className="flex items-start gap-2">
-                <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${PRIORITY_COLORS[task.priority] || PRIORITY_COLORS[3]}`}>
-                  {PRIORITY_LABEL[task.priority] || 'Low'}
+                <span className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium border flex-shrink-0 ${BAND_COLOR[task.priorityBand] || BAND_COLOR.low}`}>
+                  {BAND_LABEL[task.priorityBand] || 'Low'}
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm text-gray-800 leading-snug">{task.title}</p>

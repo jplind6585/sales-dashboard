@@ -39,7 +39,9 @@ export default async function handler(req, res) {
       .limit(150),
   ])
 
-  const allTasks = tasksRes.data || []
+  // Setup/onboarding tasks (Connect Google, Slack ID) are not sales work — keep them out of the
+  // brief so it never opens with "DO FIRST: connect your calendar".
+  const allTasks = (tasksRes.data || []).filter(t => t.source !== 'onboarding')
   const recentCalls = gongRes.data || []
   const activeAccounts = accountsRes.data || []
 
@@ -129,9 +131,10 @@ ${staleSummary || 'All accounts have recent activity.'}
 
 Today's date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
 
+Keep it tight — this is a quick morning read, not a report. Three things only: what to do first, a couple of deals to watch, one observation.
+
 Rules:
-- "deals_to_watch" must name specific accounts with specific reasons (not generic advice)
-- "quick_wins" must reference specific tasks or account names
+- "deals_to_watch" must name specific accounts with specific reasons (not generic advice); at most 2
 - "insight" must be grounded in a specific call or account from the data above
 - If no relevant data exists for a field, return an empty array/null
 
@@ -140,7 +143,6 @@ Return ONLY valid JSON:
   "headline": "One punchy sentence naming specific accounts or task counts (e.g. 'Coastal Ridge needs a call and you have 2 overdue commitments')",
   "top_priority": "The single most important thing to do first today with specific account name (1-2 sentences)",
   "deals_to_watch": ["Account name — specific reason why it needs attention today", "..."],
-  "quick_wins": ["Specific action referencing a real task or account name (under 15 min)", "..."],
   "insight": "One specific coaching observation from the recent call data, naming the account (1 sentence)",
   "task_count": { "overdue": ${overdueTasks.length}, "today": ${dueTodayTasks.length}, "total": ${allTasks.length} }
 }`
@@ -156,7 +158,6 @@ Return ONLY valid JSON:
       headline: `You have ${allTasks.length} open tasks${overdueTasks.length ? `, including ${overdueTasks.length} overdue` : ''}.`,
       top_priority: overdueTasks[0]?.title || dueTodayTasks[0]?.title || highPriority[0]?.title || 'Review your task list.',
       deals_to_watch: staleAccounts.slice(0, 2).map(a => `${a.name} — no call in 14+ days`),
-      quick_wins: [],
       insight: null,
       task_count: { overdue: overdueTasks.length, today: dueTodayTasks.length, total: allTasks.length },
     })

@@ -242,6 +242,12 @@ const CurrentStateTab = ({ account }) => {
 
   const irrelevantCount = sortedAreas.irrelevantAreas.length;
 
+  // Any area the rep explicitly prioritized (high/medium/low) counts as curation worth showing.
+  const hasAnyPriority = BUSINESS_AREAS.some(area => {
+    const p = businessAreas[area.id]?.priority;
+    return p && p !== 'none' && !businessAreas[area.id]?.irrelevant;
+  });
+
   const handleGenerateBusinessCase = async () => {
     setGeneratingBusinessCase(true);
     try {
@@ -281,6 +287,43 @@ const CurrentStateTab = ({ account }) => {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   };
+
+  // Clean empty state — nothing captured yet. Rendering the "0 of N active areas" strip, a legend,
+  // a disabled button, and N empty rows reads as broken on a thin account. Show one honest message
+  // instead (+ the Not-Applicable section if the rep has curated any). If the rep has explicitly set
+  // any priority, fall through to the full view so that curation stays visible.
+  if (areasWithData === 0 && !hasAnyPriority) {
+    return (
+      <div className="space-y-4">
+        <div className="border border-gray-200 rounded-lg bg-gray-50/50 px-6 py-10 text-center">
+          <FileText className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+          <div className="text-sm font-medium text-gray-700 mb-1">No current-state intel captured yet</div>
+          <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
+            This fills in automatically as calls are analyzed — current state, pain points, and
+            opportunities across {BUSINESS_AREAS.length} business areas. Once there's call activity on
+            this account, the areas populate here.
+          </p>
+        </div>
+        <div className="text-xs text-gray-500 bg-blue-50 p-2 rounded flex items-center gap-2">
+          <span className="text-blue-500">Tip:</span>
+          Ask the assistant to set a priority or mark an area not applicable — e.g. "Mark CM Fees as high priority."
+        </div>
+        {sortedAreas.irrelevantAreas.length > 0 && (
+          <div className="mt-2">
+            <div className="flex items-center gap-2 mb-2 text-gray-500">
+              <X className="w-4 h-4" />
+              <span className="text-sm font-medium">Not Applicable ({irrelevantCount})</span>
+            </div>
+            <div className="space-y-2">
+              {sortedAreas.irrelevantAreas.map(({ area, data, isIrrelevant }) => (
+                <BusinessAreaCard key={area.id} area={area} data={data} isIrrelevant={isIrrelevant} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
