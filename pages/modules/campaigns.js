@@ -39,8 +39,10 @@ export default function CampaignsModule() {
   }, [])
 
   const grouped = useMemo(() => {
+    const known = new Set(TYPES.map(t => t.id))
     const g = {}
-    for (const c of campaigns || []) (g[c.type] = g[c.type] || []).push(c)
+    // Bucket any unrecognized type under 'other' so no campaign can silently drop out of the list.
+    for (const c of campaigns || []) { const key = known.has(c.type) ? c.type : 'other'; (g[key] = g[key] || []).push(c) }
     return g
   }, [campaigns])
 
