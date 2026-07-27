@@ -1,13 +1,14 @@
-// GET /api/rep/cadence — this week's cadence target + progress + re-engage picks for the caller.
-//   AE  → 10 re-engagements/week (completed tasks on dormant accounts) + ranked dormant picks to work.
-//   SDR → 3 meetings booked/week (from sdr_touches).
-// Targets default to 10 / 3; overridable per-user or per-role via sales_goals (metric+period='week').
+// GET /api/rep/cadence — this week's role goal + progress + picks for the caller.
+//   AE  → advance 5 deals/week (distinct accounts moved to a later stage this week) + active deals to push.
+//   SDR → book 3 meetings/week (from sdr_touches).
+// Targets default to 5 / 3; overridable per-user or per-role via sales_goals (metric+period='week').
 import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase'
 import { apiError, apiSuccess, validateMethod, logRequest } from '../../../lib/apiUtils'
 import { rankAccounts } from '../../../lib/nba'
-import { INACTIVE_STAGE_IDS } from '../../../lib/constants'
+import { ACTIVE_STAGE_ORDER } from '../../../lib/constants'
 
-const REENGAGE_STAGES = [...INACTIVE_STAGE_IDS, 'closed_lost']
+// Pipeline order for detecting a FORWARD move (advance).
+const STAGE_ORDER = { qualifying: 1, intro_scheduled: 2, active_pursuit: 3, demo: 4, solution_validation: 5, proposal: 6, legal: 7, closed_won: 8 }
 
 function weekStartISO() {
   const d = new Date()
@@ -42,22 +43,24 @@ export default async function handler(req, res) {
     return apiSuccess(res, { role: 'sdr', week: ws, metric: 'meetings', label: 'Meetings booked this week', target: goalFor('meetings', 3), current: count || 0, picks: [] })
   }
 
-  // AE re-engagements done this week = completed re-engage-trigger tasks OR completed tasks on dormant accounts.
-  const { data: doneTasks } = await db.from('tasks')
-    .select('id, source_type, accounts ( stage )')
-    .eq('owner_id', user.id).eq('status', 'complete').gte('completed_at', ws)
-  const done = new Set(REENGAGE_STAGES)
-  const current = (doneTasks || []).filter(t => t.source_type === 'gong_reengage' || done.has(t.accounts?.stage)).length
-
-  // Ranked dormant accounts to re-engage (owned by the AE where resolvable).
-  const { data: dormant } = await db.from('accounts')
-    .select('id, name, stage, deal_value, updated_at, risk_score, owner_name')
-    .in('stage', REENGAGE_STAGES).limit(600)
-  let scope = dormant || []
+  // AE: deals ADVANCED forward this week = distinct accounts (owned by the AE) that moved to a later
+  // pipeline stage this week, from account_stage_history (carries owner_name + from/to stage).
   const me = (profile?.full_name || '').toLowerCase()
-  const mine = scope.filter(a => (a.owner_name || '').toLowerCase() === me)
-  if (mine.length) scope = mine
+  const { data: moves } = await db.from('account_stage_history')
+    .select('account_id, from_stage, to_stage, owner_name, changed_at')
+    .gte('changed_at', ws).limit(5000)
+  const advanced = new Set()
+  for (const m of moves || []) {
+    if ((m.owner_name || '').toLowerCase() !== me) continue
+    if ((STAGE_ORDER[m.to_stage] || 0) > (STAGE_ORDER[m.from_stage] || 0)) advanced.add(m.account_id)
+  }
+  const current = advanced.size
 
+  // "Deals to advance": the AE's active-pipeline accounts, ranked (stalled/at-risk first) — the ones to push.
+  const { data: active } = await db.from('accounts')
+    .select('id, name, stage, deal_value, updated_at, risk_score, owner_name')
+    .in('stage', ACTIVE_STAGE_ORDER).limit(2000)
+  const scope = (active || []).filter(a => (a.owner_name || '').toLowerCase() === me)
   const ids = scope.map(a => a.id)
   const signalsById = {}
   for (let i = 0; i < ids.length; i += 200) {
@@ -66,5 +69,5 @@ export default async function handler(req, res) {
   }
   const picks = rankAccounts(scope, signalsById).slice(0, 8)
 
-  return apiSuccess(res, { role: 'ae', week: ws, metric: 'reengagement', label: 'Re-engagements this week', target: goalFor('reengagement', 10), current, picks })
+  return apiSuccess(res, { role: 'ae', week: ws, metric: 'advances', label: 'Deals advanced this week', target: goalFor('advances', 5), current, picks })
 }

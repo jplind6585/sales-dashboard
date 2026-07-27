@@ -19,6 +19,7 @@ import AppShell from '../../components/layout/AppShell';
 import StageBadge from '../../components/ui/StageBadge';
 import { fmtUsd } from '../../lib/metrics';
 import { PRIORITY_COLORS, PRIORITY_LABELS, stageHex, stageLabel, ACTIVE_STAGE_ORDER } from '../../lib/constants';
+import { BAND_LABEL, BAND_COLOR } from '../../lib/taskPriority';
 import SmartSuggestionsPanel from '../../components/smart-suggestions/SmartSuggestionsPanel';
 import TaskCompleteModal from '../../components/tasks/TaskCompleteModal';
 
@@ -1478,6 +1479,8 @@ function parseDueDate(dateStr) {
 }
 
 function computeTaskPriority(task) {
+  // Canonical holistic score (lib/taskPriority) computed on read; fall back to the legacy heuristic.
+  if (typeof task?.priorityScore === 'number') return task.priorityScore
   let score = 0
   const today = new Date(); today.setHours(0,0,0,0)
 
@@ -1749,9 +1752,9 @@ function KanbanCard({ task, onComplete, onWork, onDelete, onDismiss, onDragStart
           {task.status === 'complete' ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Circle className="w-4 h-4" />}
         </button>
         <div className="flex-1 min-w-0">
-          <p className={`text-[13px] font-medium leading-snug ${task.status === 'complete' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</p>
+          <p className={`text-[13px] font-medium leading-snug line-clamp-2 ${task.status === 'complete' ? 'line-through text-gray-400' : 'text-gray-800'}`} title={task.title}>{task.title}</p>
           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-            {task.priority === 1 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-medium">High</span>}
+            {task.priorityBand === 'high' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 font-medium">High</span>}
             {stage && <StageBadge stage={stage} />}
             {task.account?.name && <span className="text-[11px] text-gray-500 truncate max-w-[110px]">{task.account.name}</span>}
             {dateLabel && <span className={`text-[11px] ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>{dateLabel}</span>}
@@ -1858,7 +1861,7 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className={`text-sm font-medium leading-snug ${task.status === 'complete' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+            <p className={`text-sm font-medium leading-snug line-clamp-2 ${task.status === 'complete' ? 'line-through text-gray-400' : 'text-gray-900'}`} title={task.title}>
               {task.title}
             </p>
             <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }} className="flex-shrink-0 text-gray-400 hover:text-gray-600 mt-0.5">
@@ -1881,8 +1884,8 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
             </span>
 
             {/* Priority */}
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_COLOR[task.priority]}`}>
-              {PRIORITY_LABEL[task.priority]}
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${BAND_COLOR[task.priorityBand] || PRIORITY_COLOR[task.priority]}`}>
+              {BAND_LABEL[task.priorityBand] || PRIORITY_LABEL[task.priority]}
             </span>
 
             {/* Momentum badge */}
@@ -1897,12 +1900,17 @@ function TaskRow({ task, onStatusChange, onDelete, onDismiss, onWorkInClaude, on
               </span>
             )}
 
-            {/* Account link */}
-            {task.account && (
-              <span className="flex items-center gap-1 text-xs text-gray-500">
+            {/* Account link — deep-links to the account (works for child accounts too, resolved by id) */}
+            {task.account && task.accountId && (
+              <a
+                href={`/modules/account-pipeline?account=${task.accountId}`}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 hover:underline"
+                title={`Open ${task.account.name}`}
+              >
                 <Building2 className="w-3 h-3" />
                 {task.account.name}
-              </span>
+              </a>
             )}
 
             {/* Due date */}
@@ -2517,9 +2525,9 @@ export default function TasksPage() {
     demoSeeded.current = true
     try { localStorage.setItem('tasks_seeded', '1') } catch {}
     const demos = [
-      { title: 'Set up your Slack ID in Settings', description: 'Add your Slack Member ID so you receive daily digests with your deal updates and commitments.', type: 'assigned', priority: 1 },
-      { title: 'Review your accounts in Account Pipeline', description: 'Open Account Pipeline to see all your active deals. Check for stale accounts and review any AI-analyzed calls.', type: 'assigned', priority: 2 },
-      { title: 'Connect Google Calendar for meeting prep', description: 'Grant calendar access in Settings so the app can surface prep briefs before your sales calls.', type: 'assigned', priority: 3 },
+      { title: 'Set up your Slack ID in Settings', description: 'Add your Slack Member ID so you receive daily digests with your deal updates and commitments.', type: 'assigned', priority: 1, source: 'onboarding' },
+      { title: 'Review your accounts in Account Pipeline', description: 'Open Account Pipeline to see all your active deals. Check for stale accounts and review any AI-analyzed calls.', type: 'assigned', priority: 2, source: 'onboarding' },
+      { title: 'Connect Google Calendar for meeting prep', description: 'Grant calendar access in Settings so the app can surface prep briefs before your sales calls.', type: 'assigned', priority: 3, source: 'onboarding' },
     ]
     const created = []
     for (const d of demos) {
@@ -3008,7 +3016,8 @@ export default function TasksPage() {
               const boardSource = filterCoached ? coachedTasks : myTasks
               // Pool = active tasks + anything completed in the last 7 days (so Done isn't flooded
               // by your whole history but a fresh completion still lands there).
-              const pool = boardSource.filter(t => t.status !== 'complete' || !t.completedAt || new Date(t.completedAt).getTime() >= weekAgo)
+              // Onboarding/setup tasks (Connect Google, Slack ID) are not sales work — keep them off the board.
+              const pool = boardSource.filter(t => t.source !== 'onboarding' && (t.status !== 'complete' || !t.completedAt || new Date(t.completedAt).getTime() >= weekAgo))
               const s = taskSearch.trim().toLowerCase()
               const boardTasks = pool.filter(t => {
                 if (s && !(t.title || '').toLowerCase().includes(s) && !(t.account?.name || '').toLowerCase().includes(s)) return false

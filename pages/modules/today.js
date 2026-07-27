@@ -1154,7 +1154,7 @@ function OnboardingCard({ profile, router }) {
   )
 }
 
-// Weekly cadence — AE re-engagement goal (10/wk) + dormant picks to work, or SDR meetings goal (3/wk).
+// This week's role goal — AE: advance 5 deals/wk + active deals to push; SDR: book 3 meetings/wk.
 function WeeklyCadenceCard({ router }) {
   const [data, setData] = useState(null)
   useEffect(() => { fetch('/api/rep/cadence').then(r => r.json()).then(d => { if (d && d.success !== false && d.target != null) setData(d) }).catch(() => {}) }, [])
@@ -1166,7 +1166,7 @@ function WeeklyCadenceCard({ router }) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <Target className="w-4 h-4 text-coral-600" />
-          <span className="text-sm font-semibold text-gray-900">Weekly Cadence</span>
+          <span className="text-sm font-semibold text-gray-900">This Week's Goal</span>
         </div>
         <span className={`text-sm font-semibold tabular-nums ${hit ? 'text-emerald-600' : 'text-gray-700'}`}>{data.current}/{data.target}</span>
       </div>
@@ -1177,13 +1177,13 @@ function WeeklyCadenceCard({ router }) {
         </div>
         {data.role === 'ae' && data.picks?.length > 0 && (
           <>
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Re-engage next</p>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Deals to advance</p>
             <ul className="space-y-1.5">
               {data.picks.slice(0, 5).map(p => (
                 <li key={p.accountId} className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-gray-800 truncate min-w-0">{p.name}{p.daysCold != null ? <span className="text-xs text-gray-400 ml-1.5">{p.daysCold}d cold</span> : null}</span>
-                  <button onClick={() => router.push(`/modules/content?account=${p.accountId}`)}
-                    className="flex-shrink-0 text-xs px-2 py-1 bg-coral-50 text-coral-700 rounded-lg border border-coral-200 hover:bg-coral-100">Draft</button>
+                  <span className="text-sm text-gray-800 truncate min-w-0">{p.name}{p.daysCold != null ? <span className="text-xs text-gray-400 ml-1.5">{p.daysCold}d quiet</span> : null}</span>
+                  <button onClick={() => router.push(`/modules/account-pipeline?account=${p.accountId}`)}
+                    className="flex-shrink-0 text-xs px-2 py-1 bg-coral-50 text-coral-700 rounded-lg border border-coral-200 hover:bg-coral-100">Open</button>
                 </li>
               ))}
             </ul>

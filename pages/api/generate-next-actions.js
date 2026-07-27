@@ -44,16 +44,15 @@ export default async function handler(req, res) {
   const metrics = account.metrics || {};
   const hasKeyMetrics = Object.values(metrics).some(m => m?.value != null);
 
-  const systemPrompt = `You are a sales coach for Banner, a CapEx management software company. Generate 3-5 specific, actionable next steps for advancing this deal.
+  const systemPrompt = `You are a sales coach for Banner, a CapEx management software company. Give the 2-3 HIGHEST-IMPACT next steps for advancing this deal — quality over quantity. If only one thing truly matters, return one.
 
-Each action should be:
-- Specific and actionable (not vague)
-- Prioritized by impact on deal progression
-- Include the "why" - what will this accomplish
+Each action must be:
+- Specific and executable by the rep (not "update MEDDICC" — the system does that; think: send X, call Y, book Z)
+- The single most deal-advancing thing to do next
 
-Format as a JSON array of objects with:
-- action: The specific action to take (imperative verb)
-- reason: Why this matters for the deal
+Format as a JSON array (max 3) of objects with:
+- action: imperative, SHORT — under 80 characters, no preamble
+- reason: ONE short sentence, under 140 characters — the so-what
 - priority: "high", "medium", or "low"
 - category: "meddicc", "discovery", "follow_up", or "content"`;
 
@@ -75,7 +74,7 @@ ${salesGaps.length > 0 ? salesGaps.map(g => `- ${g.question}`).join('\n') : '- N
 
 ${lastTranscript ? `LAST CALL SUMMARY:\n${lastTranscript.summary || 'No summary available'}` : 'No calls recorded yet.'}
 
-Generate 3-5 prioritized next actions. Return ONLY valid JSON array.`;
+Give the 2-3 highest-impact next actions (max 3). Return ONLY valid JSON array.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -126,18 +125,26 @@ Generate 3-5 prioritized next actions. Return ONLY valid JSON array.`;
         const { data: { user } } = await auth.auth.getUser()
 
         if (user && account.id) {
+          // Dedup on re-run: don't recreate an action that's already an open ai_suggestion for this account.
+          const db = getSupabase()
+          const { data: existing } = await db.from('tasks')
+            .select('title').eq('account_id', account.id).eq('source', 'ai_suggestion')
+            .is('dismissed_at', null).neq('status', 'complete')
+          const have = new Set((existing || []).map(t => (t.title || '').toLowerCase().trim()))
           const priorityMap = { high: 1, medium: 2, low: 3 }
-          const taskItems = actions.map(a => ({
-            title:       a.action,
-            description: a.reason || null,
-            type:        'triggered',
-            source:      'ai_suggestion',
-            sourceId:    account.id,
-            accountId:   account.id,
-            ownerId:     user.id,
-            priority:    priorityMap[a.priority] || 2,
-          }))
-          await createTasks(user.id, taskItems)
+          const taskItems = actions.slice(0, 3)
+            .filter(a => a.action && !have.has(a.action.toLowerCase().trim()))
+            .map(a => ({
+              title:       a.action.slice(0, 100),
+              description: a.reason ? a.reason.slice(0, 160) : null,
+              type:        'triggered',
+              source:      'ai_suggestion',
+              sourceId:    account.id,
+              accountId:   account.id,
+              ownerId:     user.id,
+              priority:    priorityMap[a.priority] || 2,
+            }))
+          if (taskItems.length) await createTasks(user.id, taskItems)
         }
       } catch (taskErr) {
         // Non-fatal — log but don't block the response
