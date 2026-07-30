@@ -174,7 +174,14 @@ ${SCHEMA_INSTRUCTION}`;
   const deck = parseClaudeJson(deckRaw, null);
   const work = parseClaudeJson(workRaw, null);
   const bad = (o) => !o || o.parseError || typeof o !== 'object';
-  if (bad(deck) && bad(work)) throw new Error('Model did not return valid JSON');
+  if (bad(deck) && bad(work)) {
+    return { error: 'parse_failed', _raw: {
+      deckLen: (deckRaw || '').length, workLen: (workRaw || '').length,
+      deckErr: deck?.parseError, workErr: work?.parseError,
+      deckHead: (deckRaw || '').slice(0, 120), deckTail: (deckRaw || '').slice(-200),
+      workTail: (workRaw || '').slice(-200),
+    } };
+  }
   let doc = {
     versionLog: (!bad(deck) && deck.versionLog) || [{ version: priorVersion + 1, changed: priorVersion ? 'Regenerated' : 'Initial build' }],
     section1_deckReady: (!bad(deck) && deck.section1_deckReady) || [],
