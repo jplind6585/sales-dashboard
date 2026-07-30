@@ -98,11 +98,14 @@ export default function ContentStudio() {
     })
   }
 
-  // Preselect an account from the URL (?accountId= or ?account=) so other surfaces can deep-link in.
+  // Preselect an account + content type from the URL so other surfaces can deep-link in
+  // (e.g. the account view → ?account=<id>&type=eval_doc).
   useEffect(() => {
     const q = router.query.accountId || router.query.account
     if (q && typeof q === 'string') setAccountId(q)
-  }, [router.query.accountId, router.query.account])
+    const t = router.query.type
+    if (t && typeof t === 'string' && TYPES.some(x => x.id === t)) setType(t)
+  }, [router.query.accountId, router.query.account, router.query.type])
 
   // Load the account's stakeholders for the "To" picker; reset recipient on account change.
   useEffect(() => {
