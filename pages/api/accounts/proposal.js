@@ -205,13 +205,19 @@ ${SCHEMA_INSTRUCTION}`;
   }
 
   // Deterministic quote verification — every quote must appear (normalized) in the selected transcripts.
-  const verify = (qt) => qt && qt.text && combinedTranscript.includes(norm(qt.text).slice(0, 60));
-  let dropped = 0;
+  // Verbatim check: a 40-char normalized window of the quote must appear in a selected transcript.
+  // Unverified quotes are FLAGGED (not dropped) so nothing is lost; the UI shows an amber note.
+  const verify = (qt) => {
+    if (!qt || !qt.text) return false;
+    const n = norm(qt.text);
+    return combinedTranscript.includes(n.slice(0, 40)) || (n.length > 70 && combinedTranscript.includes(n.slice(25, 70)));
+  };
+  let flagged = 0;
   for (const a of (doc.section1_deckReady || [])) {
-    if (a.quote && !verify(a.quote)) { a.quote = { ...a.quote, unverified: true }; dropped++; }
+    if (a.quote && !verify(a.quote)) { a.quote = { ...a.quote, unverified: true }; flagged++; }
   }
   for (const v of (doc.voiceOfCustomer || [])) {
-    v.quotes = (v.quotes || []).filter((qt) => { const ok = verify(qt); if (!ok) dropped++; return ok; });
+    v.quotes = (v.quotes || []).map((qt) => verify(qt) ? qt : (flagged++, { ...qt, unverified: true }));
   }
 
   const gate = validateDoc(doc, AREA_IDS);
@@ -230,9 +236,9 @@ ${SCHEMA_INSTRUCTION}`;
     source_call_count: calls.length, created_by: user.email, updated_at: new Date().toISOString(),
   };
   await db.from('account_proposals').upsert(row, { onConflict: 'account_id' });
-  await db.from('account_proposal_messages').insert({ account_id: accountId, role: 'assistant', content: changeSummary, metadata: { doc_version: nextVersion, dropped_quotes: dropped, gate_issues: gate.issues } });
+  await db.from('account_proposal_messages').insert({ account_id: accountId, role: 'assistant', content: changeSummary, metadata: { doc_version: nextVersion, flagged_quotes: flagged, gate_issues: gate.issues } });
 
-  return { proposal: { ...row, versions }, gate, droppedQuotes: dropped,
+  return { proposal: { ...row, versions }, gate, flaggedQuotes: flagged,
     _debug: { deckLen: (deckRaw || '').length, workLen: (workRaw || '').length, deckOk: !bad(deck), workOk: !bad(work), deckErr: deck?.parseError, workErr: work?.parseError } };
 }
 
