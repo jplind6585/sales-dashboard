@@ -131,8 +131,7 @@ async function generate(db, accountId, callIds, user, wantCritique) {
   const dealContext = existing?.account_context ? `\n\nDEAL-SPECIFIC CONTEXT (authoritative — overrides transcript inference):\n${existing.account_context}` : '';
   const priorVersion = existing?.version || 0;
 
-  const system = `${pconf.instructions}\n\n${SCHEMA_INSTRUCTION}`;
-  const userPrompt = `ACCOUNT: ${account?.name || acctRow?.name || 'Unknown'} | stage: ${account?.stage || '?'}
+  const grounding = `ACCOUNT: ${account?.name || acctRow?.name || 'Unknown'} | stage: ${account?.stage || '?'}
 
 === SELECTED CALL TRANSCRIPTS (quote ONLY from inside these; timestamps appear as (mm:ss) when present) ===
 ${transcriptBlock}
@@ -147,13 +146,36 @@ ${contextText}
 ${roiBlock}
 
 === ICP / SALES PROCESS ===
-${icpBlock}${dealContext}
+${icpBlock}${dealContext}`;
 
-The prior version number is ${priorVersion}. Set versionLog[0].version = ${priorVersion + 1} and describe what changed vs the prior version (or "Initial build" if ${priorVersion} is 0). Produce the full doc now as JSON.`;
+  // Split into two PARALLEL generations so neither truncates at the output-token cap: (A) the
+  // champion-facing deck copy + summary + ROI + quotes; (B) the internal rep-working section (19-area
+  // coverage map + stakeholders + questions + deal health). Same grounding for both; merged below.
+  const askDeck = `${pconf.instructions}
 
-  // Draft.
-  let doc = parseClaudeJson(await callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0.3, system, messages: [{ role: 'user', content: userPrompt }] }), null);
-  if (!doc) throw new Error('Model did not return valid JSON');
+Return ONLY valid JSON with EXACTLY these top-level keys: versionLog, section1_deckReady, dealSummary, roiSnapshot, voiceOfCustomer. Set versionLog[0].version = ${priorVersion + 1} and describe what changed vs the prior version (or "Initial build" if ${priorVersion} is 0). Schema for those keys:
+${SCHEMA_INSTRUCTION}`;
+  const askWorking = `${pconf.instructions}
+
+Return ONLY valid JSON with EXACTLY one top-level key: section2_repWorking. Its coverageMap MUST include every one of these ${AREA_IDS.length} process areas (plus any inferred you surface): ${AREA_IDS.join(', ')}. Schema:
+${SCHEMA_INSTRUCTION}`;
+
+  const [deckRaw, workRaw] = await Promise.all([
+    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0.3, system: askDeck, messages: [{ role: 'user', content: grounding }] }),
+    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 6000, temperature: 0.2, system: askWorking, messages: [{ role: 'user', content: grounding }] }),
+  ]);
+  const deck = parseClaudeJson(deckRaw, null);
+  const work = parseClaudeJson(workRaw, null);
+  const bad = (o) => !o || o.parseError || typeof o !== 'object';
+  if (bad(deck) && bad(work)) throw new Error('Model did not return valid JSON');
+  let doc = {
+    versionLog: (!bad(deck) && deck.versionLog) || [{ version: priorVersion + 1, changed: priorVersion ? 'Regenerated' : 'Initial build' }],
+    section1_deckReady: (!bad(deck) && deck.section1_deckReady) || [],
+    dealSummary: (!bad(deck) && deck.dealSummary) || '',
+    roiSnapshot: (!bad(deck) && deck.roiSnapshot) || [],
+    voiceOfCustomer: (!bad(deck) && deck.voiceOfCustomer) || [],
+    section2_repWorking: (!bad(work) && work.section2_repWorking) || {},
+  };
 
   // Self-critique pass — grade against the rubric + fix, return the full revised doc. Opt-in
   // (req.body.critique): it doubles generation time, so the interactive path runs one pass by default.
