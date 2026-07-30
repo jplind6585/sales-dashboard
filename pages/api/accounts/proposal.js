@@ -13,9 +13,12 @@ import { computeDealValue, BANNER_BENEFITS, BANNER_PROOF } from '../../../lib/de
 import { BANNER_SOLUTIONS } from '../../../lib/bannerSolutions';
 import { SCHEMA_INSTRUCTION, docToMarkdown, validateDoc } from '../../../lib/proposalSpec';
 
-const TRANSCRIPT_CHAR_CAP = 140000; // ~35k tokens of transcript across selected calls
+const TRANSCRIPT_CHAR_CAP = 280000; // full transcripts fit Sonnet's context; the time cost is OUTPUT, not input
 const MAX_VERSIONS = 12;
 const AREA_IDS = BUSINESS_AREAS.map((a) => a.id);
+
+// Long generation (an 8000-token doc, optionally a self-critique pass) — allow the full serverless budget.
+export const config = { maxDuration: 300 };
 
 const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -56,7 +59,7 @@ export default async function handler(req, res) {
     if (mode === 'generate') {
       const { callIds } = req.body || {};
       if (!Array.isArray(callIds) || callIds.length === 0) return res.status(400).json({ error: 'callIds required' });
-      const out = await generate(db, accountId, callIds, user);
+      const out = await generate(db, accountId, callIds, user, req.body.critique === true);
       return res.status(200).json(out);
     }
 
@@ -82,11 +85,11 @@ async function loadState(db, accountId) {
 
 // ---- generation ------------------------------------------------------------
 
-async function generate(db, accountId, callIds, user) {
+async function generate(db, accountId, callIds, user, wantCritique) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
 
-  const [config, { account, contextText }, acctRow, callRows, salesConfig, { data: existing }] = await Promise.all([
+  const [pconf, { account, contextText }, acctRow, callRows, salesConfig, { data: existing }] = await Promise.all([
     loadConfig(db),
     buildAccountContext(db, accountId),
     db.from('accounts').select('id, name, stage, deal_value, metrics').eq('id', accountId).single().then((r) => r.data),
@@ -128,7 +131,7 @@ async function generate(db, accountId, callIds, user) {
   const dealContext = existing?.account_context ? `\n\nDEAL-SPECIFIC CONTEXT (authoritative — overrides transcript inference):\n${existing.account_context}` : '';
   const priorVersion = existing?.version || 0;
 
-  const system = `${config.instructions}\n\n${SCHEMA_INSTRUCTION}`;
+  const system = `${pconf.instructions}\n\n${SCHEMA_INSTRUCTION}`;
   const userPrompt = `ACCOUNT: ${account?.name || acctRow?.name || 'Unknown'} | stage: ${account?.stage || '?'}
 
 === SELECTED CALL TRANSCRIPTS (quote ONLY from inside these; timestamps appear as (mm:ss) when present) ===
@@ -152,12 +155,13 @@ The prior version number is ${priorVersion}. Set versionLog[0].version = ${prior
   let doc = parseClaudeJson(await callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0.3, system, messages: [{ role: 'user', content: userPrompt }] }), null);
   if (!doc) throw new Error('Model did not return valid JSON');
 
-  // Self-critique pass — grade against the rubric + fix, return the full revised doc.
-  if (config.rubric) {
+  // Self-critique pass — grade against the rubric + fix, return the full revised doc. Opt-in
+  // (req.body.critique): it doubles generation time, so the interactive path runs one pass by default.
+  if (wantCritique && pconf.rubric) {
     try {
       const critiqued = parseClaudeJson(await callAnthropic(apiKey, {
         model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0,
-        system: `You are a strict editor. Grade the DRAFT against the checklist and return the FULL corrected doc as JSON in the same schema. Fix every violation. Do not add facts or quotes not present in the draft. Return ONLY JSON.\n\nCHECKLIST:\n${config.rubric}\n\n${SCHEMA_INSTRUCTION}`,
+        system: `You are a strict editor. Grade the DRAFT against the checklist and return the FULL corrected doc as JSON in the same schema. Fix every violation. Do not add facts or quotes not present in the draft. Return ONLY JSON.\n\nCHECKLIST:\n${pconf.rubric}\n\n${SCHEMA_INSTRUCTION}`,
         messages: [{ role: 'user', content: `DRAFT:\n${JSON.stringify(doc)}` }],
       }), null);
       if (critiqued && Array.isArray(critiqued.section1_deckReady)) doc = critiqued;
