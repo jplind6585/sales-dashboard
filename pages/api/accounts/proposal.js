@@ -169,7 +169,7 @@ ${SCHEMA_INSTRUCTION}`;
 
   const [deckRaw, workRaw] = await Promise.all([
     callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 12000, temperature: 0.3, system: askDeck, messages: [{ role: 'user', content: grounding }] }),
-    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0.2, system: askWorking, messages: [{ role: 'user', content: grounding }] }),
+    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 12000, temperature: 0.2, system: askWorking, messages: [{ role: 'user', content: grounding }] }),
   ]);
   const deck = parseClaudeJson(deckRaw, null);
   const work = parseClaudeJson(workRaw, null);
