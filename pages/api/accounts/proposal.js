@@ -153,16 +153,23 @@ ${icpBlock}${dealContext}`;
   // coverage map + stakeholders + questions + deal health). Same grounding for both; merged below.
   const askDeck = `${pconf.instructions}
 
-Return ONLY valid JSON with EXACTLY these top-level keys: versionLog, section1_deckReady, dealSummary, roiSnapshot, voiceOfCustomer. Set versionLog[0].version = ${priorVersion + 1} and describe what changed vs the prior version (or "Initial build" if ${priorVersion} is 0). Schema for those keys:
+=== OUTPUT OVERRIDE FOR THIS REQUEST (obey exactly, overrides any "output all sections" instruction above) ===
+Produce ONLY a JSON object with these top-level keys: versionLog, section1_deckReady, dealSummary, roiSnapshot, voiceOfCustomer.
+Do NOT include section2_repWorking or any other key — the rep-working section is generated in a SEPARATE request, so omitting it here is required. Set versionLog[0].version = ${priorVersion + 1} (describe what changed, or "Initial build" if ${priorVersion} is 0).
+Schema (emit only the keys listed above):
 ${SCHEMA_INSTRUCTION}`;
   const askWorking = `${pconf.instructions}
 
-Return ONLY valid JSON with EXACTLY one top-level key: section2_repWorking. Its coverageMap MUST include every one of these ${AREA_IDS.length} process areas (plus any inferred you surface): ${AREA_IDS.join(', ')}. Schema:
+=== OUTPUT OVERRIDE FOR THIS REQUEST (obey exactly, overrides any "output all sections" instruction above) ===
+Produce ONLY a JSON object with the SINGLE top-level key: section2_repWorking.
+Do NOT include section1_deckReady, dealSummary, roiSnapshot, voiceOfCustomer, or versionLog — those are generated in a SEPARATE request, so omitting them here is required.
+coverageMap MUST include every one of these ${AREA_IDS.length} process areas (plus any inferred you surface): ${AREA_IDS.join(', ')}.
+Schema (emit only section2_repWorking):
 ${SCHEMA_INSTRUCTION}`;
 
   const [deckRaw, workRaw] = await Promise.all([
-    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0.3, system: askDeck, messages: [{ role: 'user', content: grounding }] }),
-    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 6000, temperature: 0.2, system: askWorking, messages: [{ role: 'user', content: grounding }] }),
+    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 12000, temperature: 0.3, system: askDeck, messages: [{ role: 'user', content: grounding }] }),
+    callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0.2, system: askWorking, messages: [{ role: 'user', content: grounding }] }),
   ]);
   const deck = parseClaudeJson(deckRaw, null);
   const work = parseClaudeJson(workRaw, null);
@@ -218,7 +225,8 @@ ${SCHEMA_INSTRUCTION}`;
   await db.from('account_proposals').upsert(row, { onConflict: 'account_id' });
   await db.from('account_proposal_messages').insert({ account_id: accountId, role: 'assistant', content: changeSummary, metadata: { doc_version: nextVersion, dropped_quotes: dropped, gate_issues: gate.issues } });
 
-  return { proposal: { ...row, versions }, gate, droppedQuotes: dropped };
+  return { proposal: { ...row, versions }, gate, droppedQuotes: dropped,
+    _debug: { deckLen: (deckRaw || '').length, workLen: (workRaw || '').length, deckOk: !bad(deck), workOk: !bad(work), deckErr: deck?.parseError, workErr: work?.parseError } };
 }
 
 // ---- feedback classification ----------------------------------------------
