@@ -5,9 +5,11 @@ import AppShell from '../../components/layout/AppShell'
 import { useAccounts } from '../../hooks/useAccounts'
 import { getSupabase } from '../../lib/supabase'
 import AccountCombobox from '../../components/ui/AccountCombobox'
+import ProposalWorkspace from '../../components/proposal/ProposalWorkspace'
 
 const TYPES = [
   { id: 'follow_up_email', label: 'Follow-up email', icon: Mail, auto: true, email: true },
+  { id: 'eval_doc', label: 'Eval doc / Proposal', icon: FileSpreadsheet },
   { id: 'business_case', label: 'Business case', icon: FileText, auto: true },
   { id: 'one_pager', label: 'One-pager', icon: FileText, auto: true },
   { id: 'meeting_agenda', label: 'Meeting agenda', icon: Calendar, auto: true },
@@ -254,7 +256,7 @@ export default function ContentStudio() {
             {!sortedAccounts.length && <p className="text-xs text-gray-400 mt-1">Loading accounts…</p>}
           </div>
 
-          {accountId && (
+          {accountId && type !== 'eval_doc' && (
             <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase">To</label>
@@ -303,7 +305,7 @@ export default function ContentStudio() {
             </div>
           </div>
 
-          {accountId && (
+          {accountId && type !== 'eval_doc' && (
             <div className="bg-white rounded-xl border border-gray-100 p-4">
               <label className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1"><Share2 className="w-3.5 h-3.5" /> Deal Room</label>
               <p className="text-xs text-gray-400 mt-1">A shareable, branded value page for this prospect with an ROI estimate from their metrics.</p>
@@ -328,6 +330,11 @@ export default function ContentStudio() {
         </div>
 
         <div className="lg:col-span-2">
+          {type === 'eval_doc' ? (
+            accountId
+              ? <ProposalWorkspace accountId={accountId} accountName={accountName} />
+              : <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-sm text-gray-400 min-h-[480px] flex items-center justify-center">Pick an account to build its eval doc.</div>
+          ) : (<>
           <div className="bg-white rounded-xl border border-gray-100 p-5 min-h-[480px] flex flex-col">
             <div className="flex items-center justify-between mb-3 gap-3">
               <h2 className="font-semibold text-gray-900 min-w-0 truncate">
@@ -384,6 +391,7 @@ export default function ContentStudio() {
             )}
           </div>
           <p className="text-xs text-gray-400 mt-2">Grounded in this account's analyzed calls + your sales process. Nothing is sent or saved automatically. Versions are kept in this browser.</p>
+          </>)}
         </div>
       </div>
     </AppShell>

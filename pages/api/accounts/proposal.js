@@ -1,0 +1,235 @@
+// Proposal / Eval-Doc generator (plan 2026-07-29). FRESH-from-transcripts every run — no doc-patch.
+// Reads the editable global instructions (proposal_config) + per-account context, grounds on the
+// SELECTED call transcripts + the 19-area floor + account context + ROI + ICP, emits the structured
+// doc (lib/proposalSpec), self-critiques once, then deterministically verifies every quote against
+// the source transcripts before persisting. Modes: generate | feedback | apply_instruction | config.
+import crypto from 'crypto';
+import { createServerSupabaseClient, getSupabase } from '../../../lib/supabase';
+import { callAnthropic, parseClaudeJson, logRequest } from '../../../lib/apiUtils';
+import { CLAUDE_MODELS, BUSINESS_AREAS } from '../../../lib/constants';
+import { buildAccountContext } from '../../../lib/accountContext';
+import { buildSalesProcessContext, getSalesProcessConfig } from '../../../lib/salesProcess';
+import { computeDealValue, BANNER_BENEFITS, BANNER_PROOF } from '../../../lib/dealValue';
+import { BANNER_SOLUTIONS } from '../../../lib/bannerSolutions';
+import { SCHEMA_INSTRUCTION, docToMarkdown, validateDoc } from '../../../lib/proposalSpec';
+
+const TRANSCRIPT_CHAR_CAP = 140000; // ~35k tokens of transcript across selected calls
+const MAX_VERSIONS = 12;
+const AREA_IDS = BUSINESS_AREAS.map((a) => a.id);
+
+const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+export default async function handler(req, res) {
+  logRequest(req, 'accounts/proposal');
+  const auth = createServerSupabaseClient(req, res);
+  const { data: { user } } = await auth.auth.getUser();
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const db = getSupabase();
+
+  try {
+    if (req.method === 'GET') {
+      const { accountId } = req.query;
+      if (accountId) return res.status(200).json(await loadState(db, accountId));
+      return res.status(400).json({ error: 'accountId required' });
+    }
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+    const { mode, accountId } = req.body || {};
+
+    if (mode === 'config') return res.status(200).json({ config: await loadConfig(db) });
+
+    if (mode === 'apply_instruction') {
+      const { instructionEdit } = req.body || {};
+      if (!instructionEdit) return res.status(400).json({ error: 'instructionEdit required' });
+      const cfg = await applyInstructionEdit(db, instructionEdit, user.email);
+      return res.status(200).json({ config: cfg });
+    }
+
+    if (!accountId) return res.status(400).json({ error: 'accountId required' });
+
+    if (mode === 'feedback') {
+      const { message } = req.body || {};
+      if (!message) return res.status(400).json({ error: 'message required' });
+      return res.status(200).json(await handleFeedback(db, accountId, message));
+    }
+
+    if (mode === 'generate') {
+      const { callIds } = req.body || {};
+      if (!Array.isArray(callIds) || callIds.length === 0) return res.status(400).json({ error: 'callIds required' });
+      const out = await generate(db, accountId, callIds, user);
+      return res.status(200).json(out);
+    }
+
+    return res.status(400).json({ error: 'unknown mode' });
+  } catch (e) {
+    console.error('[proposal] error:', e);
+    return res.status(500).json({ error: e.message || 'proposal failed' });
+  }
+}
+
+async function loadConfig(db) {
+  const { data } = await db.from('proposal_config').select('*').order('version', { ascending: false }).limit(1).maybeSingle();
+  return data || { instructions: '', rubric: '', exemplars: [], version: 0 };
+}
+
+async function loadState(db, accountId) {
+  const [{ data: proposal }, { data: messages }] = await Promise.all([
+    db.from('account_proposals').select('*').eq('account_id', accountId).maybeSingle(),
+    db.from('account_proposal_messages').select('role, content, metadata, created_at').eq('account_id', accountId).order('created_at', { ascending: true }).limit(60),
+  ]);
+  return { proposal: proposal || null, messages: messages || [] };
+}
+
+// ---- generation ------------------------------------------------------------
+
+async function generate(db, accountId, callIds, user) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const [config, { account, contextText }, acctRow, callRows, salesConfig, { data: existing }] = await Promise.all([
+    loadConfig(db),
+    buildAccountContext(db, accountId),
+    db.from('accounts').select('id, name, stage, deal_value, metrics').eq('id', accountId).single().then((r) => r.data),
+    db.from('gong_call_analyses')
+      .select('gong_call_id, title, call_date, rep_name, transcript_text, analysis')
+      .eq('account_id', accountId).in('gong_call_id', callIds)
+      .order('call_date', { ascending: true }),
+    getSalesProcessConfig(),
+    db.from('account_proposals').select('*').eq('account_id', accountId).maybeSingle().then((r) => r),
+  ]);
+
+  const calls = (callRows.data || []).filter((c) => c.transcript_text && c.transcript_text.length > 40);
+  if (calls.length === 0) throw new Error('No transcripts found for the selected calls');
+
+  // Build the fenced transcript block (per-call titled), capped.
+  let used = 0;
+  const blocks = [];
+  for (const c of calls) {
+    const header = `### CALL: ${c.title || 'Untitled'} (${String(c.call_date || '').slice(0, 10)}${c.rep_name ? `, rep ${c.rep_name}` : ''})`;
+    let body = c.transcript_text;
+    if (used + body.length > TRANSCRIPT_CHAR_CAP) body = body.slice(0, Math.max(0, TRANSCRIPT_CHAR_CAP - used));
+    used += body.length;
+    blocks.push(`${header}\n<transcript>\n${body}\n</transcript>`);
+    if (used >= TRANSCRIPT_CHAR_CAP) break;
+  }
+  const transcriptBlock = blocks.join('\n\n');
+  const combinedTranscript = norm(calls.map((c) => c.transcript_text).join(' \n '));
+
+  // Reference inputs.
+  const processReviewList = BUSINESS_AREAS.map((a) => `- ${a.id} — ${a.label}: ${a.description}${BANNER_SOLUTIONS[a.id] ? ` | with Banner: ${BANNER_SOLUTIONS[a.id].join('; ')}` : ''}`).join('\n');
+  const dv = computeDealValue(acctRow || {});
+  const roiBlock = [
+    dv.hasData ? `Grounded value lines (from this account's metrics): ${dv.lines.map((l) => `${l.label} ~$${l.value.toLocaleString()}/yr (${l.detail})`).join(' | ')}` : 'No grounded metric-based ROI available yet — mark ROI [NEEDS INPUT] where metrics are missing.',
+    `Qualitative benefits: ${BANNER_BENEFITS.map((b) => `${b.title} — ${b.detail}`).join(' | ')}`,
+    `Proof customers: ${BANNER_PROOF.join(', ')}`,
+    'Default labor rate $40/hr unless a metric provides otherwise.',
+  ].join('\n');
+  const icpBlock = salesConfig ? buildSalesProcessContext(salesConfig) : '';
+  const dealContext = existing?.account_context ? `\n\nDEAL-SPECIFIC CONTEXT (authoritative — overrides transcript inference):\n${existing.account_context}` : '';
+  const priorVersion = existing?.version || 0;
+
+  const system = `${config.instructions}\n\n${SCHEMA_INSTRUCTION}`;
+  const userPrompt = `ACCOUNT: ${account?.name || acctRow?.name || 'Unknown'} | stage: ${account?.stage || '?'}
+
+=== SELECTED CALL TRANSCRIPTS (quote ONLY from inside these; timestamps appear as (mm:ss) when present) ===
+${transcriptBlock}
+
+=== PROCESS REVIEW LIST (the floor — cover every one in the coverage map; surface inferred areas too) ===
+${processReviewList}
+
+=== ACCOUNT CONTEXT (stakeholders, tasks, gaps, MEDDIC, notes) ===
+${contextText}
+
+=== ROI GUIDANCE ===
+${roiBlock}
+
+=== ICP / SALES PROCESS ===
+${icpBlock}${dealContext}
+
+The prior version number is ${priorVersion}. Set versionLog[0].version = ${priorVersion + 1} and describe what changed vs the prior version (or "Initial build" if ${priorVersion} is 0). Produce the full doc now as JSON.`;
+
+  // Draft.
+  let doc = parseClaudeJson(await callAnthropic(apiKey, { model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0.3, system, messages: [{ role: 'user', content: userPrompt }] }), null);
+  if (!doc) throw new Error('Model did not return valid JSON');
+
+  // Self-critique pass — grade against the rubric + fix, return the full revised doc.
+  if (config.rubric) {
+    try {
+      const critiqued = parseClaudeJson(await callAnthropic(apiKey, {
+        model: CLAUDE_MODELS.SONNET, maxTokens: 8000, temperature: 0,
+        system: `You are a strict editor. Grade the DRAFT against the checklist and return the FULL corrected doc as JSON in the same schema. Fix every violation. Do not add facts or quotes not present in the draft. Return ONLY JSON.\n\nCHECKLIST:\n${config.rubric}\n\n${SCHEMA_INSTRUCTION}`,
+        messages: [{ role: 'user', content: `DRAFT:\n${JSON.stringify(doc)}` }],
+      }), null);
+      if (critiqued && Array.isArray(critiqued.section1_deckReady)) doc = critiqued;
+    } catch (e) { /* keep the draft if critique fails */ }
+  }
+
+  // Deterministic quote verification — every quote must appear (normalized) in the selected transcripts.
+  const verify = (qt) => qt && qt.text && combinedTranscript.includes(norm(qt.text).slice(0, 60));
+  let dropped = 0;
+  for (const a of (doc.section1_deckReady || [])) {
+    if (a.quote && !verify(a.quote)) { a.quote = { ...a.quote, unverified: true }; dropped++; }
+  }
+  for (const v of (doc.voiceOfCustomer || [])) {
+    v.quotes = (v.quotes || []).filter((qt) => { const ok = verify(qt); if (!ok) dropped++; return ok; });
+  }
+
+  const gate = validateDoc(doc, AREA_IDS);
+  const markdown = docToMarkdown(doc, account?.name || acctRow?.name || '');
+  const changeSummary = doc.versionLog?.[0]?.changed || 'Regenerated';
+
+  // Persist — push prior into versions[], version++.
+  const nextVersion = priorVersion + 1;
+  const priorVersions = Array.isArray(existing?.versions) ? existing.versions : [];
+  if (existing?.content) priorVersions.push({ version: priorVersion, content: existing.content, transcript_ids: existing.transcript_ids, change_summary: existing.content?.versionLog?.[0]?.changed || null });
+  const versions = priorVersions.slice(-MAX_VERSIONS);
+
+  const row = {
+    account_id: accountId, content: doc, markdown, transcript_ids: callIds,
+    account_context: existing?.account_context || null, version: nextVersion, versions,
+    source_call_count: calls.length, created_by: user.email, updated_at: new Date().toISOString(),
+  };
+  await db.from('account_proposals').upsert(row, { onConflict: 'account_id' });
+  await db.from('account_proposal_messages').insert({ account_id: accountId, role: 'assistant', content: changeSummary, metadata: { doc_version: nextVersion, dropped_quotes: dropped, gate_issues: gate.issues } });
+
+  return { proposal: { ...row, versions }, gate, droppedQuotes: dropped };
+}
+
+// ---- feedback classification ----------------------------------------------
+
+async function handleFeedback(db, accountId, message) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  await db.from('account_proposal_messages').insert({ account_id: accountId, role: 'user', content: message });
+
+  const cls = parseClaudeJson(await callAnthropic(apiKey, {
+    model: CLAUDE_MODELS.HAIKU, maxTokens: 500, temperature: 0,
+    system: `Classify feedback on a generated proposal/eval doc. Return ONLY JSON:
+{"scope":"systemic"|"deal_specific","instruction_edit":"<if systemic: one imperative rule to append to the GLOBAL instructions, else null>","context_note":"<if deal_specific: restate as an authoritative fact/priority about THIS account, else null>"}
+- systemic = a rule for ALL future docs (formatting, ordering, what to include/exclude, tone).
+- deal_specific = a fact or priority about THIS one account (e.g. "invoicing is their #1 pain", "the economic buyer is the CFO").`,
+    messages: [{ role: 'user', content: message }],
+  }), { scope: 'deal_specific', instruction_edit: null, context_note: message });
+
+  if (cls.scope === 'deal_specific') {
+    // Append to the account's authoritative context; the client then re-runs generate.
+    const { data: existing } = await db.from('account_proposals').select('account_context').eq('account_id', accountId).maybeSingle();
+    const note = cls.context_note || message;
+    const merged = existing?.account_context ? `${existing.account_context}\n- ${note}` : `- ${note}`;
+    await db.from('account_proposals').update({ account_context: merged }).eq('account_id', accountId);
+    await db.from('account_proposal_messages').insert({ account_id: accountId, role: 'system', content: `Saved as deal context: ${note}`, metadata: { scope: 'deal_specific' } });
+    return { scope: 'deal_specific', contextNote: note, rerun: true };
+  }
+  // systemic: return the drafted instruction edit for approval (not auto-applied).
+  return { scope: 'systemic', instructionEdit: cls.instruction_edit || message, rerun: false };
+}
+
+async function applyInstructionEdit(db, instructionEdit, email) {
+  const cfg = await loadConfig(db);
+  const instructions = `${cfg.instructions}\n- ${instructionEdit}`.trim();
+  const version = (cfg.version || 0) + 1;
+  await db.from('proposal_config').update({ instructions, version, updated_by: email, updated_at: new Date().toISOString() }).eq('version', cfg.version);
+  await db.from('proposal_config_history').insert({ version, instructions, rubric: cfg.rubric, exemplars: cfg.exemplars, updated_by: email });
+  return { ...cfg, instructions, version };
+}

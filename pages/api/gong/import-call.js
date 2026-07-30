@@ -124,7 +124,9 @@ export default async function handler(req, res) {
 
         if (segment.sentences && Array.isArray(segment.sentences)) {
           segment.sentences.forEach(sentence => {
-            formattedTranscript += `${speaker.name}: ${sentence.text}\n\n`;
+            const t = Number(sentence.start);
+            const ts = Number.isFinite(t) ? `${Math.floor(t / 60000)}:${String(Math.floor((t % 60000) / 1000)).padStart(2, '0')}` : '';
+            formattedTranscript += `${speaker.name}${ts ? ` (${ts})` : ''}: ${sentence.text}\n\n`;
           });
         } else if (segment.text) {
           // Alternative format where segment has text directly

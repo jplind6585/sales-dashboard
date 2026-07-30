@@ -583,7 +583,11 @@ export default async function handler(req, res) {
           const speaker = speakerMap[segment.speakerId] || { name: `Speaker ${segment.speakerId}`, affiliation: 'unknown' };
           const label = speaker.affiliation === 'internal' ? `[REP] ${speaker.name}` : `[PROSPECT] ${speaker.name}`;
           (segment.sentences || []).forEach(s => {
-            transcriptText += `${label}: ${s.text}\n`;
+            // Embed the sentence timestamp (mm:ss) so downstream generators (proposal/eval doc) can
+            // attribute quotes with a timestamp. Parse-tolerant superset of the old `[SPEAKER] Name:`.
+            const t = Number(s.start);
+            const ts = Number.isFinite(t) ? `${Math.floor(t / 60000)}:${String(Math.floor((t % 60000) / 1000)).padStart(2, '0')}` : '';
+            transcriptText += `${label}${ts ? ` (${ts})` : ''}: ${s.text}\n`;
           });
         });
       }
