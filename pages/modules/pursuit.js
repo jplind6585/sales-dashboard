@@ -890,7 +890,7 @@ function AccountRow({ account, onRowClick, onLogTouch, onEdit, onRemove, onRankC
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function PursuitPage() {
+export default function PursuitPage({ embedded = false }) {
   const [accounts, setAccounts] = useState([]);
   const [allTouches, setAllTouches] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1058,20 +1058,17 @@ export default function PursuitPage() {
 
   const sortedAccounts = [...accounts].sort((a, b) => a.rank - b.rank);
 
-  return (
-    <AppShell
-      title="Account Pursuit"
-      subtitle="Top 50 named accounts"
-      actions={
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Account
-        </button>
-      }
+  const addBtn = (
+    <button
+      onClick={() => setShowAddModal(true)}
+      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
     >
+      <Plus className="w-4 h-4" />
+      Add Account
+    </button>
+  );
+  const inner = (
+    <>
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Stats bar */}
@@ -1220,6 +1217,19 @@ export default function PursuitPage() {
           onUpdateAccount={handleUpdateAccount}
         />
       )}
+    </>
+  );
+  // Embedded (inside the combined Prospecting page) — render the body without its own AppShell,
+  // with the Add-Account action inlined; standalone route keeps its AppShell + header action.
+  if (embedded) return (
+    <div>
+      <div className="max-w-7xl mx-auto px-6 pt-6 flex justify-end">{addBtn}</div>
+      {inner}
+    </div>
+  );
+  return (
+    <AppShell title="Account Pursuit" subtitle="Top 50 named accounts" actions={addBtn}>
+      {inner}
     </AppShell>
   );
 }

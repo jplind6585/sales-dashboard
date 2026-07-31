@@ -12,6 +12,7 @@ import {
 import { useSpeechInput } from '../../hooks/useSpeechInput';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import WorkRequestsPanel from '../../components/tasks/WorkRequestsPanel';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { getCurrentUser, getSession } from '../../lib/auth';
 import { isSupabaseConfigured } from '../../lib/supabase';
@@ -2474,6 +2475,7 @@ export default function TasksPage() {
   const [filterTier, setFilterTier] = useState('all')
   const [sortBy, setSortBy] = useState('smart') // smart | due | priority | account | recent
   const [taskView, setTaskView] = useState('board') // 'board' (Kanban). Legacy focus/by_account/all blocks are unreachable.
+  const [requestsMode, setRequestsMode] = useState(false) // Work Requests sub-view (folded in from /modules/work-requests)
   const [backfilling, setBackfilling] = useState(false)
   const [clearingNoise, setClearingNoise] = useState(false)
   const [startingClean, setStartingClean] = useState(false)
@@ -2921,8 +2923,13 @@ export default function TasksPage() {
       title="Tasks"
       actions={
         <div className="flex items-center gap-3">
+          {/* Tasks / Work Requests sub-view toggle */}
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button onClick={() => setRequestsMode(false)} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!requestsMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Tasks</button>
+            <button onClick={() => setRequestsMode(true)} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${requestsMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Requests</button>
+          </div>
           {/* View toggle (only shown if user has team access) */}
-          {summary.length > 0 && (
+          {!requestsMode && summary.length > 0 && (
             <div className="flex bg-gray-100 rounded-lg p-1">
               <button
                 onClick={() => setView('rep')}
@@ -2947,6 +2954,7 @@ export default function TasksPage() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
 
+          {!requestsMode && (
           <button
             onClick={() => setShowNewTask(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -2954,12 +2962,15 @@ export default function TasksPage() {
             <Plus className="w-4 h-4" />
             New Task
           </button>
+          )}
         </div>
       }
     >
       {/* Content */}
       <div className="max-w-5xl mx-auto px-6 py-8">
-        {loading ? (
+        {requestsMode ? (
+          <WorkRequestsPanel />
+        ) : loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
           </div>
