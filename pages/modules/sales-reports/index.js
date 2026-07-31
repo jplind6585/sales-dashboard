@@ -15,6 +15,8 @@ const REPORTS = [
   { id: 'call-registry', name: 'Call Registry', icon: Database, href: '/modules/sales-reports/call-registry', description: 'Every Gong call in one table — date, rep, account, stage, analysis status, transcript, discovery and ICP scores. Filter by rep, status, or date. Source of truth for coverage.', tags: ['Gong', 'All calls'] },
   { id: 'roi-tracker', name: 'ROI Tracker', icon: TrendingUp, href: '/modules/roi-tracker', description: 'What each investment returns — pipeline generated, revenue closed, and payback by source and initiative.', tags: ['ROI', 'Revenue', 'Payback'] },
   { id: 'activity-leaderboard', name: 'Activity Leaderboard', icon: Trophy, href: '/modules/sales-reports/activity-leaderboard', description: 'SDR/AE activity ranking — calls, connects, meetings booked, and touches, ranked across the team.', tags: ['SDR', 'AE', 'Ranking'] },
+  { id: 'pipeline-overview', name: 'Pipeline Overview', icon: TrendingUp, href: '/modules/pipeline-overview', description: 'Manager roll-up: pipeline confidence, per-rep breakdown, and stale deals across the team.', tags: ['Pipeline', 'Per-rep', 'Confidence'] },
+  { id: 'bottleneck', name: 'Bottleneck Tracker', icon: BarChart2, href: '/modules/bottleneck', description: 'Where deals stall — stage conversion rates, the biggest bottleneck stage, and stalled-deal alerts.', tags: ['Funnel', 'Conversion', 'Stalls'] },
 ]
 
 function ReportCard({ report }) {
