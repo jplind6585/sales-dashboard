@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { Save, CheckCircle2, ShieldCheck, UserPlus, Mail, Plug, RefreshCw } from 'lucide-react'
+import { Save, CheckCircle2, ShieldCheck, UserPlus, Mail, Plug, RefreshCw, Sliders, ClipboardCheck, AlertTriangle, LayoutGrid, Users } from 'lucide-react'
 import { getUserSettings, saveUserSettings } from '../../lib/userSettings'
 import AppShell from '../../components/layout/AppShell'
 import { STAGE_PROBABILITY, STAGE_LABELS, ACTIVE_STAGE_ORDER } from '../../lib/constants'
@@ -210,6 +210,26 @@ export default function SettingsPage() {
             {isAdmin
               ? <button onClick={() => router.push('/modules/users')} className="text-xs px-3 py-1 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Manage users</button>
               : <span className="text-[11px] text-gray-400">Set by an admin</span>}
+          </div>
+        </div>
+
+        {/* ── Admin & configuration (moved off the left nav to keep it simple) ── */}
+        <div className="bg-white rounded-xl border p-5">
+          <h2 className="text-sm font-semibold text-gray-900 mb-1">Admin &amp; configuration</h2>
+          <p className="text-xs text-gray-500 mb-3">How the app is set up. These live here now instead of the left nav.</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {[
+              { label: 'Sales Processes', desc: 'ICP, discovery, stage-exit criteria', href: '/modules/sales-processes', icon: Sliders, roles: ['manager', 'admin'] },
+              { label: 'Playbooks', desc: 'Checklists that auto-create tasks', href: '/modules/playbooks', icon: ClipboardCheck, roles: ['rep', 'manager', 'admin'] },
+              { label: 'Data Quality', desc: 'Dedup, low-confidence links, cleanup', href: '/modules/data-quality', icon: AlertTriangle, roles: ['manager', 'admin'] },
+              { label: 'Users & Roles', desc: 'Assign roles and rep type', href: '/modules/users', icon: Users, roles: ['admin'] },
+              { label: 'All Modules', desc: 'Every module, including hidden ones', href: '/modules', icon: LayoutGrid, roles: ['rep', 'manager', 'admin'] },
+            ].filter((m) => m.roles.includes(profile?.role || 'rep')).map((m) => (
+              <button key={m.href} onClick={() => router.push(m.href)} className="flex items-start gap-3 text-left p-3 rounded-lg border border-gray-200 hover:border-coral-300 hover:bg-coral-50/40 transition-colors">
+                <m.icon className="w-4 h-4 text-coral-600 mt-0.5 flex-shrink-0" />
+                <span className="min-w-0"><span className="block text-sm font-medium text-gray-900">{m.label}</span><span className="block text-xs text-gray-500">{m.desc}</span></span>
+              </button>
+            ))}
           </div>
         </div>
 
