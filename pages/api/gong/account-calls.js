@@ -39,10 +39,19 @@ export default async function handler(req, res) {
   if (!accountId) return apiError(res, 400, 'accountId required');
 
   const db = getSupabase();
+
+  // Roll up merged companies: include this account's child deal-rows (and, if this IS a child, its
+  // siblings under the same master) so a company record shows its whole call history, not just its own
+  // row. After a dedupe/merge the calls usually sit on the children.
+  const { data: self } = await db.from('accounts').select('id, parent_account_id').eq('id', accountId).maybeSingle();
+  const rootId = self?.parent_account_id || accountId;
+  const { data: kids } = await db.from('accounts').select('id').eq('parent_account_id', rootId);
+  const familyIds = Array.from(new Set([accountId, rootId, ...(kids || []).map(k => k.id)]));
+
   const { data: rows, error } = await db
     .from('gong_call_analyses')
     .select('gong_call_id, title, rep_name, analysis, analyzed_at, call_date, match_confidence, match_method, transcript_text, call_category')
-    .eq('account_id', accountId)
+    .in('account_id', familyIds)
     .eq('ignored', false)
     .order('call_date', { ascending: false })
     .limit(100);

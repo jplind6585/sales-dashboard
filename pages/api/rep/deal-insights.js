@@ -80,24 +80,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ insights: [], idle_queue: idleQueue, generated_at: new Date().toISOString(), is_live: true })
   }
 
-  const accountIds = activeAccounts.map(a => a.id)
-
-  // Get last call date per account
-  const { data: recentCalls } = await db
-    .from('gong_call_analyses')
-    .select('account_id, call_date')
-    .in('account_id', accountIds)
-    .not('analyzed_at', 'is', null)
-    .order('call_date', { ascending: false })
-
-  const lastCallByAccount = {}
-  if (recentCalls) {
-    for (const c of recentCalls) {
-      if (c.account_id && !lastCallByAccount[c.account_id]) {
-        lastCallByAccount[c.account_id] = c.call_date
-      }
-    }
-  }
+  // Last call per COMPANY — rolled up across each master's child deal-rows. After a dedupe/merge the
+  // calls often sit on the children, so the master's own row shows none ("No calls linked yet" bug).
+  const lastCallByAccount = await lastCallByCompany(db, activeAccounts)
 
   const now = Date.now()
   const insights = []
@@ -148,23 +133,7 @@ async function computeIdleQueue(db, user) {
 
   if (!accounts || accounts.length === 0) return []
 
-  const accountIds = accounts.map(a => a.id)
-
-  const { data: calls } = await db
-    .from('gong_call_analyses')
-    .select('account_id, call_date')
-    .in('account_id', accountIds)
-    .not('analyzed_at', 'is', null)
-    .order('call_date', { ascending: false })
-
-  const lastCallByAccount = {}
-  if (calls) {
-    for (const c of calls) {
-      if (c.account_id && !lastCallByAccount[c.account_id]) {
-        lastCallByAccount[c.account_id] = c.call_date
-      }
-    }
-  }
+  const lastCallByAccount = await lastCallByCompany(db, accounts)
 
   const now = Date.now()
 
@@ -186,4 +155,35 @@ async function computeIdleQueue(db, user) {
     days_since_last_call: a.days_since_last_call === 999 ? null : a.days_since_last_call,
     suggested_angle: `Check in on ${(a.stage || 'deal').replace(/_/g, ' ')} progress`,
   }))
+}
+
+// Newest analyzed Gong call per company, rolled up across a master account and its child deal-rows.
+// Merged companies keep their calls on the child rows, so a master queried alone shows zero.
+// Returns { masterId: newest call_date }.
+async function lastCallByCompany(db, masters) {
+  const masterIds = (masters || []).map(m => m.id)
+  if (!masterIds.length) return {}
+  const { data: kids } = await db
+    .from('accounts')
+    .select('id, parent_account_id')
+    .in('parent_account_id', masterIds)
+
+  const toMaster = {}
+  masterIds.forEach(id => { toMaster[id] = id })
+  for (const k of (kids || [])) toMaster[k.id] = k.parent_account_id
+
+  const { data: calls } = await db
+    .from('gong_call_analyses')
+    .select('account_id, call_date')
+    .in('account_id', Object.keys(toMaster))
+    .not('analyzed_at', 'is', null)
+    .order('call_date', { ascending: false })
+    .limit(3000)
+
+  const last = {}
+  for (const c of (calls || [])) {
+    const m = toMaster[c.account_id]
+    if (m && (!last[m] || new Date(c.call_date) > new Date(last[m]))) last[m] = c.call_date
+  }
+  return last
 }
