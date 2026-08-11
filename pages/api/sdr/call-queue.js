@@ -21,7 +21,9 @@ function startOfEtDay() {
   return new Date(now.getTime() - intoDayMs);
 }
 
-const CLOSED = new Set(['closed_won', 'closed_lost']);
+// Excluded from the daily queue: closed + inactive/dead deals. inactive_* are dormant deals migrating
+// to closed_lost — they belong in reengagement campaigns, not the daily "who to call" list.
+const CLOSED = new Set(['closed_won', 'closed_lost', 'inactive_sdr_follow_up', 'inactive_ae_follow_up']);
 // SDR-relevant stages (cold / early / re-engage) rank higher than late AE-owned stages.
 const STAGE_POINTS = {
   inactive_sdr_follow_up: 20, inactive_ae_follow_up: 18, qualifying: 18, intro_scheduled: 14,

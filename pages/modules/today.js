@@ -1220,7 +1220,6 @@ function AEView({ userId, providerToken, router, profile }) {
         <div className="space-y-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">This Week</p>
           <WeeklyCadenceCard router={router} />
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline Focus</p>
           <PipelineFocusCard userId={userId} router={router} />
         </div>
       </div>
