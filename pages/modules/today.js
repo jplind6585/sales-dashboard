@@ -1022,35 +1022,27 @@ function PipelineFocusCard({ userId, router }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/pipeline-overview')
+    // Call Queue folded into Today: the ranked "who to touch today" list (recency + ICP + stage +
+    // tier), rep-scoped server-side. Replaces the old stale-only Pipeline Focus.
+    fetch('/api/sdr/call-queue?scope=mine')
       .then(r => r.json())
-      .then(d => {
-        const allAccounts = (d.repSummaries || [])
-          .flatMap(rep => (rep.accounts || rep.staleAccounts || []).map(a => ({ ...a, repId: rep.id, repName: rep.name })))
-
-        const userAccounts = allAccounts
-          .filter(a => !userId || a.repId === userId || a.userId === userId)
-          .sort((a, b) => (b.daysSinceActivity ?? 9999) - (a.daysSinceActivity ?? 9999))
-          .slice(0, 3)
-
-        setAccounts(userAccounts)
-      })
+      .then(d => setAccounts((d.queue || d.data?.queue || []).slice(0, 4)))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [userId])
+  }, [])
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-teal-600" />
-          <span className="text-sm font-semibold text-gray-900">Pipeline Focus</span>
+          <Phone className="w-4 h-4 text-teal-600" />
+          <span className="text-sm font-semibold text-gray-900">Call Queue</span>
         </div>
         <button
-          onClick={() => router.push('/modules/account-pipeline')}
+          onClick={() => router.push('/modules/call-queue')}
           className="text-xs text-blue-600 hover:underline"
         >
-          View Pipeline
+          Open queue
         </button>
       </div>
 
@@ -1063,25 +1055,23 @@ function PipelineFocusCard({ userId, router }) {
         )}
 
         {!loading && accounts.length === 0 && (
-          <p className="text-sm text-gray-400 italic py-2">No accounts found.</p>
+          <p className="text-sm text-gray-400 italic py-2">Nothing due for a touch right now.</p>
         )}
 
         {!loading && accounts.length > 0 && (
           <ul className="space-y-2">
             {accounts.map(account => (
               <li
-                key={account.id}
+                key={account.accountId}
                 className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent hover:border-gray-200 transition-colors"
-                onClick={() => router.push(`/modules/account-pipeline?account=${account.id}`)}
+                onClick={() => router.push(`/modules/account-pipeline?account=${account.accountId}`)}
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{account.name}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <StageBadge stage={account.stage} />
-                    {account.daysSinceActivity != null && (
-                      <span className="text-xs text-amber-600 font-medium">
-                        {account.daysSinceActivity}d stale
-                      </span>
+                    {account.why && (
+                      <span className="text-xs text-gray-500 truncate">{account.why}</span>
                     )}
                   </div>
                 </div>
